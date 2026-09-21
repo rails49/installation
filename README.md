@@ -111,6 +111,54 @@ installation says so:
 
     network rails49 declared as external, but could not be found
 
+## Working on a development machine
+
+A development machine is reached at `localhost`, or it runs the installation.
+Two shapes and no third
+([ADR-0011](https://github.com/rails49/.github/blob/main/docs/adr/0011-a-development-machine-runs-the-installation-or-is-reached-at-localhost.md)).
+The first is what you work in: vite and the servers beside it on ports, with no
+name, no certificate and no door, because `localhost` is a secure context and a
+browser asks for nothing more. The second is this one, and it is for seeing
+what an operator actually receives.
+
+Running it is the five steps above. What is different is below.
+
+**Stop the development servers first.** The two shapes publish some of the same
+ports, and they are alternatives rather than neighbours.
+
+**The name may be a label.** `BOX_DOMAIN` holds the name the box is reached at.
+On one of our boxes that is a domain bought for it; on the other it is
+`dev.rails49.org`, a label in a zone we already run. Both shapes are supported,
+and both are exercised here rather than only described.
+
+**The records hold `127.0.0.1`.** A development machine moves between networks,
+so a LAN address in public DNS is a record somebody edits every time it does.
+The cost is that only this machine reaches the name — a phone on the same wifi
+does not, and a UI tested from a phone is tested at a LAN address instead. The
+certificate is unaffected: it is proved by writing a TXT record and never by
+reaching the box.
+
+**The ACME credential can come from 1Password.** `op` unlocks through a desktop
+app, which a development machine has and a headless box does not. Write
+`/etc/rails49/acme.env` once from a reference file, root-owned, mode `640`,
+outside every clone. Rendering it again before each start buys nothing: the
+door reads it at renewal, months later, and not at `up -d`.
+
+**A box with no steel runs the simulator.** A development machine has no
+command station on USB, so the stack that serves the UI comes up with its
+simulated railroad where the hardware binding would be.
+
+**A label serves a build, not your working tree.** The container behind a label
+serves whatever that UI's last build wrote. An operator's box does the same, so
+this is the shape rather than a defect — but the label goes stale as you edit
+and says nothing about it. Vite at `localhost` is the copy that follows your
+edits.
+
+**The door runs the branch this clone has checked out.** `docker compose up -d`
+starts the compose file in front of you, half-finished work included. That is
+what makes the machine useful for changing the door at all, and it is worth
+knowing before you wonder why 443 is behaving strangely.
+
 ## JMRI
 
 JMRI's compose rides here as an optional extra. It is not part of the
