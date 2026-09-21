@@ -1,0 +1,118 @@
+# The installation: the door in front of everything a browser reaches on this
+# box, and the page listing what the box serves. Nothing here is about a
+# railroad, and nothing here is built — both images are stock.
+#
+#     docker compose --env-file /etc/rails49/box.env up -d
+#
+# `--env-file` is how the box's declaration reaches this file. Compose reads it
+# for the labels and the provider below; the door reads `acme.env` beside it
+# for the credential, which no other stack is handed. README.md is the install.
+#
+# The project's name, which compose otherwise takes from the directory this
+# file sits in — a clone under another name would spell it differently. Said
+# here instead, so the containers are `installation-door-1` and stay so.
+
+name: installation
+
+services:
+  # The door. Stock Traefik, reading its routers off container labels rather
+  # than a route file: a UI's paths then change in the same commit as the UI,
+  # and there is no second route table anywhere to disagree with them.
+  #
+  # `exposedByDefault=false` because the provider sees every container on the
+  # box, including ones that are nobody's browser's business — a stack opts in
+  # with `traefik.enable=true` on the container the door reaches.
+  door:
+    image: traefik:v3.3
+    restart: unless-stopped
+    # 80 carries a redirect and nothing else. A person types a bare hostname
+    # and the browser tries http, so a box that publishes 443 alone refuses
+    # the connection and the site reads as down. The certificate comes from a
+    # DNS-01 challenge, so nothing here needs 80 to reach the outside.
+    ports:
+      - "80:80"
+      - "443:443"
+    # The credential and the ACME account address, whole, from the file the
+    # operator wrote. Read by this service and no other.
+    #
+    # `required: false` because compose refuses to parse a file naming an
+    # env_file that is not there, and this one is the box's rather than the
+    # repository's: a clone on a dev machine could not be read at all, gate
+    # included. A box missing it gets a door that starts and a resolver that
+    # cannot, which the door's log says and README.md repeats.
+    env_file:
+      - path: /etc/rails49/acme.env
+        required: false
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --entryPoints.web.address=:80
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.web.http.redirections.entryPoint.scheme=https
+      - --entryPoints.websecure.address=:443
+      - --certificatesResolvers.le.acme.storage=/acme/acme.json
+      # The provider is the operator's, because being reachable cannot require
+      # the DNS host this project happens to use. The stock binary carries
+      # every provider already; which credential it reads is `acme.env`'s
+      # business.
+      - --certificatesResolvers.le.acme.dnsChallenge.provider=${BOX_ACME_PROVIDER:?start this with --env-file /etc/rails49/box.env}
+      # Before writing the TXT record lego asks which zone the name belongs
+      # to, and a consumer router answers that question with SERVFAIL often
+      # enough that the resolver cannot be left to whatever the network hands
+      # the container. These two are asked instead. A hardcoded default rather
+      # than a parameter: an operator who has to name a resolver to get a
+      # certificate has been handed somebody else's bug.
+      - --certificatesResolvers.le.acme.dnsChallenge.resolvers=1.1.1.1:53,9.9.9.9:53
+    volumes:
+      # Read-only: the provider watches containers and starts none.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - acme:/acme
+    networks:
+      - rails49
+
+  # The page at the apex: one link per label in the declaration, rendered once
+  # when this container starts and a static file from then on. Stock nginx —
+  # this repository builds and publishes no image, because no repository in the
+  # project publishes one and the page is not the place to start.
+  page:
+    image: nginx:alpine
+    restart: unless-stopped
+    environment:
+      BOX_DOMAIN: ${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}
+      BOX_UIS: ${BOX_UIS}
+    # The directory, not the script inside it. A single-file bind mount binds
+    # the inode, and `git pull` replaces a file rather than writing through it,
+    # so a container mounted at the file would go on rendering from the script
+    # it started with (control#353). Mounting the directory is one character
+    # away from the mount that does not, so a test holds it here.
+    volumes:
+      - ./page:/page:ro
+    # The image's own entrypoint still runs, so this is what it execs: render
+    # once, then be nginx. `exec` because nginx is what this container is —
+    # a shell holding pid 1 would swallow the signal that stops it.
+    command:
+      - /bin/sh
+      - -c
+      - /page/render.sh > /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'
+    labels:
+      - traefik.enable=true
+      # This container is on two networks and the docker provider otherwise
+      # picks whichever address it finds first (ADR-0001).
+      - traefik.docker.network=rails49
+      - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
+      - traefik.http.routers.page.entrypoints=websecure
+      - traefik.http.routers.page.tls.certresolver=le
+    networks:
+      - rails49
+
+# The one network every stack on the box shares, created here under the fixed
+# name four repositories hardcode and joined by every container the door
+# reaches (ADR-0001). `name:` because compose would otherwise prefix it with
+# this project's, and the point of this network is that it belongs to no single
+# project.
+networks:
+  rails49:
+    name: rails49
+
+volumes:
+  acme:

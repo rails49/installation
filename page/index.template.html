@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{BOX_DOMAIN}}</title>
+<style>
+  :root {
+    /* The look rules' values, as this page expresses them. The four rail
+       values are deliberately absent: this page takes the tokens and the band
+       and no rail, since it offers nothing to press. `look/README.md` says
+       where these two came from and what keeps them in step. */
+    --band: #1d4ed8;
+    --band-ink: #ffffff;
+
+    /* The rest is this page's own and binds nobody. It follows the scheme;
+       the band does not. */
+    --paper: #f8fafc;
+    --ink: #0f172a;
+    --line: #e2e8f0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0b0d12;
+      --ink: #f3f4f6;
+      --line: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, sans-serif;
+    line-height: 1.6;
+  }
+
+  /* The band. The box's name on its left, and nothing on its right: the
+     band's right holds controls a person finds in the same spot in every UI,
+     and this page has none. 60px is the height the other UIs draw. */
+  .band {
+    background: var(--band);
+    color: var(--band-ink);
+  }
+
+  .band-name {
+    align-items: center;
+    display: flex;
+    font-size: 1.5rem;
+    font-weight: 700;
+    height: 60px;
+    letter-spacing: -0.5px;
+    margin: 0 auto;
+    max-width: 48rem;
+    padding: 0 1.5rem;
+  }
+
+  main {
+    margin: 0 auto;
+    max-width: 48rem;
+    padding: 2rem 1.5rem;
+  }
+
+  ul { list-style: none; }
+
+  li + li { border-top: 1px solid var(--line); }
+
+  li a {
+    color: inherit;
+    display: block;
+    font-size: 1.25rem;
+    padding: 1rem 0;
+    text-decoration: none;
+  }
+
+  li a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header class="band"><div class="band-name">{{BOX_DOMAIN}}</div></header>
+<main>
+<ul>
+{{LINKS}}
+</ul>
+</main>
+</body>
+</html>
