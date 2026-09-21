@@ -3,8 +3,8 @@
 # The gate: everything that has to be green before work lands. One exit code,
 # so a verdict never rests on remembering which commands to run.
 #
-#   shellcheck     every shell script in the tree
-#   compose        every compose file parses
+#   shell scripts  checked with shellcheck
+#   compose files  parsed with `docker compose config`
 #
 # The repository holds neither yet, and the gate is green when it finds
 # nothing to check. Each check grows a section here as the thing it checks
