@@ -5,10 +5,10 @@
 #
 #   shell scripts  checked with shellcheck
 #   compose files  parsed with `docker compose config`
+#   the tests      tsc over them, then vitest
 #
-# The repository holds neither yet, and the gate is green when it finds
-# nothing to check. Each check grows a section here as the thing it checks
-# arrives.
+# The gate is green when it finds nothing to check. Each check grows a section
+# here as the thing it checks arrives.
 #
 # Every check runs even after one has failed, and the failures are named again
 # at the end. Stopping at the first red would report one broken thing per
@@ -42,10 +42,24 @@ if [ -n "$shell_files" ]; then
   fi
 fi
 
+# Against the example declaration, which is what a box writes to
+# `/etc/rails49/box.env`: the files below say `${BOX_DOMAIN:?...}` so that a
+# stack started without it stops rather than coming up half named, and that
+# makes the example part of what is being parsed.
 compose_files=$(git ls-files '*compose*.yml' '*compose*.yaml')
 for f in $compose_files; do
-  run "compose $f" docker compose -f "$f" config -q
+  run "compose $f" docker compose --env-file box.env.example -f "$f" config -q
 done
+
+if [ -f package.json ]; then
+  [ -d node_modules ] || pnpm install
+  # The binaries directly. pnpm verifies node_modules against the lockfile
+  # before running a script and, without a TTY, aborts rather than replace it —
+  # which happens whenever this tree is mounted into a container while
+  # node_modules holds the host's binaries.
+  run tsc node_modules/.bin/tsc -p tsconfig.json --noEmit
+  run vitest node_modules/.bin/vitest run
+fi
 
 if [ -z "$failed" ]; then
   printf '\ngreen\n'

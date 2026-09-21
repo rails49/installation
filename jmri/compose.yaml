@@ -1,0 +1,60 @@
+# JMRI: the one UI no repository of this project owns, riding here as an
+# optional extra. It is **not** part of the installation, which is why it is a
+# compose project of its own rather than a profile on the installation's
+# (ADR-0002) — started and stopped with its own `-f`, touching neither the door
+# nor the page.
+#
+#     docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d
+#
+# The installation runs first: this file joins the network that one creates,
+# and compose says so plainly if it is not there.
+
+name: jmri
+
+services:
+  jmri:
+    image: jsa1987/jmri-docker:stable
+    restart: unless-stopped
+    # A fresh /tmp on every start. The image's websockify dials
+    # `localhost:5901` while its `vncserver` takes the first display that has
+    # no socket in /tmp/.X11-unix, and `docker restart` keeps the writable
+    # layer — so each restart leaks a socket, burns a display, and moves the
+    # VNC server one port away from the one noVNC connects to. The entrypoint
+    # is upstream's and stays untouched; this makes the leak impossible
+    # instead.
+    tmpfs:
+      - /tmp
+    # Where the click that points JMRI at the command station persists, along
+    # with the operator's roster and panels. The image does not start JMRI: a
+    # person clicks DecoderPro through noVNC.
+    volumes:
+      - jmri:/home/jmri
+    # **No port is published.** 6901 is noVNC and goes behind the door, which
+    # is one door per box (ADR-0004) applied to the last thing on this box that
+    # contradicted it. 12080 is JMRI's own web server: a browser reaches it, so
+    # it is behind the door or it is nowhere, and it is nowhere until someone
+    # wants it — at which point it earns a label of its own. 5901 is raw VNC,
+    # which is not a browser's, and anyone who wants it has ssh.
+    labels:
+      - traefik.enable=true
+      # This container is on two networks and the docker provider otherwise
+      # picks whichever address it finds first (ADR-0001).
+      - traefik.docker.network=rails49
+      - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}`)
+      - traefik.http.routers.jmri.entrypoints=websecure
+      - traefik.http.routers.jmri.tls.certresolver=le
+      # Named, because the image exposes three ports and the door would
+      # otherwise pick one of them for us.
+      - traefik.http.services.jmri.loadbalancer.server.port=6901
+    networks:
+      - rails49
+
+# The installation's, created by its compose under a name four repositories
+# hardcode (ADR-0001). A box that starts this before the installation is told
+# so: "network rails49 declared as external, but could not be found".
+networks:
+  rails49:
+    external: true
+
+volumes:
+  jmri:
