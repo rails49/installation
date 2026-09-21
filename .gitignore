@@ -1,3 +1,9 @@
 .DS_Store
 node_modules/
 .pnpm-store/
+
+# Neither of these lives in a clone: they are the box's, at /etc/rails49/. The
+# examples beside them are what is committed. Named here so that an operator
+# who wrote one here by mistake cannot commit a DNS token.
+box.env
+acme.env
