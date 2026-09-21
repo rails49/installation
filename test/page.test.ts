@@ -65,8 +65,13 @@ describe("the links the page lists", () => {
   });
 
   it("never list the apex, which is where this page is", () => {
-    expect(links.map(([href]) => href)).not.toContain(`https://${DOMAIN}`);
-    expect(links.map(([href]) => href)).not.toContain(`https://${DOMAIN}/`);
+    // A label can never be the apex — the script appends `.$BOX_DOMAIN` to
+    // each one — so what this guards is the other way in: the landing page
+    // makes its band's name a link home, and a page that copied that would
+    // list the apex among what the box serves.
+    const addresses = links.map(([href]) => href);
+    expect(addresses).not.toContain(`https://${DOMAIN}`);
+    expect(addresses).not.toContain("/");
   });
 
   it("are absent on a box that serves nothing yet", () => {

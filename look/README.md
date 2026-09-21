@@ -28,6 +28,12 @@ value nothing draws with is a value that can drift unseen.
 JMRI takes none of this and has no band. A name and a certificate begin nothing
 else (ADR-0002).
 
+The values are declared in the template's own `<style>` block rather than in a
+stylesheet beside it. That is a page with no build, no server-side include and
+one file to mount; the landing page expresses them the same way for the same
+reason. It is the one place this repository sets aside the project's rule
+against inline CSS, and it is set aside here rather than left unsaid.
+
 ## The copy is inert
 
 Nothing links `tokens.css` and the page does not load it — `test/page.test.ts`

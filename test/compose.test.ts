@@ -31,24 +31,22 @@ const NETWORK = "rails49";
  *  answers about the box's name. */
 const DECLARATION = "/etc/rails49/box.env";
 
-/** A compose file, read as written. Its shape is the file's rather than
+/** Any node of a parsed compose file. Its shape is the file's rather than
  *  anything this repository declares, so the assertions below are what say
  *  which parts of it are load-bearing. */
-type Compose = any;
+type Node = any;
 
-function compose(path: string): Compose {
+function compose(path: string): Node {
   return parse(readFileSync(new URL(path, root), "utf8"));
 }
 
-const installation: Compose = compose("compose.yaml");
-const jmri: Compose = compose("jmri/compose.yaml");
+const installation: Node = compose("compose.yaml");
+const jmri: Node = compose("jmri/compose.yaml");
 
-/** A service's labels, as a map. Compose takes either form; these files use
- *  the list, and a test that read only one form would pass on a file that had
- *  quietly changed to the other. */
-function labels(service: Compose): Record<string, string> {
-  const declared: string[] | Record<string, string> = service.labels ?? [];
-  if (!Array.isArray(declared)) return declared;
+/** A service's labels, as a map. Both files declare them as a list, which is
+ *  the form compose writes them in here. */
+function labels(service: Node): Record<string, string> {
+  const declared: string[] = service.labels ?? [];
   return Object.fromEntries(
     declared.map((label) => {
       const at = label.indexOf("=");
@@ -153,8 +151,8 @@ describe("the door", () => {
     // A secret in the declaration is a secret handed to `control`, `dccex` and
     // `occupancy` for no reason, so it lives in a second file at the same fixed
     // directory and this is the one service that reads it.
-    const read = (service: Compose): string[] =>
-      (service.env_file ?? []).map((entry: Compose) => entry.path ?? entry);
+    const read = (service: Node): string[] =>
+      (service.env_file ?? []).map((entry: Node) => entry.path ?? entry);
     expect(read(installation.services.door)).toEqual(["/etc/rails49/acme.env"]);
     expect(read(installation.services.page)).toEqual([]);
     expect(read(jmri.services.jmri)).toEqual([]);
@@ -220,7 +218,7 @@ describe("JMRI", () => {
     // beside it denies (ADR-0002).
     expect(jmri.name).toBe("jmri");
     expect(jmri.name).not.toBe(installation.name);
-    for (const service of Object.values<Compose>(installation.services)) {
+    for (const service of Object.values<Node>(installation.services)) {
       expect(service.profiles).toBeUndefined();
     }
     expect(Object.keys(installation.services)).not.toContain("jmri");
@@ -242,6 +240,15 @@ describe("JMRI", () => {
     expect(labels(jmri.services.jmri)["traefik.http.routers.jmri.rule"]).toBe(
       "Host(`jmri.${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}`)",
     );
+  });
+
+  it("gets a fresh /tmp on every start", () => {
+    // The image's websockify dials `localhost:5901` while its `vncserver`
+    // takes the first display with no socket in /tmp/.X11-unix, so a restart
+    // that kept the writable layer would move the VNC server one port away
+    // from the one noVNC connects to. Carried from `control`'s compose, and
+    // one line from being tidied away by someone who has not met the fault.
+    expect(jmri.services.jmri.tmpfs).toEqual(["/tmp"]);
   });
 
   it("names the port the door reaches, the image exposing three", () => {

@@ -32,23 +32,13 @@ set -euo pipefail
 # read the rest of the script as the answer. Fail instead.
 export GIT_TERMINAL_PROMPT=0
 cd ~/installation
-# Which repository this box pulls from is state outside the checkout: a line in
-# `.git/config` on this one machine that the deploy depends on and cannot see.
-# A box whose remote had an ssh URL GitHub no longer had a key for stopped
-# control's deploy before it did anything (control#541), so this sets it rather
-# than trusting it. HTTPS, because the repository is public: nothing to
-# register, no key to rotate, no credential on the box.
-ORIGIN=https://github.com/rails49/installation.git
-was=$(git remote get-url origin)
-if [ "$was" != "$ORIGIN" ]; then
-  # Only when it changed one: a box that drifted leaves the old URL in the
-  # deploy log, and a box that was right says nothing.
-  echo "origin was $was; pulling from $ORIGIN" >&2
-  git remote set-url origin "$ORIGIN"
-fi
 git pull
 # The box's own declaration, at the path every stack reads. Not a copy in this
 # clone: a value that lives in one clone makes that clone a prerequisite of
 # every other stack.
+#
+# `--remove-orphans` because this stack holds 443: a service renamed between
+# two versions of the file leaves a container bound to that port, and the one
+# replacing it cannot start.
 docker compose --env-file /etc/rails49/box.env up -d --remove-orphans
 REMOTE

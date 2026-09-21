@@ -52,7 +52,9 @@ for f in $compose_files; do
 done
 
 if [ -f package.json ]; then
-  [ -d node_modules ] || pnpm install
+  # Through `run` like everything else: an install that failed would otherwise
+  # be reported as two broken checks with nothing saying why.
+  [ -d node_modules ] || run pnpm pnpm install
   # The binaries directly. pnpm verifies node_modules against the lockfile
   # before running a script and, without a TTY, aborts rather than replace it —
   # which happens whenever this tree is mounted into a container while
