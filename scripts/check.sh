@@ -18,7 +18,7 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 # Accumulated as a string rather than an array: macOS ships bash 3.2, where an
 # empty array under `set -u` is itself an error.
