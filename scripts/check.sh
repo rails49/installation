@@ -51,6 +51,19 @@ for f in $compose_files; do
   run "compose $f" docker compose --env-file box.env.example -f "$f" config -q
 done
 
+# The page rendered by the awk that will render it. Everything above reads the
+# files; this one runs the script in the image the box runs it in, because the
+# difference between that awk and a development machine's is exactly what the
+# reading missed: a regex GNU awk accepts and busybox rejects took the page
+# down on the first box it reached, and nothing here saw it.
+if [ -f page/render.sh ]; then
+  # The page itself goes to /dev/null: what is being checked is that the
+  # script completes, and a failure prints what awk said on stderr.
+  run "page renders in nginx:alpine" sh -c \
+    "docker run --rm -e BOX_DOMAIN=example.org -e BOX_UIS='control jmri' \
+      -v '$ROOT/page:/page:ro' nginx:alpine /page/render.sh >/dev/null"
+fi
+
 if [ -f package.json ]; then
   # Through `run` like everything else: an install that failed would otherwise
   # be reported as two broken checks with nothing saying why.
