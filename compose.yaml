@@ -23,7 +23,15 @@ services:
   # box, including ones that are nobody's browser's business — a stack opts in
   # with `traefik.enable=true` on the container the door reaches.
   door:
-    image: traefik:v3.3
+    # Pinned to a minor that negotiates the Docker API version with the daemon.
+    # The provider in v3.3 and v3.4 asks for API 1.24 and takes no answer about
+    # it, so a box whose daemon has raised its minimum refuses every call the
+    # provider makes: no container is ever read, no router is ever built, and
+    # the door serves 404 for every name while its log repeats "client version
+    # 1.24 is too old". Docker Engine 29 has a minimum of 1.40, which is the
+    # box this was found on. Negotiation arrived after v3.4, so the floor is
+    # v3.7 rather than a newer patch of what was here.
+    image: traefik:v3.7
     restart: unless-stopped
     # 80 carries a redirect and nothing else. A person types a bare hostname
     # and the browser tries http, so a box that publishes 443 alone refuses

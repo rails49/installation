@@ -163,6 +163,19 @@ describe("the door", () => {
       "/var/run/docker.sock:/var/run/docker.sock:ro",
     );
   });
+
+  // v3.3 asked the daemon for API 1.24 and took no answer about it, so a box
+  // whose daemon had raised its minimum refused every call: no container read,
+  // no router built, and every name 404 behind a door that looked healthy.
+  // Negotiation arrived after v3.4. The version is a floor rather than an
+  // equality because the point is the behaviour and not the number, and a
+  // downgrade is the one edit that brings the fault back.
+  it("runs a version that negotiates the API with the daemon", () => {
+    const tag = String(installation.services.door.image).split(":")[1];
+    const [major, minor] = tag.replace(/^v/, "").split(".").map(Number);
+    expect(major).toBeGreaterThanOrEqual(3);
+    expect(major > 3 || minor >= 7).toBe(true);
+  });
 });
 
 describe("the page", () => {
