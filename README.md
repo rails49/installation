@@ -140,9 +140,17 @@ reaching the box.
 
 **The ACME credential can come from 1Password.** `op` unlocks through a desktop
 app, which a development machine has and a headless box does not. Write
-`/etc/rails49/acme.env` once from a reference file, root-owned, mode `640`,
-outside every clone. Rendering it again before each start buys nothing: the
-door reads it at renewal, months later, and not at `up -d`.
+`/etc/rails49/acme.env` once from a reference file, outside every clone.
+Rendering it again before each start buys nothing: the door reads it at
+renewal, months later, and not at `up -d`.
+
+**That file's owner is not the box's.** Step 3 above gives it to `root:docker`,
+which is the boundary on a machine where the daemon's socket belongs to a
+group. macOS has no `docker` group and Docker Desktop's socket belongs to
+whoever is logged in, so compose reads the file as you — and a root-owned
+`640` file is one your own `up -d` cannot open. Own it yourself, mode `600`.
+The declaration beside it stays root's: every stack reads that one and none of
+them should be able to rewrite it.
 
 **A box with no steel runs the simulator.** A development machine has no
 command station on USB, so the stack that serves the UI comes up with its
