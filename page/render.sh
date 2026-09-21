@@ -36,6 +36,15 @@ export LINKS
 # ampersands that a sed replacement would read as its own. Through the
 # environment rather than `-v`, which reads escape sequences and refuses a
 # value with a newline in it.
+#
+# The braces are escaped because this runs under the awk in the stock nginx
+# image, which is busybox's. A brace opens a repetition there, so `{{` is a
+# repetition with nothing in front of it and the script exits 1 before writing
+# a byte — the container then restarts forever, the door files it under
+# "non running container", and every name the box serves answers 404. The awk
+# on a development machine is GNU's or mawk's, both of which read a brace with
+# nothing to repeat as the literal it plainly is, so this ran green everywhere
+# except the only place it runs for real.
 awk '
-  { gsub(/{{BOX_DOMAIN}}/, ENVIRON["BOX_DOMAIN"]); gsub(/{{LINKS}}/, ENVIRON["LINKS"]); print }
+  { gsub(/\{\{BOX_DOMAIN\}\}/, ENVIRON["BOX_DOMAIN"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); print }
 ' "$here/index.template.html"
