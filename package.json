@@ -2,6 +2,7 @@
   "name": "installation",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.0.4",
   "scripts": {
     "test": "vitest run"
   },
