@@ -51,8 +51,9 @@ installation holds no other fact about any UI, so a UI that did not exist when
 this was written needs no change here.
 
 The band across the top carries the box's name, which is the one fact the
-installation holds and the thing you want to know on landing there. What the
-page draws with is [`look/`](look/README.md).
+installation holds and the thing you want to know on landing there. A footer
+links to [rails49.org](https://rails49.org/). What the page draws with is
+[`look/`](look/README.md).
 
 ## Installing
 

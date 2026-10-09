@@ -41,9 +41,9 @@ function render(uis: string): string {
 
 const page = render(DECLARED);
 
-/** Every `<a href>` in the page, in the order it draws them, as
+/** Every link in the page's list, in the order it draws them, as
  *  `[address, text]`. */
-const links = [...page.matchAll(/<a href="([^"]+)">([^<]*)<\/a>/g)].map(
+const links = [...page.matchAll(/<li><a href="([^"]+)">([^<]*)<\/a><\/li>/g)].map(
   ([, href, text]) => [href!, text!] as const,
 );
 
@@ -76,8 +76,16 @@ describe("the links the page lists", () => {
 
   it("are absent on a box that serves nothing yet", () => {
     const empty = render("");
-    expect(empty).not.toContain("<a href=");
+    expect(empty).not.toContain("<li>");
     expect(empty).toContain(DOMAIN);
+  });
+});
+
+describe("the footer", () => {
+  it("links to the project", () => {
+    expect(page).toContain(
+      '<footer><a href="https://rails49.org/">rails49.org</a></footer>',
+    );
   });
 });
 

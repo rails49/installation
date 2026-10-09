@@ -46,8 +46,9 @@ reads its routers off container labels.
 _Avoid_: proxy, reverse proxy, ingress, gateway, edge, Traefik
 
 **Page**:
-What a box name serves: one link per label in the declaration, and the box's
-name across the top. It holds no other fact about any UI.
+What a box name serves: one link per label in the declaration, the box's name
+across the top, and a link to rails49.org at the bottom. It holds no other fact
+about any UI.
 _Avoid_: index, landing page, home page, dashboard, portal
 
 **Development machine**:
