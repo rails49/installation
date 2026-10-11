@@ -212,16 +212,25 @@ describe("the page", () => {
   });
 });
 
-describe("nothing here is built", () => {
+describe("nothing here is built but JMRI", () => {
   it("runs stock images and publishes none", () => {
-    for (const service of [
-      installation.services.door,
-      installation.services.page,
-      jmri.services.jmri,
-    ]) {
+    for (const service of [installation.services.door, installation.services.page]) {
       expect(service.image).toBeTruthy();
       expect(service.build).toBeUndefined();
     }
+  });
+
+  it("builds JMRI, which no other repository owns, as the person", () => {
+    // The stock image fixes its user at 61000, and a restore of the store
+    // writes JMRI's profile as the person (rails49/.github ADR-0013).
+    expect(jmri.services.jmri.image).toBeUndefined();
+    expect(jmri.services.jmri.build.args).toEqual({
+      TC49_UID: "${TC49_UID:-1000}",
+      TC49_GID: "${TC49_GID:-1000}",
+    });
+    const dockerfile = readFileSync(new URL("jmri/Dockerfile", root), "utf8");
+    expect(dockerfile).toMatch(/^FROM jsa1987\/jmri-docker:stable$/m);
+    expect(dockerfile).toMatch(/usermod -o -u "\$TC49_UID"/);
   });
 });
 
@@ -262,6 +271,23 @@ describe("JMRI", () => {
     // from the one noVNC connects to. Carried from `control`'s compose, and
     // one line from being tidied away by someone who has not met the fault.
     expect(jmri.services.jmri.tmpfs).toEqual(["/tmp"]);
+  });
+
+  it("keeps its profile in the store, outside the home it makes world-writable", () => {
+    // The entrypoint runs `chmod -R 777 /home/jmri` on every start, which
+    // inside the store would change the mode of every file git holds.
+    expect(jmri.services.jmri.environment.JMRI_OPTIONS).toBe(
+      "-Dorg.jmri.profile=/profile",
+    );
+    expect(jmri.services.jmri.volumes).toContainEqual({
+      type: "bind",
+      source: "${TC49_STORE:-~/tc49}/jmri",
+      target: "/profile",
+      // Docker makes a missing source owned by root, which neither JMRI nor
+      // the store can write.
+      bind: { create_host_path: false },
+    });
+    expect(jmri.services.jmri.volumes).toContain("jmri:/home/jmri");
   });
 
   it("names the port the door reaches, the image exposing three", () => {
