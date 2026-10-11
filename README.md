@@ -15,7 +15,8 @@ operator adds on top.
 
 The bus and the store are `control`'s. Every UI brings the container that
 serves it and declares its own routes as labels on its own containers, so this
-repository knows names and nothing about builds.
+repository knows names and nothing about builds. JMRI, which no repository of
+this project owns, is the one image built here.
 
 [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md)
 named the installation.
@@ -177,8 +178,22 @@ compose project of its own rather than a profile
 and stopped without touching the door or the page:
 
 ```bash
-docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d
+mkdir -p ~/tc49/jmri
+TC49_UID=$(id -u) TC49_GID=$(id -g) \
+  docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d --build
 ```
+
+JMRI's profile — the connection to the command station, the roster and every
+loco's CV file — lives in `control`'s store, at `~/tc49/jmri`, and is backed up,
+restored and moved to a new box with it
+([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
+The image is the stock one with its user renumbered to yours, so the files it
+writes there are yours. The directory has to exist first: compose refuses to
+start rather than let docker make it owned by root. On a new box, take the store
+over from its repository before opening DecoderPro, or the profile it writes
+makes the store not empty. Quit DecoderPro before a restore and open it again
+after; it reads the profile once, at launch. Add `--pull` to `--build` to take
+a newer stock image.
 
 It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN`, so put
 `jmri` in `BOX_UIS` to have the page list it. JMRI's own web server and raw VNC
