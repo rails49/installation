@@ -4,7 +4,9 @@
 # (ADR-0002) — started and stopped with its own `-f`, touching neither the door
 # nor the page.
 #
-#     docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d
+#     mkdir -p ~/tc49/jmri
+#     TC49_UID=$(id -u) TC49_GID=$(id -g) \
+#       docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d --build
 #
 # The installation runs first: this file joins the network that one creates,
 # and compose says so plainly if it is not there.
@@ -13,7 +15,13 @@ name: jmri
 
 services:
   jmri:
-    image: jsa1987/jmri-docker:stable
+    # The stock image with its user renumbered to the person, so the files it
+    # writes in the store are theirs (Dockerfile, rails49/.github ADR-0013).
+    build:
+      context: .
+      args:
+        TC49_UID: "${TC49_UID:-1000}"
+        TC49_GID: "${TC49_GID:-1000}"
     restart: unless-stopped
     # A fresh /tmp on every start. The image's websockify dials
     # `localhost:5901` while its `vncserver` takes the first display that has
@@ -24,11 +32,23 @@ services:
     # instead.
     tmpfs:
       - /tmp
-    # Where the click that points JMRI at the command station persists, along
-    # with the operator's roster and panels. The image does not start JMRI: a
-    # person clicks DecoderPro through noVNC.
+    # JMRI's profile, the click that points it at the command station and the
+    # roster with every loco's CVs, lives in `control`'s store and is backed up
+    # with it (rails49/.github ADR-0013). Mounted outside /home/jmri, which the
+    # image's entrypoint makes world-writable on every start, and never made
+    # here: docker would make a missing directory owned by root, which neither
+    # JMRI nor the store can write. The rest of the home is the volume, and
+    # losing it costs nothing. The image does not start JMRI: a person clicks
+    # DecoderPro through noVNC.
+    environment:
+      JMRI_OPTIONS: -Dorg.jmri.profile=/profile
     volumes:
       - jmri:/home/jmri
+      - type: bind
+        source: ${TC49_STORE:-~/tc49}/jmri
+        target: /profile
+        bind:
+          create_host_path: false
     # **No port is published.** 6901 is noVNC and goes behind the door, which
     # is one door per box (ADR-0004) applied to the last thing on this box that
     # contradicted it. 12080 is JMRI's own web server: a browser reaches it, so
