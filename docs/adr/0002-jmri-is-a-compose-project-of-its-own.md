@@ -38,6 +38,13 @@ one.
 `control`'s `--profile hardware` stops carrying `jmri` and keeps `dccex` and
 `dccex-usb`.
 
+*Amended by [rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)
+([#23](https://github.com/rails49/installation/issues/23)).* The roster and the
+rest of JMRI's profile leave the volume for `control`'s store, mounted at
+`/profile`; the volume keeps the rest of the home. The service builds a thin
+image over the stock one that runs JMRI as the person, the one image this
+repository builds.
+
 An operator who wants JMRI runs a second compose command. That is the price of
 it being an extra, and it is the same price the word "optional" was already
 promising.
