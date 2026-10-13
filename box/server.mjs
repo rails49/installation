@@ -1,5 +1,5 @@
 // The box's own two requests, served on every name the door serves: whether
-// this box can be turned off from here, and turning it off (rails49/.github#32).
+// this box can be turned off from here, and turning it off (ADR-0003).
 //
 // Node's standard library and nothing else, run by the stock image. The
 // container shares the box's PID namespace and is privileged, so `nsenter`

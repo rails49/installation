@@ -61,8 +61,9 @@ links to [rails49.org](https://rails49.org/). What the page draws with is
 The `box` service answers two requests on every name the door serves.
 `GET /box` says whether this box can be turned off from here, as
 `{"can_turn_off": true}` or `false`. `POST /box/off` answers `202` and turns it
-off, or answers `409` where it cannot. A UI asks for it — `control` has the
-button; the page has none. A request from a page on another origin is refused.
+off, or answers `409` where it cannot. A UI makes the requests — `control` has
+the button; the page has none. A request from a page on another origin is refused
+([ADR-0003](docs/adr/0003-the-installation-turns-the-box-off.md)).
 
 On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual
 machine, not the Mac. Coming back takes a person at the box.
