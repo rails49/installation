@@ -33,10 +33,10 @@ secret.
 _Avoid_: config, env file, settings, environment
 
 **Installation**:
-The four things every box has — the box name, its certificate, the door and
-the page — and the compose project in this repository that provides them. The
-act of putting one on a box is *installing*, which is a different word on
-purpose.
+The five things every box has — the box name, its certificate, the door, the
+page and **turning the box off** — and the compose project in this repository
+that provides them. The act of putting one on a box is *installing*, which is a
+different word on purpose.
 _Avoid_: base, platform, infrastructure, the stack
 
 **Door**:
@@ -50,6 +50,12 @@ What a box name serves: one link per label in the declaration, the box's name
 across the top, and a link to rails49.org at the bottom. It holds no other fact
 about any UI.
 _Avoid_: index, landing page, home page, dashboard, portal
+
+**Turning the box off**:
+The box stopping every stack on it and powering down, so its plug can be
+pulled. Asked for by a UI and carried out by the installation, only on a box
+whose init it knows. Coming back takes a person at the box.
+_Avoid_: shutdown, halt, power off (the track supply, in `control`), reboot
 
 **Development machine**:
 A machine somebody works on. It is reached at `localhost`, or it runs the

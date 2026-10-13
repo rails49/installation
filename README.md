@@ -6,12 +6,12 @@ the box's declaration of itself, and the install instructions.
 
 ## What an installation is
 
-Four things, and they are the same four on every box: the name it is reached
-at, the certificate for that name, the door, and the page. None of them is
-about a railroad, a camera or a command station. A box with a command station
-and no layout installs this and then `dccex` — no broker, no store, no trains,
-and a page listing what it has. The railroad, the detector and JMRI are what an
-operator adds on top.
+Five things, and they are the same five on every box: the name it is reached
+at, the certificate for that name, the door, the page, and the service that
+turns the box off. None of them is about a railroad, a camera or a command
+station. A box with a command station and no layout installs this and then
+`dccex` — no broker, no store, no trains, and a page listing what it has. The
+railroad, the detector and JMRI are what an operator adds on top.
 
 The bus and the store are `control`'s. Every UI brings the container that
 serves it and declares its own routes as labels on its own containers, so this
