@@ -226,7 +226,7 @@ describe("the box", () => {
   const box = installation.services.box;
   const router = labels(box);
 
-  it("runs the stock node image as the box's own PID namespace", () => {
+  it("runs the stock node image in the box's own PID namespace", () => {
     // `nsenter` into PID 1 is how it reaches the box's systemd.
     expect(box.image).toBe("node:22-slim");
     expect(box.privileged).toBe(true);
