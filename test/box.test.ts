@@ -33,6 +33,10 @@ describe("GET /box", () => {
     expect(JSON.parse(answer.body)).toEqual({ can_turn_off: true });
   });
 
+  it("answers the same with a query string", () => {
+    expect(ask(box("systemd"), "GET", "/box?t=1").status).toBe(200);
+  });
+
   it("answers no where PID 1 is anything else", () => {
     // Docker Desktop's virtual machine, which is what a Mac's PID 1 is.
     for (const pid1 of ["init", "tini", "node", ""]) {
@@ -87,8 +91,8 @@ describe("a request from a page", () => {
     expect(on.turnedOff).toBe(0);
   });
 
-  it("goes through when the page is the host it was sent to", () => {
-    // TLS ends at the door, so the scheme is the browser's and not the host's.
+  it("goes through when the page is on the name it was sent to", () => {
+    // TLS ends at the door, so the scheme is not compared.
     const on = box("systemd");
     const headers = { host: HOST, origin: `https://${HOST}` };
     expect(ask(on, "GET", "/box", headers).status).toBe(200);
