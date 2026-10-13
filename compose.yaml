@@ -116,7 +116,7 @@ services:
 
   # The box's own two requests, `GET /box` and `POST /box/off`: whether it can
   # be turned off from here, and turning it off. A UI asks; the installation
-  # answers (rails49/.github#32). Stock node and one script, mounted as a
+  # answers (ADR-0003). Stock node and one script, mounted as a
   # directory for the page's reason above.
   #
   # Privileged and in the box's PID namespace, because turning off is
