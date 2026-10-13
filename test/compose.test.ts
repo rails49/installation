@@ -76,6 +76,7 @@ describe("the network every stack on the box shares", () => {
     for (const service of [
       installation.services.door,
       installation.services.page,
+      installation.services.box,
       jmri.services.jmri,
     ]) {
       expect(service.networks).toEqual([NETWORK]);
@@ -86,7 +87,11 @@ describe("the network every stack on the box shares", () => {
     // Each sits on two networks and the docker provider otherwise picks
     // whichever container address it finds first, which is a route that works
     // until it does not (ADR-0001).
-    for (const service of [installation.services.page, jmri.services.jmri]) {
+    for (const service of [
+      installation.services.page,
+      installation.services.box,
+      jmri.services.jmri,
+    ]) {
       expect(labels(service)["traefik.docker.network"]).toBe(NETWORK);
     }
   });
@@ -116,7 +121,11 @@ describe("the door", () => {
     // The provider sees every container on the box, including ones that are
     // nobody's browser's business.
     expect(door).toContain("--providers.docker.exposedByDefault=false");
-    for (const service of [installation.services.page, jmri.services.jmri]) {
+    for (const service of [
+      installation.services.page,
+      installation.services.box,
+      jmri.services.jmri,
+    ]) {
       expect(labels(service)["traefik.enable"]).toBe("true");
     }
   });
@@ -155,6 +164,7 @@ describe("the door", () => {
       (service.env_file ?? []).map((entry: Node) => entry.path ?? entry);
     expect(read(installation.services.door)).toEqual(["/etc/rails49/acme.env"]);
     expect(read(installation.services.page)).toEqual([]);
+    expect(read(installation.services.box)).toEqual([]);
     expect(read(jmri.services.jmri)).toEqual([]);
   });
 
@@ -212,9 +222,65 @@ describe("the page", () => {
   });
 });
 
+describe("the box", () => {
+  const box = installation.services.box;
+  const router = labels(box);
+
+  it("runs the stock node image as the box's own PID namespace", () => {
+    // `nsenter` into PID 1 is how it reaches the box's systemd.
+    expect(box.image).toBe("node:22-slim");
+    expect(box.privileged).toBe(true);
+    expect(box.pid).toBe("host");
+    expect(box.restart).toBe("unless-stopped");
+  });
+
+  it("mounts the script's directory, not the script", () => {
+    // The page's reason (control#353): a file mount binds the inode.
+    expect(box.volumes).toEqual(["./box:/box:ro"]);
+    expect(box.command).toEqual(["node", "/box/server.mjs"]);
+  });
+
+  it("is reached at /box on every name the door serves", () => {
+    expect(router["traefik.http.routers.box.rule"]).toBe("PathPrefix(`/box`)");
+    expect(router["traefik.http.routers.box.rule"]).not.toContain("Host");
+    expect(router["traefik.http.routers.box.entrypoints"]).toBe("websecure");
+  });
+
+  it("uses the certificate each name's own router already has", () => {
+    expect(router["traefik.http.routers.box.tls"]).toBe("true");
+    expect(router["traefik.http.routers.box.tls.certresolver"]).toBeUndefined();
+  });
+
+  it("is above every other router", () => {
+    // A router with no priority of its own has its rule's length, so a label's
+    // `Host` rule would otherwise take `/box` for itself.
+    const priority = Number(router["traefik.http.routers.box.priority"]);
+    const others = [installation.services.page, jmri.services.jmri].flatMap((service) =>
+      Object.entries(labels(service))
+        .filter(([label]) => /^traefik\.http\.routers\.[^.]+\.rule$/.test(label))
+        .map(([label, rule]) => {
+          const set = labels(service)[label.replace(/rule$/, "priority")];
+          return set === undefined ? rule.length : Number(set);
+        }),
+    );
+    expect(others.length).toBeGreaterThan(0);
+    for (const other of others) expect(priority).toBeGreaterThan(other);
+  });
+
+  it("is served on the port the script listens on", () => {
+    const script = readFileSync(new URL("box/server.mjs", root), "utf8");
+    const port = router["traefik.http.services.box.loadbalancer.server.port"];
+    expect(script).toContain(`const PORT = ${port};`);
+  });
+});
+
 describe("nothing here is built but JMRI", () => {
   it("runs stock images and publishes none", () => {
-    for (const service of [installation.services.door, installation.services.page]) {
+    for (const service of [
+      installation.services.door,
+      installation.services.page,
+      installation.services.box,
+    ]) {
       expect(service.image).toBeTruthy();
       expect(service.build).toBeUndefined();
     }
