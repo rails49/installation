@@ -14,3 +14,17 @@ between the gate run on a box and the gate run on a PR.
 `main` only moves by pull request with the `ci` check green:
 
     git push -u origin <branch> && gh pr create --fill && gh pr merge --auto --rebase
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on rails49/installation, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels, unchanged: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
