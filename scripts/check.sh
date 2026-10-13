@@ -5,6 +5,7 @@
 #
 #   shell scripts  checked with shellcheck
 #   compose files  parsed with `docker compose config`
+#   the box        its script asked once in the image that runs it
 #   the tests      tsc over them, then vitest
 #
 # The gate is green when it finds nothing to check. Each check grows a section
@@ -62,6 +63,21 @@ if [ -f page/render.sh ]; then
   run "page renders in nginx:alpine" sh -c \
     "docker run --rm -e BOX_DOMAIN=example.org -e BOX_UIS='control jmri' \
       -v '$ROOT/page:/page:ro' nginx:alpine /page/render.sh >/dev/null"
+fi
+
+# The box's script in the image that runs it, whose node is older than a
+# development machine's, and the `nsenter` it turns the box off with. The tests
+# cover what it answers; this asks it one question under that node, with an
+# `Origin`, which is the path through the newest API it uses.
+if [ -f box/server.mjs ]; then
+  run "box answers in node:22-slim" \
+    docker run --rm -v "$ROOT/box:/box:ro" node:22-slim sh -c \
+      'command -v nsenter >/dev/null && node --input-type=module -e "
+        import { handle } from \"/box/server.mjs\";
+        const request = { method: \"GET\", url: \"/box\", headers: { origin: \"null\" } };
+        const box = { pid1: \"\", turnOff() {} };
+        if (handle(request, box).status !== 403) process.exit(1);
+      "'
 fi
 
 if [ -f package.json ]; then

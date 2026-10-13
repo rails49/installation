@@ -1,6 +1,7 @@
 # The installation: the door in front of everything a browser reaches on this
-# box, and the page listing what the box serves. Nothing here is about a
-# railroad, and nothing here is built — both images are stock.
+# box, the page listing what the box serves, and the box's own two requests.
+# Nothing here is about a railroad, and nothing here is built — every image is
+# stock.
 #
 #     docker compose --env-file /etc/rails49/box.env up -d
 #
@@ -110,6 +111,38 @@ services:
       - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
       - traefik.http.routers.page.entrypoints=websecure
       - traefik.http.routers.page.tls.certresolver=le
+    networks:
+      - rails49
+
+  # The box's own two requests, `GET /box` and `POST /box/off`: whether it can
+  # be turned off from here, and turning it off. A UI asks; the installation
+  # answers (rails49/.github#32). Stock node and one script, mounted as a
+  # directory for the page's reason above.
+  #
+  # Privileged and in the box's PID namespace, because turning off is
+  # `nsenter` into PID 1 and `systemctl poweroff` there.
+  box:
+    image: node:22-slim
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    volumes:
+      - ./box:/box:ro
+    command:
+      - node
+      - /box/server.mjs
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=rails49
+      # No `Host`: the same two paths on every name the door serves, which is
+      # every origin a UI is served from. Above every label's own router,
+      # which otherwise takes `/box` under its name for itself.
+      - traefik.http.routers.box.rule=PathPrefix(`/box`)
+      - traefik.http.routers.box.priority=100
+      - traefik.http.routers.box.entrypoints=websecure
+      # No resolver: each name's own router already has its certificate.
+      - traefik.http.routers.box.tls=true
+      - traefik.http.services.box.loadbalancer.server.port=8080
     networks:
       - rails49
 

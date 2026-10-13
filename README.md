@@ -56,6 +56,17 @@ installation holds and the thing you want to know on landing there. A footer
 links to [rails49.org](https://rails49.org/). What the page draws with is
 [`look/`](look/README.md).
 
+## Turning the box off
+
+The `box` service answers two requests on every name the door serves.
+`GET /box` says whether this box can be turned off from here, as
+`{"can_turn_off": true}` or `false`. `POST /box/off` answers `202` and turns it
+off, or answers `409` where it cannot. A UI asks for it — `control` has the
+button; the page has none. A request from a page on another origin is refused.
+
+On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual
+machine, not the Mac. Coming back takes a person at the box.
+
 ## Installing
 
 Installing is prose, not a program: this is what is about to happen to your
@@ -220,5 +231,5 @@ railroads does not build a railroad's UI.
 
 The gate, and what `main` moves by. It runs shellcheck over every shell script,
 `docker compose config` over every compose file, and the tests: one over the
-page the render script produces, one over the compose files as data. Nothing in
-it needs a box, a container or a secret.
+page the render script produces, one over the box's two requests, one over the
+compose files as data. Nothing in it needs a box or a secret.

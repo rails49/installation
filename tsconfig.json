@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
     "lib": [
       "ES2023"
     ],
@@ -15,6 +17,7 @@
     "verbatimModuleSyntax": true
   },
   "include": [
+    "box",
     "test"
   ]
 }
