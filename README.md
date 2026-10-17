@@ -208,6 +208,11 @@ makes the store not empty. Quit DecoderPro before a restore and open it again
 after; it reads the profile once, at launch. Add `--pull` to `--build` to take
 a newer stock image.
 
+JMRI reaches the command station as a client of the mirror's 2560, like any
+hand-held throttle: a DCC++ over TCP connection whose host is the box, not a
+compose service name. Set it in DecoderPro once and save; it is part of the
+profile.
+
 It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN`, so put
 `jmri` in `BOX_UIS` to have the page list it. JMRI's own web server and raw VNC
 are not reachable: the first is a browser's and is behind the door or nowhere,
