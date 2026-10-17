@@ -200,12 +200,15 @@ describe("the page", () => {
     expect(page["traefik.http.routers.page.tls.certresolver"]).toBe("le");
   });
 
-  it("mounts the render script's directory, not the script", () => {
+  it("mounts the render script's directory and look's, not the files in them", () => {
     // A single-file bind mount binds the inode, and `git pull` replaces a file
     // rather than writing through it, so a container mounted at the script
     // would go on rendering from the one it started with (control#353). It is
     // one character away from the mount that does not.
-    expect(installation.services.page.volumes).toEqual(["./page:/page:ro"]);
+    expect(installation.services.page.volumes).toEqual([
+      "./page:/page:ro",
+      "./look:/usr/share/nginx/html/look:ro",
+    ]);
   });
 
   it("renders once at start and is a file from then on", () => {

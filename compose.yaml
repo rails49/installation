@@ -93,9 +93,12 @@ services:
     # the inode, and `git pull` replaces a file rather than writing through it,
     # so a container mounted at the file would go on rendering from the script
     # it started with (control#353). Mounting the directory is one character
-    # away from the mount that does not, so a test holds it here.
+    # away from the mount that does not, so a test holds it here. `look/` is
+    # served as it is, at `/look/`, and mounted as a directory for the same
+    # reason.
     volumes:
       - ./page:/page:ro
+      - ./look:/usr/share/nginx/html/look:ro
     # The image's own entrypoint still runs, so this is what it execs: render
     # once, then be nginx. `exec` because nginx is what this container is —
     # a shell holding pid 1 would swallow the signal that stops it.
