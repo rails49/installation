@@ -6,6 +6,7 @@
 #   shell scripts  checked with shellcheck
 #   compose files  parsed with `docker compose config`
 #   the box        its script asked once in the image that runs it
+#   the page       look-check over it
 #   the tests      tsc over them, then vitest
 #
 # The gate is green when it finds nothing to check. Each check grows a section
@@ -63,6 +64,10 @@ if [ -f page/render.sh ]; then
   run "page renders in nginx:alpine" sh -c \
     "docker run --rm -e BOX_DOMAIN=example.org -e BOX_UIS='control jmri' \
       -v '$ROOT/page:/page:ro' nginx:alpine /page/render.sh >/dev/null"
+
+  # Fails when the page styles look's band. At the tag of the committed
+  # `look/look.bundle.js`, which a release of look moves with it.
+  run look-check pnpm --package=github:rails49/look#v0.5.0 dlx look-check page
 fi
 
 # The box's script in the image that runs it, whose node is older than a

@@ -53,7 +53,8 @@ this was written needs no change here.
 
 The band across the top carries the box's name, which is the one fact the
 installation holds and the thing you want to know on landing there. A footer
-links to [rails49.org](https://rails49.org/). What the page draws with is
+links to [rails49.org](https://rails49.org/). The band is
+[look](https://github.com/rails49/look)'s, from a copy in
 [`look/`](look/README.md).
 
 ## Turning the box off
