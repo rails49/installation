@@ -9,6 +9,8 @@ How the engineering skills should consume this repo's domain documentation when 
 
 If either doesn't exist, proceed without comment. Don't flag the absence and don't suggest creating them upfront. The `/domain-modeling` skill creates them when terms or decisions get resolved.
 
+What each kind of doc holds — the glossary, an ADR, the README, `CLAUDE.md` — is set by [rails49/.github ADR-0017](https://github.com/rails49/.github/tree/main/docs/adr); a `CONTEXT.md` entry that restates a term `.github`'s `CONTEXT.md` owns links there instead.
+
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary rejects.
