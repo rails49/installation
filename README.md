@@ -66,7 +66,7 @@ The `box` service answers two requests on every name the door serves.
 `{"can_turn_off": true}` or `false`. `POST /box/off` answers `202` and turns it
 off, or answers `409` where it cannot. A UI makes the requests — `control` has
 the button; the page has none. A request from a page on another origin is refused
-([ADR-0003](docs/adr/0003-the-installation-turns-the-box-off.md)).
+([ADR-0005](docs/adr/0005-the-installation-turns-the-box-off.md)).
 
 On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual
 machine, not the Mac. Coming back takes a person at the box.
