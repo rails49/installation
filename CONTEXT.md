@@ -52,7 +52,7 @@ As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/CONTEX
 The box stopping every stack on it and powering down, so its plug can be
 pulled. Asked for by a UI and carried out by the installation, only on a box
 whose init it knows. Coming back takes a person at the box; see
-[ADR-0003](docs/adr/0003-the-installation-turns-the-box-off.md).
+[ADR-0005](docs/adr/0005-the-installation-turns-the-box-off.md).
 _Avoid_: shutdown, halt, power off (the track supply, in `control`), reboot
 
 **Development machine**:
