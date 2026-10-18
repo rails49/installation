@@ -15,7 +15,7 @@ between the gate run on a box and the gate run on a PR.
 
     git push -u origin <branch> && gh pr create --fill && gh pr merge --auto --rebase
 
-What each kind of doc holds, this file included, follows [rails49/.github ADR-0017](https://github.com/rails49/.github/tree/main/docs/adr).
+What each kind of doc holds, this file included, follows [rails49/.github ADR-0017](https://github.com/rails49/.github/blob/main/docs/adr/0017-each-fact-has-one-owner-and-an-accepted-adr-does-not-change.md).
 
 ## Agent skills
 
