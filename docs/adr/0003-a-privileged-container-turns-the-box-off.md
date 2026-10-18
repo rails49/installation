@@ -1,5 +1,7 @@
 # A privileged container turns the box off
 
+*Superseded by [ADR-0005](0005-the-installation-turns-the-box-off.md).*
+
 Resolves [#25](https://github.com/rails49/installation/issues/25).
 
 [rails49/.github ADR-0015](https://github.com/rails49/.github/blob/main/docs/adr/0015-a-ui-may-ask-the-installation-to-turn-the-box-off.md)
