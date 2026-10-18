@@ -150,10 +150,11 @@ services:
       - rails49
 
 # The one network every stack on the box shares, created here under a fixed
-# name every stack hardcodes and joined by every container the door reaches or
-# another stack dials (ADR-0004). `name:` because compose would otherwise
-# prefix it with this project's, and the point of this network is that it
-# belongs to no single project.
+# name every stack hardcodes. A container joins it if the door reaches it, if
+# it dials a service in another stack, or if another stack dials it
+# (ADR-0004). `name:` because compose would otherwise prefix it with this
+# project's, and the point of this network is that it belongs to no single
+# project.
 networks:
   rails49:
     name: rails49
