@@ -1,5 +1,7 @@
 # Only what the door reaches joins the shared network
 
+*Superseded by [ADR-0004](0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md).*
+
 [ADR-0009](https://github.com/rails49/.github/blob/main/docs/adr/0009-the-door-and-the-page-are-the-installations-in-a-repository-of-their-own.md)
 in `rails49/.github` gave the installation one external docker network,
 "created by the installation and joined by every stack that serves a UI", and
