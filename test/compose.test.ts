@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
 
-/** The fixed name four repositories hardcode (ADR-0001). It is the expensive
+/** The fixed name every stack hardcodes (ADR-0004). It is the expensive
  *  half of that decision and the one thing here that cannot quietly change. */
 const NETWORK = "rails49";
 
@@ -86,7 +86,7 @@ describe("the network every stack on the box shares", () => {
   it("is named again on every container the door reaches", () => {
     // Each sits on two networks and the docker provider otherwise picks
     // whichever container address it finds first, which is a route that works
-    // until it does not (ADR-0001).
+    // until it does not (ADR-0004).
     for (const service of [
       installation.services.page,
       installation.services.box,
@@ -157,8 +157,8 @@ describe("the door", () => {
   });
 
   it("is the only thing handed the ACME credential", () => {
-    // A secret in the declaration is a secret handed to `control`, `dccex` and
-    // `occupancy` for no reason, so it lives in a second file at the same fixed
+    // A secret in the declaration is a secret handed to every stack on the box
+    // for no reason, so it lives in a second file at the same fixed
     // directory and this is the one service that reads it.
     const read = (service: Node): string[] =>
       (service.env_file ?? []).map((entry: Node) => entry.path ?? entry);

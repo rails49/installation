@@ -109,7 +109,7 @@ services:
     labels:
       - traefik.enable=true
       # This container is on two networks and the docker provider otherwise
-      # picks whichever address it finds first (ADR-0001).
+      # picks whichever address it finds first (ADR-0004).
       - traefik.docker.network=rails49
       - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
       - traefik.http.routers.page.entrypoints=websecure
@@ -149,11 +149,11 @@ services:
     networks:
       - rails49
 
-# The one network every stack on the box shares, created here under the fixed
-# name four repositories hardcode and joined by every container the door
-# reaches (ADR-0001). `name:` because compose would otherwise prefix it with
-# this project's, and the point of this network is that it belongs to no single
-# project.
+# The one network every stack on the box shares, created here under a fixed
+# name every stack hardcodes and joined by every container the door reaches or
+# another stack dials (ADR-0004). `name:` because compose would otherwise
+# prefix it with this project's, and the point of this network is that it
+# belongs to no single project.
 networks:
   rails49:
     name: rails49
