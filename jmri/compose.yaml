@@ -56,8 +56,8 @@ services:
         bind:
           create_host_path: false
     # **No port is published.** 6901 is noVNC and goes behind the door, which
-    # is one door per box (ADR-0004) applied to the last thing on this box that
-    # contradicted it. 12080 is JMRI's own web server: a browser reaches it, so
+    # is one door per box (rails49/.github ADR-0018, rule 6) applied to the
+    # last thing on this box that contradicted it. 12080 is JMRI's own web server: a browser reaches it, so
     # it is behind the door or it is nowhere, and it is nowhere until someone
     # wants it — at which point it earns a label of its own. 5901 is raw VNC,
     # which is not a browser's, and anyone who wants it has ssh.
