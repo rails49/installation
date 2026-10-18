@@ -193,14 +193,16 @@ compose project of its own rather than a profile
 and stopped without touching the door or the page:
 
 ```bash
-mkdir -p ~/tc49/jmri
-TC49_UID=$(id -u) TC49_GID=$(id -g) \
-  docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d --build
+(. /etc/rails49/deploy.env && mkdir -p "$TC49_STORE/jmri")
+TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
+  --env-file /etc/rails49/box.env --env-file /etc/rails49/deploy.env \
+  -f jmri/compose.yaml up -d --build
 ```
 
 JMRI's profile — the connection to the command station, the roster and every
-loco's CV file — lives in `control`'s store, at `~/tc49/jmri`, and is backed up,
-restored and moved to a new box with it
+loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
+that `control` writes to `/etc/rails49/deploy.env`, and is backed up, restored
+and moved to a new box with it
 ([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
 The image is the stock one with its user renumbered to yours, so the files it
 writes there are yours. The directory has to exist first: compose refuses to

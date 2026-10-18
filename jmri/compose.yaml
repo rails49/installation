@@ -4,12 +4,14 @@
 # (ADR-0002) — started and stopped with its own `-f`, touching neither the door
 # nor the page.
 #
-#     mkdir -p ~/tc49/jmri
-#     TC49_UID=$(id -u) TC49_GID=$(id -g) \
-#       docker compose --env-file /etc/rails49/box.env -f jmri/compose.yaml up -d --build
+#     (. /etc/rails49/deploy.env && mkdir -p "$TC49_STORE/jmri")
+#     TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
+#       --env-file /etc/rails49/box.env --env-file /etc/rails49/deploy.env \
+#       -f jmri/compose.yaml up -d --build
 #
 # The installation runs first: this file joins the network that one creates,
-# and compose says so plainly if it is not there.
+# and compose says so plainly if it is not there. `control` runs first too: it
+# writes `TC49_STORE`, the root of its store, to `/etc/rails49/deploy.env`.
 
 name: jmri
 
@@ -40,12 +42,16 @@ services:
     # JMRI nor the store can write. The rest of the home is the volume, and
     # losing it costs nothing. The image does not start JMRI: a person clicks
     # DecoderPro through noVNC.
+    #
+    # The root is `control`'s and has no default here, which would be a second
+    # answer to where the store is. Started without `deploy.env`, compose warns
+    # that `TC49_STORE` is not set and refuses to bind the `/jmri` that leaves.
     environment:
       JMRI_OPTIONS: -Dorg.jmri.profile=/profile
     volumes:
       - jmri:/home/jmri
       - type: bind
-        source: ${TC49_STORE:-~/tc49}/jmri
+        source: ${TC49_STORE}/jmri
         target: /profile
         bind:
           create_host_path: false
