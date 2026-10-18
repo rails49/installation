@@ -67,7 +67,7 @@ if [ -f page/render.sh ]; then
 
   # Fails when the page styles look's band. At the tag of the committed
   # `look/look.bundle.js`, which a release of look moves with it.
-  run look-check pnpm --package=github:rails49/look#v0.6.0 dlx look-check page
+  run look-check pnpm --package=github:rails49/look#v0.6.1 dlx look-check page
 fi
 
 # The box's script in the image that runs it, whose node is older than a
