@@ -31,6 +31,11 @@ const NETWORK = "rails49";
  *  answers about the box's name. */
 const DECLARATION = "/etc/rails49/box.env";
 
+/** Where `control` writes the root of its store, `TC49_STORE`, when it deploys
+ *  itself. JMRI's profile lives under that root, so JMRI is started against
+ *  this file as well as the declaration. */
+const DEPLOYMENT = "/etc/rails49/deploy.env";
+
 /** Any node of a parsed compose file. Its shape is the file's rather than
  *  anything this repository declares, so the assertions below are what say
  *  which parts of it are load-bearing. */
@@ -350,7 +355,9 @@ describe("JMRI", () => {
     );
     expect(jmri.services.jmri.volumes).toContainEqual({
       type: "bind",
-      source: "${TC49_STORE:-~/tc49}/jmri",
+      // `control`'s root and no other: a default here would be a second
+      // answer to where the store is.
+      source: "${TC49_STORE}/jmri",
       target: "/profile",
       // Docker makes a missing source owned by root, which neither JMRI nor
       // the store can write.
@@ -363,6 +370,22 @@ describe("JMRI", () => {
     expect(
       labels(jmri.services.jmri)["traefik.http.services.jmri.loadbalancer.server.port"],
     ).toBe("6901");
+  });
+});
+
+describe("JMRI's start command", () => {
+  it("reads the store root from where control writes it", () => {
+    // Started against the declaration alone, the profile mount fell back to
+    // a directory `control` never uses, and DecoderPro wrote a roster nobody
+    // backs up.
+    for (const file of ["jmri/compose.yaml", "README.md"]) {
+      const text = readFileSync(new URL(file, root), "utf8");
+      expect(text, file).toContain(
+        `--env-file ${DECLARATION} --env-file ${DEPLOYMENT}`,
+      );
+      expect(text, file).toContain(`. ${DEPLOYMENT} && mkdir -p "$TC49_STORE/jmri"`);
+      expect(text, file).not.toContain("~/tc49");
+    }
   });
 });
 
