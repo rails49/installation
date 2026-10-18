@@ -58,7 +58,7 @@ services:
     labels:
       - traefik.enable=true
       # This container is on two networks and the docker provider otherwise
-      # picks whichever address it finds first (ADR-0001).
+      # picks whichever address it finds first (ADR-0004).
       - traefik.docker.network=rails49
       - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}`)
       - traefik.http.routers.jmri.entrypoints=websecure
@@ -69,8 +69,8 @@ services:
     networks:
       - rails49
 
-# The installation's, created by its compose under a name four repositories
-# hardcode (ADR-0001). A box that starts this before the installation is told
+# The installation's, created by its compose under a fixed name every stack
+# hardcodes (ADR-0004). A box that starts this before the installation is told
 # so: "network rails49 declared as external, but could not be found".
 networks:
   rails49:

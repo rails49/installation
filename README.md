@@ -28,8 +28,10 @@ moved the door and the page here.
 A box says what it is called and what it serves in one file at a fixed path,
 `/etc/rails49/box.env`: `BOX_DOMAIN`, the name the box is reached at, `BOX_UIS`,
 the labels it serves, and `BOX_ACME_PROVIDER`, the DNS provider that issues its
-certificates. Every stack is started against that file, and every stack that
-serves a UI joins the external docker network this repository creates.
+certificates. Every stack is started against that file. A container joins the
+external docker network this repository creates if the door reaches it, if it
+dials a service in another stack, or if a container in another stack dials it
+([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
 
 The path is fixed rather than living in this repository's clone, because a
 value that lives in one clone makes that clone a prerequisite of every other
@@ -37,7 +39,7 @@ stack.
 
 `acme.env` beside it holds the ACME credential and the account address, and the
 door is the only thing that reads it. A secret in the declaration is a secret
-handed to `control`, `dccex` and `occupancy` for no reason — and keeping it out
+handed to every stack on the box for no reason — and keeping it out
 leaves the declaration something you can paste into an issue while debugging a
 headless box.
 

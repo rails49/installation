@@ -45,6 +45,13 @@ per box, it belongs to the installation rather than to any railroad, and it
 reads its routers off container labels.
 _Avoid_: proxy, reverse proxy, ingress, gateway, edge, Traefik
 
+**Shared network**:
+The one docker network every stack on a box joins, created by the installation
+and named `rails49`. A container joins it if the door reaches it or if it talks
+to another stack; see [ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md).
+_Avoid_: bus network (in `control`, the bus is the MQTT broker), the
+installation's network, `rails49` as a word for the network in prose
+
 **Page**:
 What a box name serves: one link per label in the declaration, the box's name
 across the top, and a link to rails49.org at the bottom. It holds no other fact
