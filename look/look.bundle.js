@@ -2745,24 +2745,21 @@ let bt = class extends C {
   render() {
     return k`
       <nav>
-        <div class="left">
-          <div class="lead">
-            <sl-tooltip content="rails49.org" placement="bottom" hoist>
-              <a class="mark" href="https://rails49.org" target="_blank" rel="noopener" aria-label="rails49.org">
-                <span class="wide" aria-hidden="true">${Oo(ol)}</span>
-                <span class="square" aria-hidden="true">${Oo(sl)}</span>
-              </a>
-            </sl-tooltip>
-            ${this.ui ? k`<span class="ui">${this.ui}</span>` : x}
-          </div>
-          <slot name="about"></slot>
+        <div class="lead">
+          <sl-tooltip content="rails49.org" placement="bottom" hoist>
+            <a class="mark" href="https://rails49.org" target="_blank" rel="noopener" aria-label="rails49.org">
+              <span class="wide" aria-hidden="true">${Oo(ol)}</span>
+              <span class="square" aria-hidden="true">${Oo(sl)}</span>
+            </a>
+          </sl-tooltip>
+          ${this.ui ? k`<span class="ui">${this.ui}</span>` : x}
         </div>
-        <div class="right">
-          <slot></slot>
-          <div class="tail">
-            <slot name="gear"></slot>
-            <slot name="power"></slot>
-          </div>
+        <slot name="about"></slot>
+        <span class="space"></span>
+        <slot></slot>
+        <div class="tail">
+          <slot name="gear"></slot>
+          <slot name="power"></slot>
         </div>
       </nav>
     `;
@@ -2786,18 +2783,20 @@ bt.styles = [
       nav {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
+        gap: 0.75rem;
         height: 100%;
         padding: 0 1rem;
         box-sizing: border-box;
       }
 
-      .left {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        min-width: 0;
+      slot[name='about']::slotted(*) {
+        margin-left: 0.75rem;
+      }
+
+      /* Pushes the status items to the far right; with the gaps either side, at least 1rem. */
+      .space {
+        flex: 1 0 0;
+        margin-left: -0.5rem;
       }
 
       .lead {
@@ -2848,17 +2847,11 @@ bt.styles = [
         white-space: nowrap;
       }
 
-      .right {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-shrink: 0;
-      }
-
       .tail {
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        flex-shrink: 0;
       }
     `
 ];
@@ -3102,6 +3095,11 @@ Yt.styles = [
   M,
   A`
       :host {
+        display: inline-block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
         white-space: nowrap;
         font-size: 0.95rem;
       }
@@ -3125,6 +3123,7 @@ Gt.styles = [
   A`
       :host {
         display: inline-block;
+        min-width: 0;
         max-width: 20rem;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -3151,7 +3150,7 @@ let yt = class extends C {
     super(...arguments), this.state = "down";
   }
   render() {
-    return k`<span class="dot" role="img" aria-label=${this.state}></span><slot></slot>`;
+    return k`<span class="dot" role="img" aria-label=${this.state}></span><span class="text"><slot></slot></span>`;
   }
 };
 yt.styles = [
@@ -3161,11 +3160,13 @@ yt.styles = [
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
+        min-width: 0.8rem;
         white-space: nowrap;
         font-size: 0.85rem;
       }
 
       .dot {
+        flex-shrink: 0;
         width: 0.8rem;
         height: 0.8rem;
         box-sizing: border-box;
@@ -3176,6 +3177,16 @@ yt.styles = [
 
       :host([state='up']) .dot {
         background: var(--power-on);
+      }
+
+      :host(:empty) .text {
+        display: none;
+      }
+
+      .text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
     `
 ];
@@ -3295,6 +3306,10 @@ ne.styles = [
   M,
   Pt,
   A`
+      :host {
+        flex-shrink: 0;
+      }
+
       .icon {
         font-size: 1.5rem;
       }
