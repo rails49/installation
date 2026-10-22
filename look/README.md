@@ -1,7 +1,7 @@
 # look
 
 `look.bundle.js` beside this file is the single-file build of
-`rails49/look@v0.8.0`, committed because the box may have no internet. The page loads it from `/look/`, and it
+`rails49/look@v0.9.0`, committed because the box may have no internet. The page loads it from `/look/`, and it
 draws the page's band.
 
 A release of look opens a pull request here that replaces the file and moves
