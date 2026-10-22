@@ -15,7 +15,7 @@ between the gate run on a box and the gate run on a PR.
 
     git push -u origin <branch> && gh pr create --fill && gh pr merge --auto --rebase
 
-What each kind of doc holds, this file included, follows [rails49/.github ADR-0017](https://github.com/rails49/.github/blob/main/docs/adr/0017-each-fact-has-one-owner-and-an-accepted-adr-does-not-change.md).
+What each kind of doc holds, this file included, follows [rails49/.github ADR-0021](https://github.com/rails49/.github/blob/main/docs/adr/0021-each-fact-has-one-owner-and-the-glossary-is-glossary-md.md).
 
 ## Agent skills
 
@@ -29,4 +29,4 @@ The five default labels, unchanged: `needs-triage`, `needs-info`, `ready-for-age
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
