@@ -33,10 +33,10 @@ secret; see [the box declaration](README.md#the-box-declaration).
 _Avoid_: config, env file, settings, environment
 
 **Installation**:
-As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/CONTEXT.md); here also the compose project that provides it.
+As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md); here also the compose project that provides it.
 
 **Door**:
-As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/CONTEXT.md).
+As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
 
 **Shared network**:
 The one docker network every stack on a box joins, created by the installation
@@ -46,7 +46,7 @@ _Avoid_: bus network (in `control`, the bus is the MQTT broker), the
 installation's network, `rails49` as a word for the network in prose
 
 **Page**:
-As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/CONTEXT.md).
+As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
 
 **Turning the box off**:
 The box stopping every stack on it and powering down, so its plug can be
