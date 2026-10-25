@@ -225,8 +225,9 @@ and the second is not a browser's at all.
 ## Deploying
 
 `./deploy.sh` is a maintainer's convenience for pushing this checkout to a box
-from a dev machine — `git pull` and `up -d` over ssh. It is not the install
-path, and it names no box:
+from a dev machine — `git pull` and `up -d` over ssh, then a restart of each
+service whose mounted directory the pull changed. It is not the install path,
+and it names no box:
 
 ```bash
 ./deploy.sh ttmetro@gleis49.org
@@ -236,6 +237,17 @@ RAILS49_BOX=ttmetro@gleis49.org ./deploy.sh
 Every other stack deploys itself. A repository that knows nothing about
 railroads does not build a railroad's UI.
 
+`up -d` recreates a container only when its compose configuration changed.
+`box` loads `box/` when it starts and `page` renders from `page/` when it
+starts, so a pull that changes either directory and nothing else leaves the
+old code running. If you pull and run `up -d` by hand, restart the service
+whose directory changed:
+
+```bash
+docker compose --env-file /etc/rails49/box.env restart box   # box/ changed
+docker compose --env-file /etc/rails49/box.env restart page  # page/ changed
+```
+
 ## Working on this
 
     scripts/check.sh
@@ -243,4 +255,5 @@ railroads does not build a railroad's UI.
 The gate, and what `main` moves by. It runs shellcheck over every shell script,
 `docker compose config` over every compose file, and the tests: one over the
 page the render script produces, one over the box's two requests, one over the
-compose files as data. Nothing in it needs a box or a secret.
+compose files as data, one over what a deploy restarts. Nothing in it needs a
+box or a secret.
