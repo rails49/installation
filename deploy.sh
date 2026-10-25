@@ -32,7 +32,7 @@ set -euo pipefail
 # read the rest of the script as the answer. Fail instead.
 export GIT_TERMINAL_PROMPT=0
 # Each `./<dir>` a service in compose.yaml bind-mounts, as `<dir>:<service>`.
-# A test holds this to the compose file.
+# test/deploy.test.ts checks this list against the compose file.
 mounts="box:box page:page look:page"
 cd ~/installation
 before=$(git rev-parse HEAD)

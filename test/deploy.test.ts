@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +21,7 @@ const deploy = readFileSync(new URL("deploy.sh", root), "utf8");
 /** The heredoc: what `./deploy.sh` runs on the box. */
 const remote = deploy.match(/<<'REMOTE'\n([\s\S]*?)\nREMOTE\n/)![1]!;
 
-/** Commits by nobody in particular: the scratch home has no git identity. */
+/** git with an identity of its own, for a CI runner that has none. */
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", args, {
     cwd,
@@ -35,8 +35,9 @@ const git = (cwd: string, ...args: string[]) =>
     stdio: "pipe",
   });
 
-/** Runs the deploy on a scratch box whose upstream has gained a commit that
- *  touches `changed`, and returns what docker was asked, one call per line. */
+/** Runs the deploy in a scratch home whose clone's upstream has gained a
+ *  commit that touches `changed`, and returns what docker was asked, one call
+ *  per line. */
 function deployChanging(...changed: string[]): string[] {
   const scratch = mkdtempSync(join(tmpdir(), "deploy-"));
   const upstream = join(scratch, "upstream");
@@ -61,12 +62,16 @@ function deployChanging(...changed: string[]): string[] {
   writeFileSync(join(bin, "docker"), `#!/bin/sh\necho "$*" >> '${log}'\n`);
   chmodSync(join(bin, "docker"), 0o755);
 
-  execFileSync("bash", ["-s"], {
-    input: remote,
-    env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}` },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  return readFileSync(log, "utf8").trimEnd().split("\n");
+  try {
+    execFileSync("bash", ["-s"], {
+      input: remote,
+      env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}` },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return readFileSync(log, "utf8").trimEnd().split("\n");
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /** The restarts docker was asked for, by service. */
@@ -89,7 +94,7 @@ function composeMounts(): string[] {
   );
 }
 
-describe("the directories the deploy watches", () => {
+describe("the directories the deploy compares", () => {
   it("are the compose file's ./<dir> bind mounts, each with its service", () => {
     const listed = deploy.match(/^mounts="([^"]*)"$/m)?.[1]?.split(" ");
     expect(listed?.sort()).toEqual(composeMounts().sort());
@@ -97,15 +102,15 @@ describe("the directories the deploy watches", () => {
 });
 
 describe("a deploy", () => {
-  it("restarts box, and not page, after a pull that changes box/", () => {
+  it("restarts the `box` service, and not `page`, after a pull that changes box/", () => {
     expect(restarted(deployChanging("box/server.mjs"))).toEqual(["box"]);
   });
 
-  it("restarts page, and not box, after a pull that changes page/", () => {
+  it("restarts `page`, and not the `box` service, after a pull that changes page/", () => {
     expect(restarted(deployChanging("page/render.sh"))).toEqual(["page"]);
   });
 
-  it("restarts page, and not box, after a pull that changes look/", () => {
+  it("restarts `page`, and not the `box` service, after a pull that changes look/", () => {
     expect(restarted(deployChanging("look/look.bundle.js"))).toEqual(["page"]);
   });
 
