@@ -31,7 +31,11 @@ set -euo pipefail
 # The heredoc is this shell's stdin, so a prompt for a git credential would
 # read the rest of the script as the answer. Fail instead.
 export GIT_TERMINAL_PROMPT=0
+# Each `./<dir>` a service in compose.yaml bind-mounts, as `<dir>:<service>`.
+# A test holds this to the compose file.
+mounts="box:box page:page look:page"
 cd ~/installation
+before=$(git rev-parse HEAD)
 git pull
 # The box's own declaration, at the path every stack reads. Not a copy in this
 # clone: a value that lives in one clone makes that clone a prerequisite of
@@ -41,4 +45,16 @@ git pull
 # two versions of the file leaves a container bound to that port, and the one
 # replacing it cannot start.
 docker compose --env-file /etc/rails49/box.env up -d --remove-orphans
+# `up -d` recreates a container only when its configuration changed. A service
+# reads its mounted directory when it starts, so one whose directory the pull
+# changed is restarted, once.
+restart=""
+for mount in $mounts; do
+  dir=${mount%:*} service=${mount#*:}
+  case " $restart " in *" $service "*) continue ;; esac
+  git diff --quiet "$before" HEAD -- "$dir" || restart="$restart $service"
+done
+if [ -n "$restart" ]; then
+  docker compose --env-file /etc/rails49/box.env restart $restart
+fi
 REMOTE
