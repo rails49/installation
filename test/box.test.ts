@@ -58,7 +58,7 @@ describe("POST /box/off", () => {
     const on = box("init");
     expect(ask(on, "POST", "/box/off")).toMatchObject({
       status: 409,
-      body: "this box cannot be turned off from here",
+      body: "this server cannot be turned off from here",
     });
     expect(on.turnedOff).toBe(0);
   });

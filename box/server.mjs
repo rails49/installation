@@ -41,7 +41,7 @@ export function handle(request, box) {
     return { status: 200, type: "application/json", body: JSON.stringify({ can_turn_off: canTurnOff }) };
   }
   if (route === "POST /box/off") {
-    if (!canTurnOff) return text(409, "this box cannot be turned off from here");
+    if (!canTurnOff) return text(409, "this server cannot be turned off from here");
     box.turnOff();
     return text(202, "");
   }
