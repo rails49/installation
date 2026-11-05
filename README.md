@@ -23,6 +23,27 @@ named the installation.
 [ADR-0009](https://github.com/rails49/.github/blob/main/docs/adr/0009-the-door-and-the-page-are-the-installations-in-a-repository-of-their-own.md)
 moved the door and the page here.
 
+## Repositories
+
+Every repository in the [rails49 organisation](https://github.com/rails49):
+
+| Repository | What it holds |
+| --- | --- |
+| [installation](https://github.com/rails49/installation) | This repository: the base a box installs before any railroad. |
+| [control](https://github.com/rails49/control) | Scheduling, dispatching and driving trains, with the bus and the store. |
+| [dccex](https://github.com/rails49/dccex) | The dcc-ex UI for the command station, and the two processes that talk to it. |
+| [jmri](https://github.com/rails49/jmri) | The translator between `control`'s bus and any command station JMRI drives. |
+| [occupancy](https://github.com/rails49/occupancy) | The browser UI for camera-based track occupancy: labeling, viewing and diagnosis. |
+| [occupancy-service](https://github.com/rails49/occupancy-service) | The process that runs occupancy models on a server's camera and publishes the results, and the live contract. |
+| [detector](https://github.com/rails49/detector) | The detector: training-data export, training, the model, and its browser and Python runtimes. |
+| [classifier](https://github.com/rails49/classifier) | The per-sensor occupancy classifier: patch export, training, and its Python and browser packages. |
+| [r49](https://github.com/rails49/r49) | The `.r49` layout archive format: spec, TypeScript and Python readers, validator and community corpus. |
+| [look](https://github.com/rails49/look) | Shared chrome for the UIs: band, rail, dialogs and widget styling. |
+| [CommandStation-EX](https://github.com/rails49/CommandStation-EX) | Our fork of the DCC-EX firmware for the EX-CSB1 command station. |
+| [dcc-led](https://github.com/rails49/dcc-led) | A DCC-controlled 8-channel LED driver for signals: the hardware design. Private. |
+| [rails49.org](https://github.com/rails49/rails49.org) | The landing page and documentation served at rails49.org. |
+| [.github](https://github.com/rails49/.github) | The organisation's profile, shared glossary and decisions that span repositories. |
+
 ## The box declaration
 
 A box says what it is called and what it serves in one file at a fixed path,
