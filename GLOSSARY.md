@@ -56,6 +56,21 @@ Short for **installation release**, as in [`.github`'s glossary](https://github.
 The short form is used only in this repository.
 _Avoid_: version, tag, deployment
 
+**Updating the box**:
+Moving every stack the box declares to another release, on a press. The box
+checks for a new release by itself and never installs one by itself; see [#65](https://github.com/rails49/installation/issues/65).
+_Avoid_: upgrade, deploy (what `deploy.sh` does)
+
+**Going back**:
+Returning the box to the release it ran before the last update. There is one
+step back, and only to a release; see [#65](https://github.com/rails49/installation/issues/65).
+_Avoid_: rollback, downgrade, revert
+
+**Local build**:
+An image built on the box by a stack's `deploy.sh`, named by its commit and in
+no release; see [#65](https://github.com/rails49/installation/issues/65).
+_Avoid_: dev image, dev tag
+
 **Door**:
 As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
 
@@ -68,6 +83,13 @@ installation's network, `rails49` as a word for the network in prose
 
 **Page**:
 As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
+
+**Status page**:
+The page at `/box/`, on every name and port the door serves, that says what
+the box runs and whether it is well: each stack's state and commit, the
+release, whether a newer one is out, and the box's disk, address and
+certificate. Not the page, which lists the labels and says nothing about state; see [#65](https://github.com/rails49/installation/issues/65).
+_Avoid_: dashboard, admin page, box page
 
 **Turning the box off**:
 The box stopping every stack on it and powering down, so its plug can be
