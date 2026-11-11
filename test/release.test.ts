@@ -176,6 +176,33 @@ describe("the release workflow", () => {
     expect(tagging.map(([name]) => name)).toEqual(["release"]);
   });
 
+  it("numbers the release itself when the release input is left empty", () => {
+    // GitHub leaves an empty input out of `inputs`, so INPUTS has no release.
+    const plan = workflow.jobs.plan.steps.find((step: Node) => step.id === "plan");
+    const scratch = mkdtempSync(join(tmpdir(), "plan-"));
+    try {
+      const bin = join(scratch, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "gh"), `#!/bin/sh\necho ${CONTROL}\n`, { mode: 0o755 });
+      writeFileSync(join(bin, "git"), "#!/bin/sh\n", { mode: 0o755 });
+      const output = join(scratch, "output");
+      writeFileSync(output, "");
+      const inputs = { installation: "main", control: "main", dccex: "main", "occupancy-service": "main" };
+      const run = spawnSync("bash", ["-e", "-c", plan.run], {
+        cwd: fileURLToPath(root),
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, INPUTS: JSON.stringify(inputs), GITHUB_OUTPUT: output },
+        encoding: "utf8",
+      });
+      expect(run.stderr).toBe("");
+      const now = new Date();
+      expect(readFileSync(output, "utf8")).toContain(
+        `release=${now.getUTCFullYear()}.${now.getUTCMonth() + 1}.0\n`,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it("lays out the box files where the repository has no directory of its own", () => {
     const download = workflow.jobs.files.steps.find(
       (step: Node) => step.with?.pattern === "*-box-files",
