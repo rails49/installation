@@ -109,6 +109,47 @@ describe("a request from a page", () => {
   });
 });
 
+describe("the door's origin check, GET /origin", () => {
+  /** The door's question about a request that arrived at `host`: the
+   *  request's own headers, its `Host` as `X-Forwarded-Host`, sent to `box`. */
+  function check(host: string, origin?: string) {
+    const headers: Record<string, string> = { host: "box:8080", "x-forwarded-host": host };
+    if (origin !== undefined) headers.origin = origin;
+    return ask(box("systemd"), "GET", "/origin", headers);
+  }
+
+  it("admits a request with no Origin", () => {
+    expect(check(HOST).status).toBe(200);
+    expect(check("192.168.1.20:8081").status).toBe(200);
+  });
+
+  it("admits a page on the origin the request arrived at, on 443 and on a UI port", () => {
+    expect(check(HOST, `https://${HOST}`).status).toBe(200);
+    expect(check("gleis49.org:8082", "http://gleis49.org:8082").status).toBe(200);
+    expect(check("192.168.1.20:8081", "http://192.168.1.20:8081").status).toBe(200);
+    expect(check("shed.local:8083", "http://shed.local:8083").status).toBe(200);
+  });
+
+  it("refuses a page on another host", () => {
+    for (const origin of ["https://evil.example", "https://gleis49.org", "http://192.168.1.21:8081", "null"]) {
+      expect(check(HOST, origin), origin).toMatchObject({
+        status: 403,
+        body: "refused: a page on another origin",
+      });
+    }
+  });
+
+  it("refuses a page on the same host and another port", () => {
+    expect(check("gleis49.org:8082", "http://gleis49.org:8081").status).toBe(403);
+    expect(check("gleis49.org:8082", "https://gleis49.org").status).toBe(403);
+    expect(check(HOST, `http://${HOST}:8081`).status).toBe(403);
+  });
+
+  it("compares with the forwarded Host, never its own", () => {
+    expect(check(HOST, "http://box:8080").status).toBe(403);
+  });
+});
+
 describe("anything else", () => {
   it("answers 404 and runs nothing", () => {
     const on = box("systemd");

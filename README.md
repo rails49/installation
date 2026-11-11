@@ -73,8 +73,9 @@ look like. Neither real file is in any clone. A box with no certificate has no
 ## Two kinds of box
 
 **A box with a box name** is reached at `https://<label>.$BOX_DOMAIN`, with a
-certificate from Let's Encrypt through a DNS-01 challenge. Port 80 redirects to
-443.
+certificate from Let's Encrypt through a DNS-01 challenge. Port 80 redirects
+the box name and every name under it to 443, and serves the page over plain
+HTTP at any other host: the box's address or `<hostname>.local`.
 
 **A box with no certificate** (`BOX_DOMAIN=`) serves each UI over plain HTTP on
 its UI port, at `http://<hostname>.local:<port>` and at
@@ -83,8 +84,12 @@ record, and nothing outside the house. The browser gives such a page no secure
 context, which costs `control` its screen wake lock and one copy button.
 
 Every box serves the UI ports, so a box with a box name stays reachable when DNS
-or the certificate fails. Its port 80 redirects, so its page has no plain-HTTP
-address; its UIs keep theirs.
+or the certificate fails, at its address or `<hostname>.local`.
+
+The door sends no `Strict-Transport-Security` header. A browser that had one
+with `includeSubDomains` for the box name would turn every
+`http://<label>.$BOX_DOMAIN:<port>` into HTTPS, which the UI ports do not
+speak.
 
 The UI ports. The installation owns this table, and a new UI takes the next
 free number. Stacks in other repositories name the entry points.
@@ -105,11 +110,11 @@ error for each and serves the rest.
 ## The page
 
 One item per label in `BOX_UIS`, rendered once when its container starts. The
-text is the label. On a box with a box name the address is
-`https://<label>.$BOX_DOMAIN`. On a box with no certificate it is the label's UI
-port at the host the page was reached at, and a label with no UI port is listed
-with no link. The installation holds two facts about a UI, its label and its UI
-port. A new UI takes the next free number in the table above; the door's flags
+text is the label. Opened over HTTPS, the address is
+`https://<label>.$BOX_DOMAIN`. Opened over plain HTTP, it is the label's UI port
+at the host the page was reached at. On a box with no certificate a label with
+no UI port is listed with no link; on a box with a box name it keeps its HTTPS
+address. The page holds two facts about a UI, its label and its UI port. A new UI takes the next free number in the table above; the door's flags
 and ports, `box`'s plain-HTTP router and `page/render.sh` name the same ports,
 and a test checks that they agree.
 
@@ -130,6 +135,25 @@ the button; the page has none. A request from a page on another origin is refuse
 
 On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual
 machine, not the Mac. Coming back takes a person at the box.
+
+## A page on another origin
+
+A request is checked against the origin it arrived at. It is admitted if it
+carries no `Origin`, or if the host and port of its `Origin` equal its `Host`,
+and refused with `403` otherwise. The scheme is not compared, because TLS ends
+at the door. The rule is the same over HTTPS, on a UI port, at a `.local` name,
+at an address, and on a box with no certificate
+([rails49/.github#69](https://github.com/rails49/.github/issues/69)).
+
+`box` applies it to `/box`. For everything else the door asks `box`: the
+`same-origin` middleware, which `compose.yaml` declares on `box`, sends each
+request's headers to `GET /origin` and passes the request on only when that
+answers 2xx. Every websocket and write path of every UI names it as
+`same-origin@docker`, on its HTTPS router and on its UI port router. A path
+that checks `Origin` itself may do that instead. So the door dials `box` by its
+service name across the shared network, and `box` is a name no other stack may
+use ([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
+While `box` is down, every path behind the middleware is refused.
 
 ## Installing
 
@@ -183,7 +207,7 @@ have and the certificate has to renew months from now with nobody present.
 docker compose --env-file /etc/rails49/box.env up -d
 ```
 
-The door comes up, 80 redirects to 443, and the first request for the name is
+The door comes up, 80 redirects the box name to 443, and the first request for the name is
 what makes it ask for a certificate. Give it a few seconds and open
 `https://$BOX_DOMAIN`. Renewal is the door's, at about a third of the
 certificate's remaining life, and needs only outbound HTTPS.
@@ -309,6 +333,26 @@ and it names no box:
 RAILS49_BOX=ttmetro@gleis49.org ./deploy.sh
 ```
 
+Last, it runs the probe from the machine it was started on, which has to be
+on the box's LAN:
+
+```bash
+scripts/probe.sh ttmetro@gleis49.org
+scripts/probe.sh 192.168.1.20 shed gleis49.org control dccex
+```
+
+For each label in `BOX_UIS` with a UI port, on every way in —
+`https://<label>.$BOX_DOMAIN`, `http://$BOX_DOMAIN:<port>`,
+`http://<label>.$BOX_DOMAIN:<port>`, `http://<hostname>.local:<port>` and
+`http://<address>:<port>` — it asks `/box` and each of the UI's websocket paths
+once with that way in as `Origin`, which wants 200 or 101, and once with a
+foreign `Origin`, which wants 403. It asks port 80 whether it redirects the box
+name and serves the page at the address and the `.local` name. It prints every
+answer and exits 1 on any it did not want, which makes the deploy exit 1. With
+one argument it reads the declaration, the hostname and the address over ssh;
+the second form takes them as arguments. The UIs' websocket paths are listed
+in the script, and a UI that adds or moves one changes the list there.
+
 Every other stack deploys itself. A repository that knows nothing about
 railroads does not build a railroad's UI.
 
@@ -331,6 +375,6 @@ The gate, and what `main` moves by. It runs shellcheck over every shell script,
 `docker compose config` over every compose file with `BOX_DOMAIN` set, empty and
 unset, the page's render in the image it runs in for both kinds of box, and the
 tests: one over the page the render script produces, one over the box's two
-requests, one over the compose files as data and the door's script, one over
+requests and the origin check, one over the compose files as data and the door's script, one over
 what a deploy restarts. Nothing in it needs a
 box or a secret.

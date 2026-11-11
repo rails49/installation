@@ -7,8 +7,8 @@
  * written as one rather than dressed up as automation. What is worth holding
  * here is what a reader cannot see is wrong: a network named by the project
  * rather than fixed, a mount one character away from binding an inode, a door
- * with no redirect, an ACME resolver left to whatever the box's router
- * answers.
+ * whose redirect takes more than the box's names, an ACME resolver left to
+ * whatever the box's router answers.
  *
  * The files are read as written, with `${BOX_DOMAIN}` and the rest still in
  * them: what is asserted is that the declaration is where those values come
@@ -176,12 +176,12 @@ describe("the door", () => {
     });
   });
 
-  it("with a box name answers on 443, redirects 80 to it, and serves every UI port", () => {
+  it("with a box name answers on 443 and serves every UI port", () => {
+    // No redirect on the entry point: that would take every name on 80, an
+    // address included. The `to-https` router takes the box's names alone.
     expect([...door].sort()).toEqual(
       [
         ...EVERY_BOX,
-        "--entryPoints.web.http.redirections.entryPoint.to=websecure",
-        "--entryPoints.web.http.redirections.entryPoint.scheme=https",
         "--entryPoints.websecure.address=:443",
         "--certificatesResolvers.le.acme.storage=/acme/acme.json",
         "--certificatesResolvers.le.acme.dnsChallenge.provider=cloudflare",
@@ -301,6 +301,21 @@ describe("the page", () => {
     expect(page["traefik.http.routers.page-http.tls"]).toBeUndefined();
   });
 
+  it("redirects 80 to HTTPS for the box name and the names under it, and no other", () => {
+    // An address or a `.local` name gets the page over plain HTTP. `/box`
+    // under the box's names redirects too, so this is above `box-http`.
+    const page = labels(installation.services.page);
+    expect(page["traefik.http.routers.to-https.rule"]).toBe(
+      "Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\\.${BOX_DOMAIN}$$`)",
+    );
+    expect(page["traefik.http.routers.to-https.entrypoints"]).toBe("web");
+    expect(page["traefik.http.routers.to-https.middlewares"]).toBe("to-https");
+    expect(page["traefik.http.middlewares.to-https.redirectscheme.scheme"]).toBe("https");
+    expect(Number(page["traefik.http.routers.to-https.priority"])).toBeGreaterThan(
+      Number(labels(installation.services.box)["traefik.http.routers.box-http.priority"]),
+    );
+  });
+
   it("mounts the render script's directory and look's, not the files in them", () => {
     // A single-file bind mount binds the inode, and `git pull` replaces a file
     // rather than writing through it, so a container mounted at the script
@@ -370,13 +385,14 @@ describe("the box", () => {
     expect(router["traefik.http.routers.box.tls.certresolver"]).toBeUndefined();
   });
 
-  it("is above every other router", () => {
+  it("is above every other router but the redirect", () => {
     // A router with no priority of its own has its rule's length, so a label's
     // `Host` rule would otherwise take `/box` for itself.
     const priority = Number(router["traefik.http.routers.box.priority"]);
     const others = [installation.services.page, jmri.services.jmri].flatMap((service) =>
       Object.entries(labels(service))
         .filter(([label]) => /^traefik\.http\.routers\.[^.]+\.rule$/.test(label))
+        .filter(([label]) => label !== "traefik.http.routers.to-https.rule")
         .map(([label, rule]) => {
           const set = labels(service)[label.replace(/rule$/, "priority")];
           return set === undefined ? rule.length : Number(set);
@@ -384,6 +400,17 @@ describe("the box", () => {
     );
     expect(others.length).toBeGreaterThan(0);
     for (const other of others) expect(priority).toBeGreaterThan(other);
+  });
+
+  it("answers the origin check every UI names as same-origin@docker", () => {
+    // The door dials `box` by its service name on the shared network, and
+    // the script answers `/origin`.
+    expect(router["traefik.http.middlewares.same-origin.forwardauth.address"]).toBe(
+      `http://box:${router["traefik.http.services.box.loadbalancer.server.port"]}/origin`,
+    );
+    expect(box.networks).toEqual([NETWORK]);
+    const script = readFileSync(new URL("box/server.mjs", root), "utf8");
+    expect(script).toContain('route === "GET /origin"');
   });
 
   it("is served on the port the script listens on", () => {
@@ -444,13 +471,34 @@ describe("JMRI", () => {
       label.startsWith("traefik.http.routers."),
     );
     const named = new Set(routers.map((label) => label.split(".")[3]));
-    expect([...named]).toEqual(["jmri", "jmri-http"]);
+    expect([...named]).toEqual(["jmri", "jmri-http", "jmri-ws", "jmri-ws-http"]);
     expect(router["traefik.http.routers.jmri.rule"]).toBe(
       "Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)",
     );
     expect(router["traefik.http.routers.jmri-http.rule"]).toBe("PathPrefix(`/`)");
     expect(router["traefik.http.routers.jmri-http.entrypoints"]).toBe("jmri");
     expect(router["traefik.http.routers.jmri-http.tls"]).toBeUndefined();
+  });
+
+  it("puts noVNC's websocket behind the origin check on both ways in", () => {
+    const router = labels(jmri.services.jmri);
+    expect(router["traefik.http.routers.jmri-ws.rule"]).toBe(
+      "Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)",
+    );
+    expect(router["traefik.http.routers.jmri-ws.entrypoints"]).toBe("websecure");
+    expect(router["traefik.http.routers.jmri-ws-http.rule"]).toBe("PathPrefix(`/websockify`)");
+    expect(router["traefik.http.routers.jmri-ws-http.entrypoints"]).toBe("jmri");
+    for (const name of ["jmri-ws", "jmri-ws-http"]) {
+      expect(router[`traefik.http.routers.${name}.middlewares`], name).toBe("same-origin@docker");
+    }
+    // Neither names a priority, so each is above its catch-all by its rule's
+    // length.
+    expect(router["traefik.http.routers.jmri-ws.rule"].length).toBeGreaterThan(
+      router["traefik.http.routers.jmri.rule"].replace(/\?[^}]*/, "").length,
+    );
+    expect(router["traefik.http.routers.jmri-ws-http.rule"].length).toBeGreaterThan(
+      router["traefik.http.routers.jmri-http.rule"].length,
+    );
   });
 
   it("gets a fresh /tmp on every start", () => {

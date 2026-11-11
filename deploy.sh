@@ -13,6 +13,11 @@
 # nothing here depends on that file, which is personal, is in no repository,
 # and has taken a deploy down by losing a stanza (control#488, control#496).
 #
+# Last, scripts/probe.sh asks every way into every UI on the box whether it
+# admits the UI's own page and refuses a foreign one, from this machine, which
+# has to be on the box's LAN. A refusal there makes the deploy exit 1, with the
+# installation already up.
+#
 # JMRI is not deployed here. It is an optional extra with a compose project of
 # its own (ADR-0002), and a box that wants it says so once by hand.
 set -euo pipefail
@@ -58,3 +63,5 @@ if [ -n "$restart" ]; then
   docker compose --env-file /etc/rails49/box.env restart $restart
 fi
 REMOTE
+
+"$(dirname "$0")/scripts/probe.sh" "$box"

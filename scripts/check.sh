@@ -76,28 +76,27 @@ done
 # reading missed: a regex GNU awk accepts and busybox rejects took the page
 # down on the first box it reached, and nothing here saw it.
 if [ -f page/render.sh ]; then
-  # With a box name the page itself goes to /dev/null: what is being checked
-  # is that the script completes, and a failure prints what awk said on
-  # stderr. With no certificate it also reads the hostname the way compose
-  # mounts it, and the page has to hold a link on a UI port and a label with
-  # no UI port listed as text.
-  run "page renders in nginx:alpine with a box name" sh -c \
-    "docker run --rm -e BOX_DOMAIN=example.org -e BOX_UIS='control jmri' \
-      -v '$ROOT/page:/page:ro' nginx:alpine /page/render.sh >/dev/null"
-
+  # The page in both kinds of box, reading the hostname the way compose mounts
+  # it. Each has to hold a link with its UI port and a label with no UI port:
+  # with a box name, a link under the box name and one with no port; with no
+  # certificate, a link on `.local` and a label listed as text.
   # shellcheck disable=SC2329  # called through `run`
-  page_with_no_certificate() {
-    local out
-    out=$(docker run --rm -e BOX_DOMAIN= -e BOX_UIS='control turntable' \
+  page_renders() {
+    local domain=$1 out
+    shift
+    out=$(docker run --rm -e BOX_DOMAIN="$domain" -e BOX_UIS='control turntable' \
       -v "$ROOT/page:/page:ro" -v /etc/hostname:/host/hostname:ro \
       nginx:alpine /page/render.sh) || return 1
-    if ! grep -q '\.local:8081" data-same-host>control</a>' <<<"$out" ||
-      ! grep -q '<li>turntable</li>' <<<"$out"; then
-      printf '%s\n' "$out"
-      return 1
-    fi
+    for want in "$@"; do
+      grep -qF "$want" <<<"$out" || { printf 'missing: %s\n%s\n' "$want" "$out"; return 1; }
+    done
   }
-  run "page renders in nginx:alpine with no certificate" page_with_no_certificate
+  run "page renders in nginx:alpine with a box name" page_renders example.org \
+    '<a href="https://control.example.org" data-ui-port="8081">control</a>' \
+    '<a href="https://turntable.example.org">turntable</a>'
+  run "page renders in nginx:alpine with no certificate" page_renders "" \
+    '.local:8081" data-ui-port="8081">control</a>' \
+    '<li>turntable</li>'
 
   # Fails when the page styles look's band. At the tag of the committed
   # `look/look.bundle.js`, which a release of look moves with it.
