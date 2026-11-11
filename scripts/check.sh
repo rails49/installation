@@ -88,13 +88,14 @@ if [ -f page/render.sh ]; then
   # label with no UI port: with a box name, a link under the box name and one
   # with no port; with no certificate, a link on `.local` and a label listed
   # as text.
+  page_base=$(sed -n "s/^FROM //p" page/Dockerfile)
   # shellcheck disable=SC2329  # called through `run`
   page_renders() {
     local domain=$1 out mounts=(-v "$ROOT/page:/page:ro")
     shift
     [ -n "$domain" ] || mounts+=(-v /etc/hostname:/host/hostname:ro)
     out=$(docker run --rm -e BOX_DOMAIN="$domain" -e BOX_UIS='control turntable' \
-      "${mounts[@]}" nginx:alpine /page/render.sh) || return 1
+      "${mounts[@]}" "$page_base" /page/render.sh) || return 1
     for want in "$@"; do
       grep -qF "$want" <<<"$out" || { printf 'missing: %s\n%s\n' "$want" "$out"; return 1; }
     done
@@ -116,8 +117,9 @@ fi
 # cover what it answers; this asks it one question under that node, with an
 # `Origin`, which is the path through the newest API it uses.
 if [ -f box/server.mjs ]; then
+  box_base=$(sed -n "s/^FROM //p" box/Dockerfile)
   run "box answers in node:22-slim" \
-    docker run --rm -v "$ROOT/box:/box:ro" node:22-slim sh -c \
+    docker run --rm -v "$ROOT/box:/box:ro" "$box_base" sh -c \
       'command -v nsenter >/dev/null && node --input-type=module -e "
         import { handle } from \"/box/server.mjs\";
         const request = { method: \"GET\", url: \"/box\", headers: { origin: \"null\" } };

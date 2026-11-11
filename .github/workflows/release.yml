@@ -1,0 +1,308 @@
+# One installation release: every stack's images at a chosen commit, the box
+# files pinned to their digests, checked on an amd64 and an arm64 runner, and
+# published as a GitHub pre-release (rails49/.github#71). Run by hand; README's
+# "Making a release" says how.
+#
+# Each stack's own `images.yml` builds its images, or finds them already
+# pushed. A reusable workflow's ref cannot be an expression, so each is called
+# from the head of its `main` and handed the commit to build.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      installation:
+        description: The installation commit, branch or tag.
+        default: main
+        type: string
+      control:
+        description: The control commit, branch or tag.
+        default: main
+        type: string
+      dccex:
+        description: The dccex commit, branch or tag.
+        default: main
+        type: string
+      occupancy-service:
+        description: The occupancy-service commit, branch or tag.
+        default: main
+        type: string
+      release:
+        description: The release number. Empty is the next one this month.
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+# Two runs at once could both choose the same release number.
+concurrency:
+  group: release
+
+jobs:
+  # Each stack's commit in full, and the release number.
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      installation: ${{ steps.plan.outputs.installation }}
+      control: ${{ steps.plan.outputs.control }}
+      dccex: ${{ steps.plan.outputs.dccex }}
+      occupancy-service: ${{ steps.plan.outputs.occupancy-service }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUTS: ${{ toJSON(inputs) }}
+        run: |
+          for stack in installation control dccex occupancy-service; do
+            ref=$(jq -r --arg stack "$stack" '.[$stack]' <<<"$INPUTS")
+            commit=$(gh api "repos/rails49/$stack/commits/$ref" --jq .sha)
+            echo "$stack $commit"
+            echo "$stack=$commit" >> "$GITHUB_OUTPUT"
+          done
+          tags=$(git ls-remote --tags --refs origin | sed 's|.*refs/tags/||')
+          release=$(jq -r .release <<<"$INPUTS")
+          if [ -z "$release" ]; then
+            release=$(scripts/release-number.sh "$(date -u +%Y.%-m)" <<<"$tags")
+          fi
+          [[ $release =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "not a release number: $release" >&2; exit 1; }
+          if grep -qxF "$release" <<<"$tags"; then
+            echo "$release is already a tag" >&2
+            exit 1
+          fi
+          echo "release $release"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  installation:
+    needs: plan
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    with:
+      commit: ${{ needs.plan.outputs.installation }}
+
+  control:
+    needs: plan
+    permissions:
+      contents: read
+      packages: write
+    uses: rails49/control/.github/workflows/images.yml@main
+    with:
+      commit: ${{ needs.plan.outputs.control }}
+
+  dccex:
+    needs: plan
+    permissions:
+      contents: read
+      packages: write
+    uses: rails49/dccex/.github/workflows/images.yml@main
+    with:
+      commit: ${{ needs.plan.outputs.dccex }}
+
+  occupancy-service:
+    needs: plan
+    permissions:
+      contents: read
+      packages: write
+    uses: rails49/occupancy-service/.github/workflows/images.yml@main
+    with:
+      commit: ${{ needs.plan.outputs.occupancy-service }}
+
+  # `manifest.json`, and `box-files.tar.gz` with one directory per stack, each
+  # `image:` in it pinned to the manifest's digest.
+  files:
+    needs: [plan, installation, control, dccex, occupancy-service]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # The Dockerfiles of the installation's own images, for their stock base.
+      - uses: actions/checkout@v7
+        with:
+          repository: rails49/installation
+          ref: ${{ needs.plan.outputs.installation }}
+          path: installation
+          sparse-checkout: |
+            page/Dockerfile
+            box/Dockerfile
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "*-box-files"
+          path: box
+      - run: for dir in box/*-box-files; do mv "$dir" "${dir%-box-files}"; done
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Every stack's images, each by its digest, holding amd64 and arm64.
+      - name: The stacks
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq '.plan.outputs as $commits | del(.plan) | with_entries(.value =
+            {commit: $commits[.key], images: (.value.outputs | del(.commit))})' \
+            <<<"$NEEDS" > stacks.json
+          jq -r '.[].images | to_entries[] | "\(.key) \(.value)"' stacks.json |
+            while read -r image digest; do
+              [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "$image has no digest: '$digest'" >&2; exit 1; }
+              platforms=$(docker buildx imagetools inspect "ghcr.io/rails49/$image@$digest" --format '{{json .Manifest}}' |
+                jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | unique | join(" ")')
+              echo "$image $digest $platforms"
+              [[ " $platforms " == *" linux/amd64 "* && " $platforms " == *" linux/arm64 "* ]] ||
+                { echo "$image does not hold linux/amd64 and linux/arm64" >&2; exit 1; }
+            done
+      # Every stock image a compose file starts or a Dockerfile builds on,
+      # by its digest: the one it is pinned to, or the tag's now.
+      - name: The stock images
+        run: |
+          mapfile -t composes < <(find box -name '*compose*.y*ml')
+          mapfile -t dockerfiles < <(find box installation -name Dockerfile)
+          {
+            sed -n 's/^[[:space:]]*image:[[:space:]]*\(&[^[:space:]]* \)\{0,1\}//p' "${composes[@]}"
+            sed -n 's/^FROM[[:space:]]*\([^[:space:]]*\).*/\1/p' "${dockerfiles[@]}"
+          } | grep -vE '^\*|^ghcr\.io/rails49/' | sort -u |
+            while read -r ref; do
+              if [[ $ref == *@* ]]; then
+                digest=${ref#*@}
+              else
+                digest=$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)
+              fi
+              echo "${ref%@*} $digest" >&2
+              jq -n --arg ref "${ref%@*}" --arg digest "$digest" '{($ref): $digest}'
+            done | jq -s add > stock.json
+      - name: The manifest and the archive
+        env:
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: |
+          jq -n --arg release "$RELEASE" --slurpfile stacks stacks.json --slurpfile stock stock.json \
+            '{release: $release, stacks: $stacks[0], stock: $stock[0]}' > manifest.json
+          cat manifest.json
+          scripts/pin.sh manifest.json box
+          tar -czf box-files.tar.gz -C box .
+          tar -tzvf box-files.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: |
+            manifest.json
+            box-files.tar.gz
+          if-no-files-found: error
+
+  # The release as a box with no certificate runs it, from the archive alone:
+  # the installation; control with the simulator; dccex with no station;
+  # occupancy with no camera and its check archive. After 60 seconds every
+  # container is running and has not restarted, and the probe passes.
+  check:
+    needs: [plan, files]
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: rails49/installation
+          ref: ${{ needs.plan.outputs.installation }}
+          sparse-checkout: scripts/probe.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+      - name: The runner's Docker Engine, for the manifest
+        run: docker version --format '{{.Server.Version}}' | tee "docker-${{ matrix.runner }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docker-${{ matrix.runner }}
+          path: docker-${{ matrix.runner }}
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The `.local` name is the box's mDNS; here the runner's hosts file
+      # answers it.
+      - name: A box with no certificate
+        run: |
+          sudo mkdir -p /etc/rails49
+          printf 'BOX_DOMAIN=\nBOX_UIS="control dccex occupancy"\n' | sudo tee /etc/rails49/box.env
+          printf 'TC49_STORE=%s\n' "$RUNNER_TEMP/store" | sudo tee /etc/rails49/deploy.env
+          mkdir "$RUNNER_TEMP/store" box
+          tar -xzf release/box-files.tar.gz -C box
+          echo "127.0.0.1 $(hostname).local" | sudo tee -a /etc/hosts
+      - name: Bring up the release
+        working-directory: box
+        run: |
+          box=/etc/rails49/box.env
+          TC49_UID=$(id -u) TC49_GID=$(id -g)
+          export TC49_UID TC49_GID
+          docker compose --env-file "$box" -f installation/compose.yaml up -d --no-build
+          docker compose --env-file "$box" --env-file /etc/rails49/deploy.env \
+            -f control/compose.yaml --profile layout --profile sim up -d --no-build
+          docker compose --env-file "$box" \
+            -f dccex/compose.yaml -f dccex/compose.box.yaml up -d --no-build
+          VIDEO_GID=$(getent group video | cut -d: -f3) \
+          RENDER_GID=$(getent group render | cut -d: -f3) \
+          OCCUPANCY_ARCHIVE=$PWD/occupancy-service/deploy/check.r49 \
+          OCCUPANCY_CAMERA=/dev/v4l/by-id/no-camera \
+            docker compose --env-file "$box" -f occupancy-service/compose.yaml up -d --no-build
+      - name: Every container still running after 60 seconds
+        run: |
+          sleep 60
+          stopped=0
+          for container in $(docker ps -aq); do
+            read -r name status restarts < <(docker inspect -f '{{.Name}} {{.State.Status}} {{.RestartCount}}' "$container")
+            echo "$name $status, restarted $restarts times"
+            [[ $status == running && $restarts == 0 ]] || stopped=1
+          done
+          exit "$stopped"
+      - name: The probe
+        run: |
+          address=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+          scripts/probe.sh "$address" "$(hostname)" "" control dccex occupancy
+      - name: Each container's log
+        if: failure()
+        run: |
+          for container in $(docker ps -aq); do
+            echo "::group::$(docker inspect -f '{{.Name}}' "$container")"
+            docker logs --tail 200 "$container" 2>&1
+            echo "::endgroup::"
+          done
+
+  # The tag on the installation's commit, and the pre-release carrying the
+  # manifest, with each runner's Docker Engine version, and the archive.
+  release:
+    needs: [plan, files, check]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: docker-*
+          merge-multiple: true
+          path: docker
+      - name: Tag and publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+          COMMIT: ${{ needs.plan.outputs.installation }}
+        run: |
+          for file in docker/*; do
+            jq -n --arg runner "${file#docker/docker-}" --arg version "$(cat "$file")" '{($runner): $version}'
+          done | jq -s add > docker.json
+          jq --slurpfile docker docker.json '.docker = $docker[0]' release/manifest.json > manifest.json
+          notes=$(jq -r '"Pre-release. Not offered to boxes until it is marked as a full release.\n",
+            (.stacks | to_entries[] | "- \(.key) \(.value.commit)")' manifest.json)
+          gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --target "$COMMIT" \
+            --prerelease --title "$RELEASE" --notes "$notes" \
+            manifest.json release/box-files.tar.gz
