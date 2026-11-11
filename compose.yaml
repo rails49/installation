@@ -37,7 +37,7 @@ services:
     restart: unless-stopped
     # 80 is the page and 8081-8084 are the UI ports, in README's table. On a
     # box with a box name 80 redirects the box name and its labels to 443 (the
-    # `to-https` router on `page`): a person types a bare hostname and the
+    # `to-https` router below): a person types a bare hostname and the
     # browser tries http, so a box that published 443 alone would refuse the
     # connection and the site would read as down. The certificate comes from
     # a DNS-01 challenge, so nothing here needs 80 to reach the outside.
@@ -108,6 +108,28 @@ services:
       # Read-only: the provider watches containers and starts none.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - acme:/acme
+    # The redirect on 80 and the origin check are on the door's own labels, so
+    # they hold while `page` or `box` is down. With `box` down the check
+    # answers 500, and every path behind it is refused.
+    labels:
+      - traefik.enable=true
+      # On 80, the box name and every name under it redirect to HTTPS, `/box`
+      # included, so the priority is above `box-http`'s. An address or a
+      # `.local` name is not matched and gets the page and `/box` over plain
+      # HTTP. `\Q…\E` makes the box name's dots match only dots. On a box with
+      # no certificate the rule is `Host(``)`, which the door refuses: it logs
+      # an error and drops this router.
+      - traefik.http.routers.to-https.rule=Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\.\Q${BOX_DOMAIN}\E$$`)
+      - traefik.http.routers.to-https.priority=200
+      - traefik.http.routers.to-https.entrypoints=web
+      - traefik.http.routers.to-https.service=noop@internal
+      - traefik.http.routers.to-https.middlewares=to-https
+      - traefik.http.middlewares.to-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.to-https.redirectscheme.permanent=true
+      # The origin check every UI puts on its websocket and write paths, on
+      # HTTPS and on its UI port, as `same-origin@docker`. The door asks
+      # `box`'s `/origin` for each request and passes it on only on a 2xx.
+      - traefik.http.middlewares.same-origin.forwardauth.address=http://box:8080/origin
     networks:
       - rails49
 
@@ -152,17 +174,6 @@ services:
       # because a docker router with none gets `Host(<container name>)`.
       - traefik.http.routers.page-http.rule=PathPrefix(`/`)
       - traefik.http.routers.page-http.entrypoints=web
-      # On 80, the box name and every name under it redirect to HTTPS, `/box`
-      # included, so the priority is above `box-http`'s. An address or a
-      # `.local` name is not matched and gets the page and `/box` over plain
-      # HTTP. On a box with no certificate the rule is `Host(``)`, which the
-      # door refuses: it logs an error and drops this router.
-      - traefik.http.routers.to-https.rule=Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\.${BOX_DOMAIN}$$`)
-      - traefik.http.routers.to-https.priority=200
-      - traefik.http.routers.to-https.entrypoints=web
-      - traefik.http.routers.to-https.middlewares=to-https
-      - traefik.http.middlewares.to-https.redirectscheme.scheme=https
-      - traefik.http.middlewares.to-https.redirectscheme.permanent=true
     networks:
       - rails49
 
@@ -202,12 +213,6 @@ services:
       - traefik.http.routers.box-http.priority=100
       - traefik.http.routers.box-http.entrypoints=web,control,dccex,jmri,occupancy
       - traefik.http.services.box.loadbalancer.server.port=8080
-      # The origin check every UI puts on its websocket and write paths, on
-      # HTTPS and on its UI port, as `same-origin@docker`. The door asks
-      # `/origin` for each request and passes it on only on a 2xx; the
-      # request is refused with the 403 `box` answers otherwise. `box` is
-      # therefore a name the door dials across the shared network (ADR-0004).
-      - traefik.http.middlewares.same-origin.forwardauth.address=http://box:8080/origin
     networks:
       - rails49
 

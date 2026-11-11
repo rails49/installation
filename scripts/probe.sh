@@ -25,7 +25,7 @@ set -euo pipefail
 
 if [ $# -eq 1 ]; then
   facts=$(ssh "$1" '. /etc/rails49/box.env && printf "%s\n%s\n" "$BOX_DOMAIN" "$BOX_UIS" &&
-    hostname && hostname -I | cut -d" " -f1')
+    hostname && ip -4 route get 1.1.1.1 | sed -n "s/.* src \([0-9.]*\).*/\1/p"')
   { read -r domain; read -r uis; read -r host; read -r address; } <<<"$facts"
 elif [ $# -ge 3 ]; then
   address=$1 host=$2 domain=$3
@@ -36,7 +36,7 @@ else
   exit 2
 fi
 
-# README's table of UI ports.
+# README's table of UI ports. test/compose.test.ts checks it against the table.
 ui_port() {
   case $1 in
     control) echo 8081 ;;

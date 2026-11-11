@@ -115,8 +115,8 @@ text is the label. Opened over HTTPS, the address is
 at the host the page was reached at. On a box with no certificate a label with
 no UI port is listed with no link; on a box with a box name it keeps its HTTPS
 address. The page holds two facts about a UI, its label and its UI port. A new UI takes the next free number in the table above; the door's flags
-and ports, `box`'s plain-HTTP router and `page/render.sh` name the same ports,
-and a test checks that they agree.
+and ports, `box`'s plain-HTTP router, `page/render.sh` and `scripts/probe.sh`
+name the same ports, and a test checks that they agree.
 
 The band across the top carries the box name, or on a box with no certificate
 the box's hostname, which is the thing you want to know on landing there. A
@@ -146,7 +146,7 @@ at an address, and on a box with no certificate
 ([rails49/.github#69](https://github.com/rails49/.github/issues/69)).
 
 `box` applies it to `/box`. For everything else the door asks `box`: the
-`same-origin` middleware, which `compose.yaml` declares on `box`, sends each
+`same-origin` middleware, which `compose.yaml` declares on the door, sends each
 request's headers to `GET /origin` and passes the request on only when that
 answers 2xx. Every websocket and write path of every UI names it as
 `same-origin@docker`, on its HTTPS router and on its UI port router. A path
@@ -348,7 +348,8 @@ For each label in `BOX_UIS` with a UI port, on every way in —
 once with that way in as `Origin`, which wants 200 or 101, and once with a
 foreign `Origin`, which wants 403. It asks port 80 whether it redirects the box
 name and serves the page at the address and the `.local` name. It prints every
-answer and exits 1 on any it did not want, which makes the deploy exit 1. With
+answer and exits 1 on any it did not want. The deploy prints that and keeps its
+own exit code, which says whether the installation came up. With
 one argument it reads the declaration, the hostname and the address over ssh;
 the second form takes them as arguments. The UIs' websocket paths are listed
 in the script, and a UI that adds or moves one changes the list there.
