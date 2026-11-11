@@ -6,11 +6,11 @@ the box's declaration of itself, and the install instructions.
 
 ## What an installation is
 
-Five things, and they are the same five on every box: the name it is reached
-at, the certificate for that name, the door, the page, and the service that
-turns the box off. None of them is about a railroad, a camera or a command
-station. A box with a command station and no layout installs this and then
-`dccex` — no broker, no store, no trains, and a page listing what it has. The
+The door, the page, the service that turns the box off, and how the box is
+reached: at a box name with a certificate for it, or with no certificate over
+plain HTTP on the UI ports. None of them is about a railroad, a camera or a
+command station. A box with a command station and no layout installs this and
+then `dccex` — no broker, no store, no trains, and a page listing what it has. The
 railroad, the detector and JMRI are what an operator adds on top.
 
 The bus and the store are `control`'s. Every UI brings the container that
@@ -47,11 +47,13 @@ Every repository in the [rails49 organisation](https://github.com/rails49):
 ## The box declaration
 
 A box says what it is called and what it serves in one file at a fixed path,
-`/etc/rails49/box.env`: `BOX_DOMAIN`, the name the box is reached at, `BOX_UIS`,
-the labels it serves, and `BOX_ACME_PROVIDER`, the DNS provider that issues its
-certificates. Every stack is started against that file. A container joins the
-external docker network this repository creates if the door reaches it, if it
-dials a service in another stack, or if a container in another stack dials it
+`/etc/rails49/box.env`: `BOX_DOMAIN`, the box name, or empty for a box with no
+certificate, `BOX_UIS`, the labels it serves, and `BOX_ACME_PROVIDER`, the DNS
+provider that issues its certificates, needed only with a box name. Every stack
+is started against that file, and refuses to start if `BOX_DOMAIN` is unset. A
+container joins the external docker network this repository creates if the door
+reaches it, if it dials a service in another stack, or if a container in
+another stack dials it
 ([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
 
 The path is fixed rather than living in this repository's clone, because a
@@ -65,25 +67,61 @@ leaves the declaration something you can paste into an issue while debugging a
 headless box.
 
 `box.env.example` and `acme.env.example` in this repository are what the two
-look like. Neither real file is in any clone.
+look like. Neither real file is in any clone. A box with no certificate has no
+`acme.env`.
+
+## Two kinds of box
+
+**A box with a box name** is reached at `https://<label>.$BOX_DOMAIN`, with a
+certificate from Let's Encrypt through a DNS-01 challenge. Port 80 redirects to
+443.
+
+**A box with no certificate** (`BOX_DOMAIN=`) serves each UI over plain HTTP on
+its UI port, at `http://<hostname>.local:<port>` and at
+`http://<address>:<port>`. The page is on 80. There is no certificate, no DNS
+record, and nothing outside the house. The browser gives such a page no secure
+context, which costs `control` its screen wake lock and one copy button.
+
+Every box serves the UI ports, so a box with a box name stays reachable when DNS
+or the certificate fails. Its port 80 redirects, so its page has no plain-HTTP
+address; its UIs keep theirs.
+
+The UI ports. The installation owns this table, and a new UI takes the next
+free number. Stacks in other repositories name the entry points.
+
+| Label | Entry point | Port |
+| --- | --- | --- |
+| (the page) | `web` | 80 |
+| `control` | `control` | 8081 |
+| `dccex` | `dccex` | 8082 |
+| `jmri` | `jmri` | 8083 |
+| `occupancy` | `occupancy` | 8084 |
+
+The door opens every one of them on every box. Each stack declares a router on
+its UI port beside its `Host()` router. On a box with no certificate the
+`websecure` routers name an entry point that does not exist: the door logs an
+error for each and serves the rest.
 
 ## The page
 
-One link per label in `BOX_UIS`, rendered once when its container starts. The
-text is the label, the address is `https://<label>.$BOX_DOMAIN`. The
-installation holds no other fact about any UI, so a UI that did not exist when
-this was written needs no change here.
+One item per label in `BOX_UIS`, rendered once when its container starts. The
+text is the label. On a box with a box name the address is
+`https://<label>.$BOX_DOMAIN`. On a box with no certificate it is the label's UI
+port at the host the page was reached at, and a label with no UI port is listed
+with no link. The installation holds two facts about a UI, its label and its UI
+port, so a UI that did not exist when this was written needs a row in the table
+above and nothing else.
 
-The band across the top carries the box's name, which is the one fact the
-installation holds and the thing you want to know on landing there. A footer
-links to [rails49.org](https://rails49.org/). The band is
+The band across the top carries the box name, or on a box with no certificate
+the box's hostname, which is the thing you want to know on landing there. A
+footer links to [rails49.org](https://rails49.org/). The band is
 [look](https://github.com/rails49/look)'s, from a copy in
 [`look/`](look/README.md).
 
 ## Turning the box off
 
-The `box` service answers two requests on every name the door serves.
-`GET /box` says whether this box can be turned off from here, as
+The `box` service answers two requests on every name and every UI port the door
+serves. `GET /box` says whether this box can be turned off from here, as
 `{"can_turn_off": true}` or `false`. `POST /box/off` answers `202` and turns it
 off, or answers `409` where it cannot. A UI makes the requests — `control` has
 the button; the page has none. A request from a page on another origin is refused
@@ -97,14 +135,21 @@ machine, not the Mac. Coming back takes a person at the box.
 Installing is prose, not a program: this is what is about to happen to your
 box, and you can read it before it does.
 
-You need docker, a name of your own in a zone you control, and an API token for
-that zone's DNS provider. No port is forwarded — the certificate is proved by
-writing a TXT record — and nothing inbound from the internet is needed.
+You need docker. For a box with a box name you also need a name of your own in a
+zone you control, and an API token for that zone's DNS provider. No port is
+forwarded — the certificate is proved by writing a TXT record — and nothing
+inbound from the internet is needed. A box with no certificate needs neither,
+does step 1 its own way, and skips step 3.
 
 **1. Point the name at the box.** An `A` record for the apex and one per label,
 each holding the box's address on your LAN. A public record holding a private
 address is the design rather than a trick: anyone may resolve the name, and it
 only works on the LAN.
+
+On a box with no certificate, reserve the box's address in your router instead,
+so the addresses people save keep working. `<hostname>.local` needs an mDNS
+responder on the box: Raspberry Pi OS ships one, and on Ubuntu Server install it
+with `sudo apt install avahi-daemon`.
 
 **2. Write the box's declaration.** As root, because every stack reads it and
 none of them should be able to rewrite it:
@@ -114,6 +159,9 @@ sudo install -d -m 755 /etc/rails49
 sudo install -m 644 box.env.example /etc/rails49/box.env
 sudo editor /etc/rails49/box.env
 ```
+
+For a box with no certificate, set `BOX_DOMAIN=` and leave `BOX_ACME_PROVIDER`
+out.
 
 **3. Write the door's file.** Same directory, tighter mode, and the door alone
 reads it:
@@ -141,6 +189,10 @@ certificate's remaining life, and needs only outbound HTTPS.
 
 A label with nothing serving it yet answers 404. That is the point: the name
 works, the certificate is real, and no railroad was installed to get there.
+
+On a box with no certificate the door serves 80 and the UI ports at once. Open
+`http://<hostname>.local` or `http://<address>`. The door's log names each
+`websecure` router it dropped; that is expected there.
 
 **5. Install what the box is for.** `control`, `dccex`, whatever this box has.
 Each is its own repository with its own compose, started against the same
@@ -238,8 +290,9 @@ hand-held throttle: a DCC++ over TCP connection whose host is the box, not a
 compose service name. Set it in DecoderPro once and save; it is part of the
 profile.
 
-It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN`, so put
-`jmri` in `BOX_UIS` to have the page list it. JMRI's own web server and raw VNC
+It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN` and on its UI
+port, 8083, so put `jmri` in `BOX_UIS` to have the page list it. Over plain
+HTTP noVNC shows a banner saying HTTPS is recommended, and works. JMRI's own web server and raw VNC
 are not reachable: the first is a browser's and is behind the door or nowhere,
 and the second is not a browser's at all.
 
@@ -274,7 +327,9 @@ docker compose --env-file /etc/rails49/box.env restart page  # page/ changed
     scripts/check.sh
 
 The gate, and what `main` moves by. It runs shellcheck over every shell script,
-`docker compose config` over every compose file, and the tests: one over the
-page the render script produces, one over the box's two requests, one over the
-compose files as data, one over what a deploy restarts. Nothing in it needs a
+`docker compose config` over every compose file with `BOX_DOMAIN` set, empty and
+unset, the page's render in the image it runs in for both kinds of box, and the
+tests: one over the page the render script produces, one over the box's two
+requests, one over the compose files as data and the door's script, one over
+what a deploy restarts. Nothing in it needs a
 box or a secret.

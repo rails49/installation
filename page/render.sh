@@ -5,12 +5,18 @@
 #
 #     BOX_DOMAIN=gleis49.org BOX_UIS="control jmri" ./page/render.sh
 #
-# One link per declared label, in the order the operator declared them: the
-# text is the label, the address is that label under the box's name. The apex
-# is not a label and is never listed — the page is what lives there.
+# One item per declared label, in the order the operator declared them; the
+# text is the label. The apex is not a label and is never listed — the page is
+# what lives there.
 #
-# The installation holds no other fact about any UI, so a UI that did not exist
-# when this was written needs no change here.
+# On a box with a box name each label links to that label under the box name.
+# On a box with no certificate (`BOX_DOMAIN` empty) each label links to its UI
+# port at `<hostname>.local`, and the page's script moves each link to the host
+# the page was reached at. A label with no UI port is listed with no link
+# there. The page's title and band carry the box name, or the box's hostname,
+# read from `HOSTNAME_FILE`.
+#
+# The installation holds two facts about a UI: its label and its UI port.
 #
 # `sh` rather than bash: the container this runs in is stock nginx, which has
 # none. Word splitting is what reads `BOX_UIS`, so it is left on deliberately.
@@ -18,17 +24,43 @@ set -eu
 
 here=$(dirname "$0")
 
-: "${BOX_DOMAIN:?the name this box is reached at, from /etc/rails49/box.env}"
+: "${BOX_DOMAIN?the name this box is reached at, empty for a box with no certificate, from /etc/rails49/box.env}"
 # A box that serves nothing is an ordinary box: the door is up, the page is
 # there, and it lists nothing yet.
 BOX_UIS=${BOX_UIS:-}
+
+# The UI ports: README's table, and the door's flags open the same ones.
+ui_port() {
+  case $1 in
+    control) echo 8081 ;;
+    dccex) echo 8082 ;;
+    jmri) echo 8083 ;;
+    occupancy) echo 8084 ;;
+  esac
+}
+
+if [ -n "$BOX_DOMAIN" ]; then
+  NAME=$BOX_DOMAIN
+else
+  NAME=$(cat "${HOSTNAME_FILE:-/host/hostname}")
+fi
+export NAME
 
 LINKS=""
 for label in $BOX_UIS; do
   [ -z "$LINKS" ] || LINKS="$LINKS
 "
-  LINKS="$LINKS$(printf '<li><a href="https://%s.%s">%s</a></li>' \
-    "$label" "$BOX_DOMAIN" "$label")"
+  port=$(ui_port "$label")
+  if [ -n "$BOX_DOMAIN" ]; then
+    item=$(printf '<li><a href="https://%s.%s">%s</a></li>' \
+      "$label" "$BOX_DOMAIN" "$label")
+  elif [ -n "$port" ]; then
+    item=$(printf '<li><a href="http://%s.local:%s" data-same-host>%s</a></li>' \
+      "$NAME" "$port" "$label")
+  else
+    item="<li>$label</li>"
+  fi
+  LINKS="$LINKS$item"
 done
 export LINKS
 
@@ -46,5 +78,5 @@ export LINKS
 # nothing to repeat as the literal it plainly is, so this ran green everywhere
 # except the only place it runs for real.
 awk '
-  { gsub(/\{\{BOX_DOMAIN\}\}/, ENVIRON["BOX_DOMAIN"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); print }
+  { gsub(/\{\{NAME\}\}/, ENVIRON["NAME"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); print }
 ' "$here/index.template.html"

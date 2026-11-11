@@ -12,13 +12,18 @@
  *
  * The files are read as written, with `${BOX_DOMAIN}` and the rest still in
  * them: what is asserted is that the declaration is where those values come
- * from.
+ * from. The door's script is the exception: it is run under `sh`, once per
+ * kind of box, with a `traefik` on PATH that prints the flags it was handed.
  */
 
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { parse } from "yaml";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
 
@@ -60,8 +65,50 @@ function labels(service: Node): Record<string, string> {
   );
 }
 
-/** The door's command line, which is the whole of its static configuration. */
-const door: string[] = installation.services.door.command;
+/** The door's script, as compose hands it to `sh`. `$$` is compose's spelling
+ *  of a `$` it leaves for the shell. */
+const doorScript: string = installation.services.door.command
+  .at(-1)
+  .replaceAll("$$", "$");
+
+/** A directory holding a `traefik` that prints its arguments, one per line. */
+const stub = mkdtempSync(join(tmpdir(), "door-"));
+writeFileSync(join(stub, "traefik"), '#!/bin/sh\nprintf "%s\\n" "$@"\n');
+chmodSync(join(stub, "traefik"), 0o755);
+afterAll(() => rmSync(stub, { recursive: true, force: true }));
+
+/** Runs the door's script under `sh` against `env` and nothing else from this
+ *  process's environment, and returns the flags it hands Traefik. */
+function doorWith(env: Record<string, string>) {
+  const run = spawnSync("sh", ["-c", doorScript], {
+    env: { PATH: `${stub}:/usr/bin:/bin`, ...env },
+    encoding: "utf8",
+  });
+  return {
+    status: run.status,
+    flags: run.stdout.split("\n").filter(Boolean),
+    stderr: run.stderr,
+  };
+}
+
+/** The flags on a box with a box name, which is the whole of the door's static
+ *  configuration there. */
+const door: string[] = doorWith({
+  BOX_DOMAIN: "example.org",
+  BOX_ACME_PROVIDER: "cloudflare",
+}).flags;
+
+/** The flags every box passes: the provider, and the page and each UI on its
+ *  UI port over plain HTTP. */
+const EVERY_BOX = [
+  "--providers.docker=true",
+  "--providers.docker.exposedByDefault=false",
+  "--entryPoints.web.address=:80",
+  "--entryPoints.control.address=:8081",
+  "--entryPoints.dccex.address=:8082",
+  "--entryPoints.jmri.address=:8083",
+  "--entryPoints.occupancy.address=:8084",
+];
 
 describe("the network every stack on the box shares", () => {
   it("is created here under the fixed name", () => {
@@ -103,16 +150,58 @@ describe("the network every stack on the box shares", () => {
 });
 
 describe("the door", () => {
-  it("answers on 443 and redirects 80 to it", () => {
-    expect(installation.services.door.ports).toEqual(["80:80", "443:443"]);
-    expect(door).toContain("--entryPoints.web.address=:80");
-    expect(door).toContain("--entryPoints.websecure.address=:443");
-    expect(door).toContain(
-      "--entryPoints.web.http.redirections.entryPoint.to=websecure",
+  it("publishes 80, 443 and every UI port", () => {
+    expect(installation.services.door.ports).toEqual([
+      "80:80",
+      "443:443",
+      "8081:8081",
+      "8082:8082",
+      "8083:8083",
+      "8084:8084",
+    ]);
+  });
+
+  it("is a shell that builds Traefik's flags and becomes Traefik", () => {
+    expect(installation.services.door.command.slice(0, 2)).toEqual(["/bin/sh", "-c"]);
+    expect(doorScript).toMatch(/^exec traefik "\$@"$/m);
+  });
+
+  it("reads the declaration from its environment, which compose fills", () => {
+    // Every `$` in the script is the shell's; compose interpolates nothing in
+    // it, so what the script tests is what the container was started with.
+    expect(installation.services.door.command.at(-1).replaceAll("$$", "")).not.toContain("$");
+    expect(installation.services.door.environment).toEqual({
+      BOX_DOMAIN: "${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}",
+      BOX_ACME_PROVIDER: "${BOX_ACME_PROVIDER-}",
+    });
+  });
+
+  it("with a box name answers on 443, redirects 80 to it, and serves every UI port", () => {
+    expect([...door].sort()).toEqual(
+      [
+        ...EVERY_BOX,
+        "--entryPoints.web.http.redirections.entryPoint.to=websecure",
+        "--entryPoints.web.http.redirections.entryPoint.scheme=https",
+        "--entryPoints.websecure.address=:443",
+        "--certificatesResolvers.le.acme.storage=/acme/acme.json",
+        "--certificatesResolvers.le.acme.dnsChallenge.provider=cloudflare",
+        "--certificatesResolvers.le.acme.dnsChallenge.resolvers=1.1.1.1:53,9.9.9.9:53",
+      ].sort(),
     );
-    expect(door).toContain(
-      "--entryPoints.web.http.redirections.entryPoint.scheme=https",
-    );
+  });
+
+  it("with no certificate serves 80 and every UI port, and nothing else", () => {
+    // No provider either: a box with no certificate has no DNS host to name.
+    const plain = doorWith({ BOX_DOMAIN: "" });
+    expect(plain.status).toBe(0);
+    expect([...plain.flags].sort()).toEqual([...EVERY_BOX].sort());
+  });
+
+  it("with a box name and no DNS provider stops and says which is missing", () => {
+    const refused = doorWith({ BOX_DOMAIN: "example.org" });
+    expect(refused.status).not.toBe(0);
+    expect(refused.flags).toEqual([]);
+    expect(refused.stderr).toContain("BOX_ACME_PROVIDER");
   });
 
   it("reads its routers off containers and out of no file", () => {
@@ -136,10 +225,8 @@ describe("the door", () => {
   });
 
   it("takes the DNS provider from the box's declaration", () => {
-    const provider = door.find((flag) =>
-      flag.startsWith("--certificatesResolvers.le.acme.dnsChallenge.provider="),
-    );
-    expect(provider).toMatch(/\$\{BOX_ACME_PROVIDER/);
+    const { flags } = doorWith({ BOX_DOMAIN: "example.org", BOX_ACME_PROVIDER: "route53" });
+    expect(flags).toContain("--certificatesResolvers.le.acme.dnsChallenge.provider=route53");
   });
 
   it("pins the resolvers it asks which zone a name is in", () => {
@@ -205,15 +292,28 @@ describe("the page", () => {
     expect(page["traefik.http.routers.page.tls.certresolver"]).toBe("le");
   });
 
+  it("is served over plain HTTP on 80, at whatever host it was reached", () => {
+    // The rule is written out: a docker router with none gets
+    // `Host(<container name>)`.
+    const page = labels(installation.services.page);
+    expect(page["traefik.http.routers.page-http.rule"]).toBe("PathPrefix(`/`)");
+    expect(page["traefik.http.routers.page-http.entrypoints"]).toBe("web");
+    expect(page["traefik.http.routers.page-http.tls"]).toBeUndefined();
+  });
+
   it("mounts the render script's directory and look's, not the files in them", () => {
     // A single-file bind mount binds the inode, and `git pull` replaces a file
     // rather than writing through it, so a container mounted at the script
     // would go on rendering from the one it started with (control#353). It is
-    // one character away from the mount that does not.
+    // one character away from the mount that does not. The box's hostname is
+    // the one file mount, and the one the render script reads by default.
     expect(installation.services.page.volumes).toEqual([
       "./page:/page:ro",
       "./look:/usr/share/nginx/html/look:ro",
+      "/etc/hostname:/host/hostname:ro",
     ]);
+    const script = readFileSync(new URL("page/render.sh", root), "utf8");
+    expect(script).toContain("${HOSTNAME_FILE:-/host/hostname}");
   });
 
   it("renders once at start and is a file from then on", () => {
@@ -252,6 +352,17 @@ describe("the box", () => {
     expect(router["traefik.http.routers.box.rule"]).toBe("PathPrefix(`/box`)");
     expect(router["traefik.http.routers.box.rule"]).not.toContain("Host");
     expect(router["traefik.http.routers.box.entrypoints"]).toBe("websecure");
+  });
+
+  it("is reached at /box over plain HTTP on 80 and every UI port", () => {
+    // A second router, because one with `tls=true` does not match plain HTTP.
+    // The same priority as the first, so it wins over each UI port's own.
+    expect(router["traefik.http.routers.box-http.rule"]).toBe("PathPrefix(`/box`)");
+    expect(router["traefik.http.routers.box-http.entrypoints"]).toBe(
+      "web,control,dccex,jmri,occupancy",
+    );
+    expect(router["traefik.http.routers.box-http.priority"]).toBe("100");
+    expect(router["traefik.http.routers.box-http.tls"]).toBeUndefined();
   });
 
   it("uses the certificate each name's own router already has", () => {
@@ -327,15 +438,19 @@ describe("JMRI", () => {
     expect(jmri.services.jmri.ports).toBeUndefined();
   });
 
-  it("is reachable at exactly one address, its label under the box's name", () => {
-    const routers = Object.keys(labels(jmri.services.jmri)).filter((label) =>
+  it("is reachable at its label under the box's name and on its UI port, and nowhere else", () => {
+    const router = labels(jmri.services.jmri);
+    const routers = Object.keys(router).filter((label) =>
       label.startsWith("traefik.http.routers."),
     );
     const named = new Set(routers.map((label) => label.split(".")[3]));
-    expect([...named]).toEqual(["jmri"]);
-    expect(labels(jmri.services.jmri)["traefik.http.routers.jmri.rule"]).toBe(
-      "Host(`jmri.${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}`)",
+    expect([...named]).toEqual(["jmri", "jmri-http"]);
+    expect(router["traefik.http.routers.jmri.rule"]).toBe(
+      "Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)",
     );
+    expect(router["traefik.http.routers.jmri-http.rule"]).toBe("PathPrefix(`/`)");
+    expect(router["traefik.http.routers.jmri-http.entrypoints"]).toBe("jmri");
+    expect(router["traefik.http.routers.jmri-http.tls"]).toBeUndefined();
   });
 
   it("gets a fresh /tmp on every start", () => {
@@ -391,12 +506,67 @@ describe("JMRI's start command", () => {
 
 describe("a stack started without the box's declaration", () => {
   it("is told so rather than coming up half named", () => {
-    // `${BOX_DOMAIN}` unset is an empty host rule: a door with a router for
-    // no name, a certificate never asked for, and nothing saying why.
+    // `${BOX_DOMAIN}` unset is a door that cannot say which kind of box it
+    // is. Empty is a box with no certificate, so the guard refuses unset and
+    // admits empty: `?`, not `:?`. The gate runs compose over both.
     for (const file of ["compose.yaml", "jmri/compose.yaml"]) {
       const text = readFileSync(new URL(file, root), "utf8");
       expect(text, file).toContain(`--env-file ${DECLARATION}`);
-      expect(text, file).toMatch(/\$\{BOX_DOMAIN:\?/);
+      expect(text, file).toMatch(/\$\{BOX_DOMAIN\?/);
+      expect(text, file).not.toMatch(/\$\{BOX_DOMAIN:\?/);
     }
+  });
+});
+
+describe("the UI ports", () => {
+  /** README's table, one row per entry point: `[label, entry point, port]`,
+   *  with no label for the page's row. */
+  const readme = readFileSync(new URL("README.md", root), "utf8");
+  const table = [
+    ...readme.matchAll(/^\| (?:`([a-z]+)`|\(the page\)) \| `([a-z]+)` \| (\d+) \|$/gm),
+  ].map(([, label, entryPoint, port]) => [label, entryPoint!, Number(port)] as const);
+  const uis = table.filter(([label]) => label !== undefined);
+
+  it("are a table in the README, the page's 80 and one row per label", () => {
+    expect(table[0]).toEqual([undefined, "web", 80]);
+    expect(uis.length).toBeGreaterThan(0);
+    // The entry point is named after the label, which stacks in other
+    // repositories rely on.
+    for (const [label, entryPoint] of uis) expect(entryPoint).toBe(label);
+  });
+
+  it("are what the door opens and publishes, on every box", () => {
+    const opened = doorWith({ BOX_DOMAIN: "" }).flags.flatMap((flag) => {
+      const at = flag.match(/^--entryPoints\.([a-z]+)\.address=:(\d+)$/);
+      return at ? [[at[1], Number(at[2])]] : [];
+    });
+    expect(opened).toEqual(table.map(([, entryPoint, port]) => [entryPoint, port]));
+    for (const [, , port] of table) {
+      expect(installation.services.door.ports).toContain(`${port}:${port}`);
+    }
+  });
+
+  it("are what the page links on a box with no certificate", () => {
+    const hostname = join(stub, "hostname");
+    writeFileSync(hostname, "shed\n");
+    const html = spawnSync(fileURLToPath(new URL("page/render.sh", root)), {
+      env: {
+        PATH: "/usr/bin:/bin",
+        BOX_DOMAIN: "",
+        BOX_UIS: uis.map(([label]) => label).join(" "),
+        HOSTNAME_FILE: hostname,
+      },
+      encoding: "utf8",
+    }).stdout;
+    const linked = [...html.matchAll(/<a href="http:\/\/shed\.local:(\d+)"[^>]*>([a-z]+)<\/a>/g)].map(
+      ([, port, label]) => [label, Number(port)],
+    );
+    expect(linked).toEqual(uis.map(([label, , port]) => [label, port]));
+  });
+
+  it("each reach the box's own requests", () => {
+    expect(labels(installation.services.box)["traefik.http.routers.box-http.entrypoints"]).toBe(
+      table.map(([, entryPoint]) => entryPoint).join(","),
+    );
   });
 });
