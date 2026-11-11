@@ -5,7 +5,8 @@
 #
 #   shell scripts  checked with shellcheck
 #   compose files  parsed with `docker compose config`
-#   the box        its script asked once in the image that runs it
+#   workflows      checked with actionlint
+#   the box        its script asked once in the stock image it is built on
 #   the page       look-check over it
 #   the tests      tsc over them, then vitest
 #
@@ -44,6 +45,12 @@ if [ -n "$shell_files" ]; then
   fi
 fi
 
+# The workflows, with the shellcheck actionlint's image carries over each
+# `run:`.
+if [ -n "$(git ls-files '.github/workflows/*.yml')" ]; then
+  run actionlint docker run --rm -v "$ROOT:/repo:ro" -w /repo rhysd/actionlint:1.7.12
+fi
+
 # Each compose file three ways. Against the example declaration, which is what
 # a box with a box name writes to `/etc/rails49/box.env`. With `BOX_DOMAIN`
 # empty and no provider, which is a box with no certificate. And with
@@ -71,10 +78,10 @@ for f in $compose_files; do
 done
 
 # The page rendered by the awk that will render it. Everything above reads the
-# files; this one runs the script in the image the box runs it in, because the
-# difference between that awk and a development machine's is exactly what the
-# reading missed: a regex GNU awk accepts and busybox rejects took the page
-# down on the first box it reached, and nothing here saw it.
+# files; this one runs the script in the stock image the page is built on,
+# because the difference between that awk and a development machine's is
+# what the reading missed: a regex GNU awk accepts and busybox rejects
+# took the page down on the first box it reached, and nothing here saw it.
 if [ -f page/render.sh ]; then
   # The page in both kinds of box. With no certificate it reads the hostname
   # the way compose mounts it. Each has to hold a link with its UI port and a
@@ -104,7 +111,7 @@ if [ -f page/render.sh ]; then
   run look-check pnpm --package=github:rails49/look#v0.10.0 dlx look-check page
 fi
 
-# The box's script in the image that runs it, whose node is older than a
+# The box's script in the stock image it is built on, whose node is older than a
 # development machine's, and the `nsenter` it turns the box off with. The tests
 # cover what it answers; this asks it one question under that node, with an
 # `Origin`, which is the path through the newest API it uses.

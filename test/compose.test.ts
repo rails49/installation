@@ -6,9 +6,8 @@
  * reaching every name on a real box, which is a step of the cutover and is
  * written as one rather than dressed up as automation. What is worth holding
  * here is what a reader cannot see is wrong: a network named by the project
- * rather than fixed, a mount one character away from binding an inode, a door
- * whose redirect takes more than the box's names, an ACME resolver left to
- * whatever the box's router answers.
+ * rather than fixed, a door whose redirect takes more than the box's names,
+ * an ACME resolver left to whatever the box's router answers.
  *
  * The files are read as written, with `${BOX_DOMAIN}` and the rest still in
  * them: what is asserted is that the declaration is where those values come
@@ -329,17 +328,13 @@ describe("the page", () => {
     expect(page["traefik.http.routers.page-http.tls"]).toBeUndefined();
   });
 
-  it("mounts the render script's directory and look's, not the files in them", () => {
-    // A single-file bind mount binds the inode, and `git pull` replaces a file
-    // rather than writing through it, so a container mounted at the script
-    // would go on rendering from the one it started with (control#353). It is
-    // one character away from the mount that does not. The box's hostname is
-    // the one file mount, and the one the render script reads by default.
-    expect(installation.services.page.volumes).toEqual([
-      "./page:/page:ro",
-      "./look:/usr/share/nginx/html/look:ro",
-      "/etc/hostname:/host/hostname:ro",
-    ]);
+  it("carries the render script and look's bundle in its image, and mounts only the hostname", () => {
+    // The box's hostname is read by the render script by default.
+    expect(installation.services.page.volumes).toEqual(["/etc/hostname:/host/hostname:ro"]);
+    const dockerfile = readFileSync(new URL("page/Dockerfile", root), "utf8");
+    expect(dockerfile).toMatch(/^FROM nginx:alpine$/m);
+    expect(dockerfile).toMatch(/^COPY page\/ \/page\/$/m);
+    expect(dockerfile).toMatch(/^COPY look\/ \/usr\/share\/nginx\/html\/look\/$/m);
     const script = readFileSync(new URL("page/render.sh", root), "utf8");
     expect(script).toContain("${HOSTNAME_FILE:-/host/hostname}");
   });
@@ -362,17 +357,19 @@ describe("the box", () => {
   const box = installation.services.box;
   const router = labels(box);
 
-  it("runs the stock node image in the box's own PID namespace", () => {
+  it("runs node:22-slim in the box's own PID namespace", () => {
     // `nsenter` into PID 1 is how it reaches the box's systemd.
-    expect(box.image).toBe("node:22-slim");
+    const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
+    expect(dockerfile).toMatch(/^FROM node:22-slim$/m);
     expect(box.privileged).toBe(true);
     expect(box.pid).toBe("host");
     expect(box.restart).toBe("unless-stopped");
   });
 
-  it("mounts the script's directory, not the script", () => {
-    // The page's reason (control#353): a file mount binds the inode.
-    expect(box.volumes).toEqual(["./box:/box:ro"]);
+  it("carries the script in its image and mounts nothing", () => {
+    const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
+    expect(dockerfile).toMatch(/^COPY box\/ \/box\/$/m);
+    expect(box.volumes).toBeUndefined();
     expect(box.command).toEqual(["node", "/box/server.mjs"]);
   });
 
@@ -434,19 +431,44 @@ describe("the box", () => {
   });
 });
 
-describe("nothing here is built but JMRI", () => {
-  it("runs stock images and publishes none", () => {
-    for (const service of [
-      installation.services.door,
-      installation.services.page,
-      installation.services.box,
-    ]) {
-      expect(service.image).toBeTruthy();
-      expect(service.build).toBeUndefined();
+describe("the images this repository builds", () => {
+  it("are the page's and the box's, each named by its commit on GHCR", () => {
+    // `dev` is what a clone that has not been told a commit builds under.
+    for (const name of ["page", "box"]) {
+      expect(installation.services[name].image, name).toBe(
+        `ghcr.io/rails49/installation-${name}:\${INSTALLATION_COMMIT:-dev}`,
+      );
     }
   });
 
-  it("builds JMRI, which no other repository owns, as the person", () => {
+  it("are built here from a Dockerfile of each one's own", () => {
+    for (const name of ["page", "box"]) {
+      expect(installation.services[name].build, name).toEqual({
+        context: ".",
+        dockerfile: `${name}/Dockerfile`,
+        args: { INSTALLATION_COMMIT: "${INSTALLATION_COMMIT:-}" },
+      });
+    }
+  });
+
+  it("carry the commit they were built from as their revision", () => {
+    // Empty and not `dev` when no commit was named: a revision that reads
+    // like a commit and is not one is worse than none.
+    for (const name of ["page", "box"]) {
+      const dockerfile = readFileSync(new URL(`${name}/Dockerfile`, root), "utf8");
+      expect(dockerfile, name).toMatch(/^ARG INSTALLATION_COMMIT=$/m);
+      expect(dockerfile, name).toMatch(
+        /^LABEL org\.opencontainers\.image\.revision=\$INSTALLATION_COMMIT$/m,
+      );
+    }
+  });
+
+  it("leave the door stock", () => {
+    expect(installation.services.door.image).toMatch(/^traefik:/);
+    expect(installation.services.door.build).toBeUndefined();
+  });
+
+  it("include JMRI, which no other repository owns, built on the box as the person", () => {
     // The stock image fixes its user at 61000, and a restore of the store
     // writes JMRI's profile as the person (rails49/.github ADR-0013).
     expect(jmri.services.jmri.image).toBeUndefined();
@@ -455,8 +477,12 @@ describe("nothing here is built but JMRI", () => {
       TC49_GID: "${TC49_GID:-1000}",
     });
     const dockerfile = readFileSync(new URL("jmri/Dockerfile", root), "utf8");
-    expect(dockerfile).toMatch(/^FROM jsa1987\/jmri-docker:stable$/m);
     expect(dockerfile).toMatch(/usermod -o -u "\$TC49_UID"/);
+  });
+
+  it("build JMRI on its stock image pinned by digest", () => {
+    const dockerfile = readFileSync(new URL("jmri/Dockerfile", root), "utf8");
+    expect(dockerfile).toMatch(/^FROM jsa1987\/jmri-docker:stable@sha256:[0-9a-f]{64}$/m);
   });
 });
 

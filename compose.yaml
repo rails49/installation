@@ -1,9 +1,9 @@
 # The installation: the door in front of everything a browser reaches on this
 # box, the page listing what the box serves, and the box's own two requests.
-# Nothing here is about a railroad, and nothing here is built — every image is
-# stock.
+# Nothing here is about a railroad. The door is stock; the page and the box are
+# this repository's images, `installation-page` and `installation-box`.
 #
-#     docker compose --env-file /etc/rails49/box.env up -d
+#     docker compose --env-file /etc/rails49/box.env up -d --build
 #
 # `--env-file` is how the box's declaration reaches this file. Compose reads it
 # for the labels and for the door's and the page's environment; the door reads
@@ -134,26 +134,28 @@ services:
       - rails49
 
   # The page at the apex: one link per label in the declaration, rendered once
-  # when this container starts and a static file from then on. Stock nginx —
-  # this repository builds and publishes no image, because no repository in the
-  # project publishes one and the page is not the place to start.
+  # when this container starts and a static file from then on. Stock nginx with
+  # `page/` and `look/` copied in (`page/Dockerfile`); `look/` is served as it
+  # is, at `/look/`.
+  #
+  # Named by the commit it was built from, and the name never moves. `dev` is
+  # what a clone that has not been told a commit builds under; `deploy.sh`
+  # names the commit, and a release names the image by its digest.
   page:
-    image: nginx:alpine
+    image: ghcr.io/rails49/installation-page:${INSTALLATION_COMMIT:-dev}
+    build:
+      context: .
+      dockerfile: page/Dockerfile
+      # The same commit to the image's revision label, empty when none is named.
+      args:
+        INSTALLATION_COMMIT: ${INSTALLATION_COMMIT:-}
     restart: unless-stopped
     environment:
       BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
       BOX_UIS: ${BOX_UIS}
-    # The directory, not the script inside it. A single-file bind mount binds
-    # the inode, and `git pull` replaces a file rather than writing through it,
-    # so a container mounted at the file would go on rendering from the script
-    # it started with (control#353). Mounting the directory is one character
-    # away from the mount that does not, so a test holds it here. `look/` is
-    # served as it is, at `/look/`, and mounted as a directory for the same
-    # reason. The box's hostname is the page's title and band on a box with no
+    # The box's hostname is the page's title and band on a box with no
     # certificate, and is read once, at start.
     volumes:
-      - ./page:/page:ro
-      - ./look:/usr/share/nginx/html/look:ro
       - /etc/hostname:/host/hostname:ro
     # The image's own entrypoint still runs, so this is what it execs: render
     # once, then be nginx. `exec` because nginx is what this container is —
@@ -179,18 +181,21 @@ services:
 
   # The box's own two requests, `GET /box` and `POST /box/off`: whether it can
   # be turned off from here, and turning it off. A UI asks; the installation
-  # answers (ADR-0005). Stock node and one script, mounted as a
-  # directory for the page's reason above.
+  # answers (ADR-0005). Stock node with `box/` copied in (`box/Dockerfile`),
+  # named by its commit as the page is.
   #
   # Privileged and in the box's PID namespace, because turning off is
   # `nsenter` into PID 1 and `systemctl poweroff` there.
   box:
-    image: node:22-slim
+    image: ghcr.io/rails49/installation-box:${INSTALLATION_COMMIT:-dev}
+    build:
+      context: .
+      dockerfile: box/Dockerfile
+      args:
+        INSTALLATION_COMMIT: ${INSTALLATION_COMMIT:-}
     restart: unless-stopped
     privileged: true
     pid: host
-    volumes:
-      - ./box:/box:ro
     command:
       - node
       - /box/server.mjs
