@@ -420,8 +420,8 @@ page is built on for both kinds of box, and the tests: one over the page the
 render script produces, one over the box's two requests and the origin check,
 one over the compose files as data and the door's script, one over what a
 deploy builds and refuses, one over the images workflow as data, and one over
-the release's number and its pinned box files. Nothing in
-it needs a box or a secret, and it builds no image.
+the release's number and its pinned box files. Nothing in it needs a box or
+a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and
 `installation-box` at one commit, for amd64 and arm64, and pushes them to
