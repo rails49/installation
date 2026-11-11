@@ -51,6 +51,11 @@ _Avoid_: config, env file, settings, environment
 **Installation**:
 As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md); here also the compose project that provides it.
 
+**Release**:
+Short for **installation release**, as in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
+The short form is used only in this repository.
+_Avoid_: version, tag, deployment
+
 **Door**:
 As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSARY.md).
 
