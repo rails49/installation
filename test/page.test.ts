@@ -52,28 +52,28 @@ function items(html: string) {
 }
 
 /** The page's own script run against its links, as a browser that reached it
- *  at `host` would. Returns each link's address afterwards. */
-function browse(html: string, host: string): string[] {
-  const anchors = [...html.matchAll(/<li><a href="([^"]+)"([^>]*)>/g)].map(([, href, attrs]) => ({
-    url: new URL(href!),
-    attrs: attrs!,
-  }));
+ *  at `url` would. Returns each link's address afterwards. */
+function browse(html: string, url: string): string[] {
+  const anchors = [...html.matchAll(/<li><a href="([^"]+)"([^>]*)>/g)].map(([, href, attrs]) => {
+    const port = attrs!.match(/ data-ui-port="(\d+)"/)?.[1];
+    return { href: href!, dataset: port === undefined ? {} : { uiPort: port } };
+  });
   const document = {
     querySelectorAll(selector: string) {
-      const attr = selector.match(/^a\[([\w-]+)\]$/)![1]!;
-      return anchors.filter((a) => a.attrs.includes(attr)).map((a) => a.url);
+      expect(selector).toBe("a[data-ui-port]");
+      return anchors.filter((a) => "uiPort" in a.dataset);
     },
   };
   const script = html.match(/<script>([\s\S]*?)<\/script>/)![1]!;
-  new Function("document", "location", script)(document, { hostname: host });
-  return anchors.map((a) => a.url.href);
+  new Function("document", "location", script)(document, new URL(url));
+  return anchors.map((a) => a.href);
 }
 
 const page = render(DECLARED);
 
 /** Every link in the page's list, in the order it draws them, as
  *  `[address, text]`. */
-const links = [...page.matchAll(/<li><a href="([^"]+)">([^<]*)<\/a><\/li>/g)].map(
+const links = [...page.matchAll(/<li><a href="([^"]+)"[^>]*>([^<]*)<\/a><\/li>/g)].map(
   ([, href, text]) => [href!, text!] as const,
 );
 
@@ -102,6 +102,28 @@ describe("the links the page lists", () => {
     const addresses = links.map(([href]) => href);
     expect(addresses).not.toContain(`https://${DOMAIN}`);
     expect(addresses).not.toContain("/");
+  });
+
+  it("go to each label's UI port at the page's host when the page is opened over HTTP", () => {
+    // Port 80 redirects only the box name and its labels, so the page is
+    // served over HTTP at an address or a `.local` name.
+    expect(browse(page, "http://192.168.1.20/")).toEqual([
+      "http://192.168.1.20:8081",
+      "http://192.168.1.20:8084",
+      "http://192.168.1.20:8083",
+    ]);
+    expect(browse(page, "http://shed.local/")[0]).toBe("http://shed.local:8081");
+  });
+
+  it("stay under the box name when the page is opened over HTTPS", () => {
+    expect(browse(page, `https://${DOMAIN}/`)).toEqual(UIS.map((ui) => `https://${ui}.${DOMAIN}`));
+  });
+
+  it("stay under the box name over HTTP for a label with no UI port", () => {
+    expect(browse(render("control turntable"), "http://192.168.1.20/")).toEqual([
+      "http://192.168.1.20:8081",
+      `https://turntable.${DOMAIN}`,
+    ]);
   });
 
   it("are absent on a box that serves nothing yet", () => {
@@ -150,13 +172,13 @@ describe("the page on a box with no certificate", () => {
   });
 
   it("points each link at the host the page was reached at", () => {
-    expect(browse(plain, "192.168.1.20")).toEqual([
-      "http://192.168.1.20:8081/",
-      "http://192.168.1.20:8084/",
-      "http://192.168.1.20:8083/",
-      "http://192.168.1.20:8082/",
+    expect(browse(plain, "http://192.168.1.20/")).toEqual([
+      "http://192.168.1.20:8081",
+      "http://192.168.1.20:8084",
+      "http://192.168.1.20:8083",
+      "http://192.168.1.20:8082",
     ]);
-    expect(browse(plain, "shed.local")[0]).toBe("http://shed.local:8081/");
+    expect(browse(plain, "http://shed.local/")[0]).toBe("http://shed.local:8081");
   });
 
   it("lists a label with no UI port as text with no link", () => {
@@ -171,9 +193,5 @@ describe("the page on a box with no certificate", () => {
     expect(plain.match(/<look-band>([\s\S]*?)<\/look-band>/)?.[1]).toBe(
       `<look-about name="${HOSTNAME}"></look-about>`,
     );
-  });
-
-  it("leaves the links alone on a box with a box name", () => {
-    expect(browse(page, DOMAIN)).toEqual(UIS.map((ui) => `https://${ui}.${DOMAIN}/`));
   });
 });

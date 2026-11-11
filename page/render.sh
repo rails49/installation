@@ -11,12 +11,13 @@
 #
 # On a box with a box name each label links to that label under the box name.
 # On a box with no certificate (`BOX_DOMAIN` empty) each label links to its UI
-# port at `<hostname>.local`, and the page's script moves each link to the host
-# the page was reached at. A label with no UI port is listed with no link
-# there. The page's title and band carry the box name, or the box's hostname,
-# read from `HOSTNAME_FILE`.
+# port at `<hostname>.local`, and a label with no UI port is listed with no
+# link. A link to a label with a UI port carries that port as `data-ui-port`:
+# opened over plain HTTP, the page's script moves the link to that port at the
+# host the page was reached at. The page's title and band carry the box name,
+# or the box's hostname, read from `HOSTNAME_FILE`.
 #
-# The installation holds two facts about a UI: its label and its UI port.
+# The page holds two facts about a UI: its label and its UI port.
 #
 # `sh` rather than bash: the container this runs in is stock nginx, which has
 # none. Word splitting is what reads `BOX_UIS`, so it is left on deliberately.
@@ -51,12 +52,15 @@ for label in $BOX_UIS; do
   [ -z "$LINKS" ] || LINKS="$LINKS
 "
   port=$(ui_port "$label")
-  if [ -n "$BOX_DOMAIN" ]; then
+  if [ -n "$BOX_DOMAIN" ] && [ -n "$port" ]; then
+    item=$(printf '<li><a href="https://%s.%s" data-ui-port="%s">%s</a></li>' \
+      "$label" "$BOX_DOMAIN" "$port" "$label")
+  elif [ -n "$BOX_DOMAIN" ]; then
     item=$(printf '<li><a href="https://%s.%s">%s</a></li>' \
       "$label" "$BOX_DOMAIN" "$label")
   elif [ -n "$port" ]; then
-    item=$(printf '<li><a href="http://%s.local:%s" data-same-host>%s</a></li>' \
-      "$NAME" "$port" "$label")
+    item=$(printf '<li><a href="http://%s.local:%s" data-ui-port="%s">%s</a></li>' \
+      "$NAME" "$port" "$port" "$label")
   else
     item="<li>$label</li>"
   fi

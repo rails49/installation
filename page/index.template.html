@@ -56,9 +56,14 @@
 <footer><a href="https://rails49.org/">rails49.org</a></footer>
 </look-shell>
 <script>
-  // On a box with no certificate a link names its UI port, and its host is
-  // whatever this page was reached at: an address or `<hostname>.local`.
-  for (const a of document.querySelectorAll("a[data-same-host]")) a.hostname = location.hostname;
+  // Over plain HTTP a link goes to its UI port at whatever host this page was
+  // reached at: an address or `<hostname>.local`. Over HTTPS it keeps its
+  // label under the box name.
+  if (location.protocol !== "https:") {
+    for (const a of document.querySelectorAll("a[data-ui-port]")) {
+      a.href = `http://${location.hostname}:${a.dataset.uiPort}`;
+    }
+  }
 </script>
 </body>
 </html>

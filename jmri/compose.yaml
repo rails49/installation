@@ -74,6 +74,16 @@ services:
       # the door drops it and serves this one.
       - traefik.http.routers.jmri-http.rule=PathPrefix(`/`)
       - traefik.http.routers.jmri-http.entrypoints=jmri
+      # noVNC's websocket, on both ways in, behind the installation's origin
+      # check. Each rule is longer than the one above it, which is what puts
+      # it first.
+      - traefik.http.routers.jmri-ws.rule=Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)
+      - traefik.http.routers.jmri-ws.entrypoints=websecure
+      - traefik.http.routers.jmri-ws.tls.certresolver=le
+      - traefik.http.routers.jmri-ws.middlewares=same-origin@docker
+      - traefik.http.routers.jmri-ws-http.rule=PathPrefix(`/websockify`)
+      - traefik.http.routers.jmri-ws-http.entrypoints=jmri
+      - traefik.http.routers.jmri-ws-http.middlewares=same-origin@docker
       # Named, because the image exposes three ports and the door would
       # otherwise pick one of them for us.
       - traefik.http.services.jmri.loadbalancer.server.port=6901
