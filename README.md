@@ -399,7 +399,7 @@ a GitHub pre-release with `manifest.json`, which now also has each runner's
 Docker Engine version, and `box-files.tar.gz`.
 
 **2. Check it by hand.** Install the pre-release on `gleis49` and
-`classifier49` and run trains on it for as long as it takes
+`pi49` and run trains on it for as long as it takes
 ([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
 8). Add `gleis49`'s Docker Engine version (`docker version --format
 '{{.Server.Version}}'`) to the release notes.
