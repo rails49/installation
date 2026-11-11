@@ -1,5 +1,7 @@
 # The installation turns the box off
 
+*The stock image and the mounted `box/` are superseded by [#62](https://github.com/rails49/installation/issues/62): `box` runs `installation-box`, with `box/` copied in.*
+
 [rails49/.github#32](https://github.com/rails49/.github/issues/32) made turning
 the box off the installation's: a UI may ask for it, and whether this box can
 be turned off is the installation's answer. It fixed the two requests and the

@@ -1,0 +1,7 @@
+# What the page and the box are built from, and nothing else. The Dockerfiles
+# are read all the same; they are only kept out of the images.
+*
+!page
+!look
+!box
+**/Dockerfile

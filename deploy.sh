@@ -4,6 +4,9 @@
 # maintainer's convenience for the routine case, not the install path —
 # installing is prose, and README.md is where it is written.
 #
+# On the box it pulls, refuses a clone that is not clean, and builds the page
+# and the box there under the commit it pulled. Nothing is pulled from GHCR.
+#
 #     ./deploy.sh ttmetro@gleis49.org
 #     RAILS49_BOX=ttmetro@gleis49.org ./deploy.sh
 #
@@ -36,32 +39,28 @@ set -euo pipefail
 # The heredoc is this shell's stdin, so a prompt for a git credential would
 # read the rest of the script as the answer. Fail instead.
 export GIT_TERMINAL_PROMPT=0
-# Each `./<dir>` a service in compose.yaml bind-mounts, as `<dir>:<service>`.
-# test/deploy.test.ts checks this list against the compose file.
-mounts="box:box page:page look:page"
 cd ~/installation
-before=$(git rev-parse HEAD)
+# The page and the box are named by the commit they are built from. A clone
+# with changes in it is refused before the pull and left as it was.
+dirty=$(git status --porcelain)
+if [ -n "$dirty" ]; then
+  echo "~/installation is not clean, and its images would be named after a" >&2
+  echo "commit that is not what was built:" >&2
+  echo "$dirty" >&2
+  exit 1
+fi
 git pull
+commit=$(git rev-parse HEAD)
 # The box's own declaration, at the path every stack reads. Not a copy in this
 # clone: a value that lives in one clone makes that clone a prerequisite of
 # every other stack.
 #
-# `--remove-orphans` because this stack holds 443: a service renamed between
-# two versions of the file leaves a container bound to that port, and the one
-# replacing it cannot start.
-docker compose --env-file /etc/rails49/box.env up -d --remove-orphans
-# `up -d` recreates a container only when its configuration changed. A service
-# reads its mounted directory when it starts, so one whose directory the pull
-# changed is restarted, once.
-restart=""
-for mount in $mounts; do
-  dir=${mount%:*} service=${mount#*:}
-  case " $restart " in *" $service "*) continue ;; esac
-  git diff --quiet "$before" HEAD -- "$dir" || restart="$restart $service"
-done
-if [ -n "$restart" ]; then
-  docker compose --env-file /etc/rails49/box.env restart $restart
-fi
+# `--build` builds the page and the box here, under the commit. `up -d` then
+# recreates each whose image changed. `--remove-orphans` because this stack
+# holds 443: a service renamed between two versions of the file leaves a
+# container bound to that port, and the one replacing it cannot start.
+INSTALLATION_COMMIT=$commit \
+  docker compose --env-file /etc/rails49/box.env up -d --build --remove-orphans
 REMOTE
 
 "$(dirname "$0")/scripts/probe.sh" "$box" || echo "probe: some answers were not the ones wanted, above" >&2

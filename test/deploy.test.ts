@@ -1,17 +1,17 @@
 /**
- * What `./deploy.sh` does on the box after the pull.
+ * What `./deploy.sh` does on the box.
  *
  * The part that runs there is the heredoc it feeds to `bash -s`. It is run
  * here the same way, in a clone that pulls from a scratch upstream, with
- * `docker` on PATH replaced by a script that writes down what it was asked.
+ * `docker` on PATH replaced by a script that writes down what it was asked
+ * and the commit it was handed.
  */
 
-import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
@@ -25,6 +25,7 @@ const remote = deploy.match(/<<'REMOTE'\n([\s\S]*?)\nREMOTE\n/)![1]!;
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", args, {
     cwd,
+    encoding: "utf8",
     env: {
       ...process.env,
       GIT_AUTHOR_NAME: "test",
@@ -36,92 +37,76 @@ const git = (cwd: string, ...args: string[]) =>
   });
 
 /** Runs the deploy in a scratch home whose clone's upstream has gained a
- *  commit that touches `changed`, and returns what docker was asked, one call
- *  per line. */
-function deployChanging(...changed: string[]): string[] {
+ *  commit, after `before` has done what it likes to the clone. Returns the
+ *  upstream's head, what docker was asked (one call per line, each prefixed
+ *  with the `INSTALLATION_COMMIT` it saw), the exit status and stderr. */
+function deployed(before: (clone: string) => void = () => {}) {
   const scratch = mkdtempSync(join(tmpdir(), "deploy-"));
   const upstream = join(scratch, "upstream");
-  const home = join(scratch, "home");
+  const clone = join(scratch, "home", "installation");
   const bin = join(scratch, "bin");
   const log = join(scratch, "docker.log");
 
-  for (const file of ["box/server.mjs", "page/render.sh", "look/look.bundle.js", "README.md"]) {
-    mkdirSync(join(upstream, file, ".."), { recursive: true });
-    writeFileSync(join(upstream, file), "before\n");
-  }
+  mkdirSync(join(upstream, "page"), { recursive: true });
+  writeFileSync(join(upstream, "page", "render.sh"), "before\n");
   git(upstream, "init", "-q", "-b", "main");
   git(upstream, "add", ".");
   git(upstream, "commit", "-q", "-m", "before");
-  mkdirSync(home);
-  git(home, "clone", "-q", upstream, "installation");
+  mkdirSync(join(scratch, "home"));
+  git(join(scratch, "home"), "clone", "-q", upstream, "installation");
 
-  for (const file of changed) writeFileSync(join(upstream, file), "after\n");
+  writeFileSync(join(upstream, "page", "render.sh"), "after\n");
   git(upstream, "commit", "-q", "-am", "after");
+  const head = git(upstream, "rev-parse", "HEAD").trim();
+
+  before(clone);
 
   mkdirSync(bin);
-  writeFileSync(join(bin, "docker"), `#!/bin/sh\necho "$*" >> '${log}'\n`);
+  writeFileSync(
+    join(bin, "docker"),
+    `#!/bin/sh\necho "INSTALLATION_COMMIT=$INSTALLATION_COMMIT $*" >> '${log}'\n`,
+  );
   chmodSync(join(bin, "docker"), 0o755);
 
   try {
-    execFileSync("bash", ["-s"], {
+    const run = spawnSync("bash", ["-s"], {
       input: remote,
-      env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}` },
-      stdio: ["pipe", "pipe", "pipe"],
+      encoding: "utf8",
+      env: { ...process.env, HOME: join(scratch, "home"), PATH: `${bin}:${process.env.PATH}` },
     });
-    return readFileSync(log, "utf8").trimEnd().split("\n");
+    const calls = existsSync(log) ? readFileSync(log, "utf8").trimEnd().split("\n") : [];
+    return { head, calls, status: run.status, stderr: run.stderr };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 }
 
-/** The restarts docker was asked for, by service. */
-function restarted(calls: string[]): string[] {
-  return calls
-    .filter((call) => call.includes(" restart"))
-    .flatMap((call) => call.split(" restart ")[1]!.split(" "));
-}
-
-/** Each `./<dir>` bind mount of each service in the installation's compose
- *  file, as `<dir>:<service>`. */
-function composeMounts(): string[] {
-  const installation = parse(readFileSync(new URL("compose.yaml", root), "utf8"));
-  return Object.entries<{ volumes?: unknown[] }>(installation.services).flatMap(
-    ([service, { volumes = [] }]) =>
-      volumes
-        .filter((volume): volume is string => typeof volume === "string")
-        .filter((volume) => volume.startsWith("./"))
-        .map((volume) => `${volume.slice(2).split(":")[0]}:${service}`),
-  );
-}
-
-describe("the directories the deploy compares", () => {
-  it("are the compose file's ./<dir> bind mounts, each with its service", () => {
-    const listed = deploy.match(/^mounts="([^"]*)"$/m)?.[1]?.split(" ");
-    expect(listed?.sort()).toEqual(composeMounts().sort());
-  });
-});
-
 describe("a deploy", () => {
-  it("restarts the `box` service, and not `page`, after a pull that changes box/", () => {
-    expect(restarted(deployChanging("box/server.mjs"))).toEqual(["box"]);
+  it("builds the page and the box under the commit it pulled, and brings them up", () => {
+    const { head, calls, status } = deployed();
+    expect(status).toBe(0);
+    expect(calls).toEqual([
+      `INSTALLATION_COMMIT=${head} compose --env-file /etc/rails49/box.env up -d --build --remove-orphans`,
+    ]);
   });
 
-  it("restarts `page`, and not the `box` service, after a pull that changes page/", () => {
-    expect(restarted(deployChanging("page/render.sh"))).toEqual(["page"]);
+  it("refuses a clone with a changed file, and builds nothing", () => {
+    // The image would be named after a commit that is not what was built.
+    const { calls, status, stderr } = deployed((clone) =>
+      writeFileSync(join(clone, "page", "render.sh"), "changed on the box\n"),
+    );
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("not clean");
+    expect(stderr).toContain("page/render.sh");
+    expect(calls).toEqual([]);
   });
 
-  it("restarts `page`, and not the `box` service, after a pull that changes look/", () => {
-    expect(restarted(deployChanging("look/look.bundle.js"))).toEqual(["page"]);
-  });
-
-  it("restarts a service once when the pull changes two of its directories", () => {
-    expect(
-      restarted(deployChanging("box/server.mjs", "page/render.sh", "look/look.bundle.js")),
-    ).toEqual(["box", "page"]);
-  });
-
-  it("restarts nothing after a pull that changes no mounted directory", () => {
-    const calls = deployChanging("README.md");
-    expect(calls).toEqual(["compose --env-file /etc/rails49/box.env up -d --remove-orphans"]);
+  it("refuses a clone with a file git does not know, and builds nothing", () => {
+    // `page/` is copied into the image whole.
+    const { calls, status } = deployed((clone) =>
+      writeFileSync(join(clone, "page", "stray.html"), "\n"),
+    );
+    expect(status).not.toBe(0);
+    expect(calls).toEqual([]);
   });
 });
