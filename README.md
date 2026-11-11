@@ -15,8 +15,9 @@ railroad, the detector and JMRI are what an operator adds on top.
 
 The bus and the store are `control`'s. Every UI brings the container that
 serves it and declares its own routes as labels on its own containers, so this
-repository knows names and nothing about builds. JMRI, which no repository of
-this project owns, is the one image built here.
+repository knows names and nothing about their builds. It builds and publishes
+two images of its own, `installation-page` and `installation-box`, and builds
+JMRI, which no repository of this project owns, on the box.
 
 [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md)
 named the installation.
@@ -204,10 +205,10 @@ have and the certificate has to renew months from now with nobody present.
 **4. Start the installation.**
 
 ```bash
-docker compose --env-file /etc/rails49/box.env up -d
+docker compose --env-file /etc/rails49/box.env up -d --build
 ```
 
-The door comes up, 80 redirects the box name to 443, and the first request for the name is
+`--build` builds the page and the box from this clone. The door comes up, 80 redirects the box name to 443, and the first request for the name is
 what makes it ask for a certificate. Give it a few seconds and open
 `https://$BOX_DOMAIN`. Renewal is the door's, at about a third of the
 certificate's remaining life, and needs only outbound HTTPS.
@@ -277,8 +278,10 @@ this is the shape rather than a defect — but the label goes stale as you edit
 and says nothing about it. Vite at `localhost` is the copy that follows your
 edits.
 
-**The door runs the branch this clone has checked out.** `docker compose up -d`
-starts the compose file in front of you, half-finished work included. That is
+**The door runs the branch this clone has checked out.** `docker compose up -d
+--build` starts the compose file in front of you and builds the page and the
+box from it, half-finished work included. Without `--build` they stay the
+last build. That is
 what makes the machine useful for changing the door at all, and it is worth
 knowing before you wonder why 443 is behaving strangely.
 
@@ -307,8 +310,8 @@ writes there are yours. The directory has to exist first: compose refuses to
 start rather than let docker make it owned by root. On a new box, take the store
 over from its repository before opening DecoderPro, or the profile it writes
 makes the store not empty. Quit DecoderPro before a restore and open it again
-after; it reads the profile once, at launch. Add `--pull` to `--build` to take
-a newer stock image.
+after; it reads the profile once, at launch. The stock image is pinned by
+digest in `jmri/Dockerfile`, and a newer one is a change to that line.
 
 JMRI reaches the command station as a client of the mirror's 2560, like any
 hand-held throttle: a DCC++ over TCP connection whose host is the box, not a
@@ -324,9 +327,11 @@ behind the door or nowhere, and the second is not a browser's at all.
 ## Deploying
 
 `./deploy.sh` is a maintainer's convenience for pushing this checkout to a box
-from a dev machine — `git pull` and `up -d` over ssh, then a restart of each
-service whose mounted directory the pull changed. It is not the install path,
-and it names no box:
+from a dev machine. Over ssh it runs `git pull`, then `up -d --build`, which
+builds the page and the box on the box under the commit it pulled
+(`installation-page:<commit>`, `installation-box:<commit>`). It refuses a clone
+on the box that is not clean, since its images would be named after a commit
+that is not what was built. It is not the install path, and it names no box:
 
 ```bash
 ./deploy.sh ttmetro@gleis49.org
@@ -357,25 +362,21 @@ in the script, and a UI that adds or moves one changes the list there.
 Every other stack deploys itself. A repository that knows nothing about
 railroads does not build a railroad's UI.
 
-`up -d` recreates a container only when its compose configuration changed.
-`box` loads `box/` when it starts and `page` renders from `page/` when it
-starts, so a pull that changes either directory and nothing else leaves the
-old code running. If you pull and run `up -d` by hand, restart the service
-whose directory changed:
-
-```bash
-docker compose --env-file /etc/rails49/box.env restart box   # box/ changed
-docker compose --env-file /etc/rails49/box.env restart page  # page/ changed
-```
-
 ## Working on this
 
     scripts/check.sh
 
 The gate, and what `main` moves by. It runs shellcheck over every shell script,
-`docker compose config` over every compose file with `BOX_DOMAIN` set, empty and
-unset, the page's render in the image it runs in for both kinds of box, and the
-tests: one over the page the render script produces, one over the box's two
-requests and the origin check, one over the compose files as data and the door's script, one over
-what a deploy restarts. Nothing in it needs a
-box or a secret.
+actionlint over every workflow, `docker compose config` over every compose file
+with `BOX_DOMAIN` set, empty and unset, the page's render in the stock image the
+page is built on for both kinds of box, and the tests: one over the page the
+render script produces, one over the box's two requests and the origin check,
+one over the compose files as data and the door's script, one over what a
+deploy builds and refuses, and one over the images workflow as data. Nothing in
+it needs a box or a secret, and it builds no image.
+
+`.github/workflows/images.yml` builds `installation-page` and
+`installation-box` at one commit, for amd64 and arm64, and pushes them to
+`ghcr.io/rails49/installation-<page|box>:<commit>`. An image already pushed for
+that commit is reused. Only a release runs it
+([rails49/.github#71](https://github.com/rails49/.github/issues/71)).
