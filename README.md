@@ -362,6 +362,53 @@ in the script, and a UI that adds or moves one changes the list there.
 Every other stack deploys itself. A repository that knows nothing about
 railroads does not build a railroad's UI.
 
+## Making a release
+
+A release is one installation release
+([rails49/.github GLOSSARY.md](https://github.com/rails49/.github/blob/main/GLOSSARY.md)):
+a commit of each stack, the digest of each of its images, and the box files
+that run them. Its number is the year, the month and a count of releases in
+that month: `2026.11.0`, then `2026.11.1`.
+
+**1. Run the workflow.** Actions → release → Run workflow, or:
+
+```bash
+gh workflow run release.yml --repo rails49/installation
+gh workflow run release.yml --repo rails49/installation -f control=<commit> -f release=2026.11.3
+```
+
+Each stack's commit defaults to the head of its `main`, and the number to the
+next one this month. The workflow calls each stack's `images.yml` from the
+head of that stack's `main`, handed the commit, and each pushes its images or
+finds them already pushed. It writes `manifest.json`: the release number;
+each stack's commit and the digest of each of its images; and the digest of
+every stock image a compose file starts or a Dockerfile builds on. It writes
+`box-files.tar.gz`: one directory per stack holding its box files, with every
+`image:` pinned to its digest in the manifest. A box needs no clone and no git
+to run them.
+
+Then it checks the release on an amd64 and an arm64 runner, from the archive
+alone, as a box with no certificate: the installation; `control` with the
+simulator; `dccex` with no station; occupancy with no camera and
+occupancy-service's check archive. After 60 seconds every container has to be
+running with no restart, and `scripts/probe.sh` has to pass. A failure stops
+the workflow before any tag is made.
+
+Last, it tags the installation's commit with the release number and publishes
+a GitHub pre-release with `manifest.json`, which now also has each runner's
+Docker Engine version, and `box-files.tar.gz`.
+
+**2. Check it by hand.** Install the pre-release on `gleis49` and
+`classifier49` and run trains on it for as long as it takes
+([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
+8). Add `gleis49`'s Docker Engine version (`docker version --format
+'{{.Server.Version}}'`) to the release notes.
+
+**3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
+a pre-release". A box asking GitHub for the latest release is never offered a
+pre-release, so this step is what offers it to every other box. A pre-release
+that fails the hand check is never marked.
+
 ## Working on this
 
     scripts/check.sh
@@ -372,11 +419,12 @@ with `BOX_DOMAIN` set, empty and unset, the page's render in the stock image the
 page is built on for both kinds of box, and the tests: one over the page the
 render script produces, one over the box's two requests and the origin check,
 one over the compose files as data and the door's script, one over what a
-deploy builds and refuses, and one over the images workflow as data. Nothing in
+deploy builds and refuses, one over the images workflow as data, and one over
+the release's number and its pinned box files. Nothing in
 it needs a box or a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and
 `installation-box` at one commit, for amd64 and arm64, and pushes them to
 `ghcr.io/rails49/installation-<page|box>:<commit>`. An image already pushed for
-that commit is reused. Only a release runs it
+that commit is reused. Only `release.yml` runs it
 ([rails49/.github#71](https://github.com/rails49/.github/issues/71)).

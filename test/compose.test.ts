@@ -332,7 +332,7 @@ describe("the page", () => {
     // The box's hostname is read by the render script by default.
     expect(installation.services.page.volumes).toEqual(["/etc/hostname:/host/hostname:ro"]);
     const dockerfile = readFileSync(new URL("page/Dockerfile", root), "utf8");
-    expect(dockerfile).toMatch(/^FROM nginx:alpine$/m);
+    expect(dockerfile).toMatch(/^FROM nginx:alpine@sha256:[0-9a-f]{64}$/m);
     expect(dockerfile).toMatch(/^COPY page\/ \/page\/$/m);
     expect(dockerfile).toMatch(/^COPY look\/ \/usr\/share\/nginx\/html\/look\/$/m);
     const script = readFileSync(new URL("page/render.sh", root), "utf8");
@@ -360,7 +360,7 @@ describe("the box", () => {
   it("runs node:22-slim in the box's own PID namespace", () => {
     // `nsenter` into PID 1 is how it reaches the box's systemd.
     const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
-    expect(dockerfile).toMatch(/^FROM node:22-slim$/m);
+    expect(dockerfile).toMatch(/^FROM node:22-slim@sha256:[0-9a-f]{64}$/m);
     expect(box.privileged).toBe(true);
     expect(box.pid).toBe("host");
     expect(box.restart).toBe("unless-stopped");
