@@ -24,11 +24,13 @@ script=$(
   jq -r '.stacks[] | .commit as $commit | .images | to_entries[] | "\(.key) \($commit) \(.value)"' \
     "$manifest" |
     while read -r image commit digest; do
+      # shellcheck disable=SC2016  # `${` is the text matched, not an expansion
       printf 's|ghcr\\.io/rails49/%s:\\${[A-Z_]*:-dev}$|ghcr.io/rails49/%s:%s@%s|\n' \
         "$image" "$image" "$commit" "$digest"
     done
   jq -r '.stock | to_entries[] | "\(.key) \(.value)"' "$manifest" |
     while read -r ref digest; do
+      # shellcheck disable=SC2001  # one class of characters, each escaped
       pattern=$(sed 's/[].[*^$\\]/\\&/g' <<<"$ref")
       printf 's|^\\([[:space:]]*image:[[:space:]]*\\)%s$|\\1%s@%s|\n' "$pattern" "$ref" "$digest"
     done

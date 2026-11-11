@@ -4,8 +4,7 @@
 # "Making a release" says how.
 #
 # Each stack's own `images.yml` builds its images, or finds them already
-# pushed. A reusable workflow's ref cannot be an expression, so each is called
-# from the head of its `main` and handed the commit to build.
+# pushed. Each is called from the head of its `main` and handed the commit.
 name: release
 
 on:
@@ -36,7 +35,6 @@ permissions:
   contents: read
   packages: read
 
-# Two runs at once could both choose the same release number.
 concurrency:
   group: release
 
@@ -112,8 +110,7 @@ jobs:
     with:
       commit: ${{ needs.plan.outputs.occupancy-service }}
 
-  # `manifest.json`, and `box-files.tar.gz` with one directory per stack, each
-  # `image:` in it pinned to the manifest's digest.
+  # `manifest.json`, and `box-files.tar.gz` with one directory per stack.
   files:
     needs: [plan, installation, control, dccex, occupancy-service]
     runs-on: ubuntu-24.04
@@ -132,8 +129,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           pattern: "*-box-files"
-          path: box
-      - run: for dir in box/*-box-files; do mv "$dir" "${dir%-box-files}"; done
+          path: files
+      - run: for dir in files/*-box-files; do mv "$dir" "${dir%-box-files}"; done
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -160,8 +157,8 @@ jobs:
       # by its digest: the one it is pinned to, or the tag's now.
       - name: The stock images
         run: |
-          mapfile -t composes < <(find box -name '*compose*.y*ml')
-          mapfile -t dockerfiles < <(find box installation -name Dockerfile)
+          mapfile -t composes < <(find files -name '*compose*.y*ml')
+          mapfile -t dockerfiles < <(find files installation -name Dockerfile)
           {
             sed -n 's/^[[:space:]]*image:[[:space:]]*\(&[^[:space:]]* \)\{0,1\}//p' "${composes[@]}"
             sed -n 's/^FROM[[:space:]]*\([^[:space:]]*\).*/\1/p' "${dockerfiles[@]}"
@@ -182,8 +179,8 @@ jobs:
           jq -n --arg release "$RELEASE" --slurpfile stacks stacks.json --slurpfile stock stock.json \
             '{release: $release, stacks: $stacks[0], stock: $stock[0]}' > manifest.json
           cat manifest.json
-          scripts/pin.sh manifest.json box
-          tar -czf box-files.tar.gz -C box .
+          scripts/pin.sh manifest.json files
+          tar -czf box-files.tar.gz -C files .
           tar -tzvf box-files.tar.gz
       - uses: actions/upload-artifact@v7
         with:
@@ -193,10 +190,7 @@ jobs:
             box-files.tar.gz
           if-no-files-found: error
 
-  # The release as a box with no certificate runs it, from the archive alone:
-  # the installation; control with the simulator; dccex with no station;
-  # occupancy with no camera and its check archive. After 60 seconds every
-  # container is running and has not restarted, and the probe passes.
+  # README's "Making a release" says what this checks.
   check:
     needs: [plan, files]
     strategy:
@@ -232,11 +226,11 @@ jobs:
           sudo mkdir -p /etc/rails49
           printf 'BOX_DOMAIN=\nBOX_UIS="control dccex occupancy"\n' | sudo tee /etc/rails49/box.env
           printf 'TC49_STORE=%s\n' "$RUNNER_TEMP/store" | sudo tee /etc/rails49/deploy.env
-          mkdir "$RUNNER_TEMP/store" box
-          tar -xzf release/box-files.tar.gz -C box
+          mkdir "$RUNNER_TEMP/store" files
+          tar -xzf release/box-files.tar.gz -C files
           echo "127.0.0.1 $(hostname).local" | sudo tee -a /etc/hosts
       - name: Bring up the release
-        working-directory: box
+        working-directory: files
         run: |
           box=/etc/rails49/box.env
           TC49_UID=$(id -u) TC49_GID=$(id -g)
@@ -254,13 +248,13 @@ jobs:
       - name: Every container still running after 60 seconds
         run: |
           sleep 60
-          stopped=0
+          failed=0
           for container in $(docker ps -aq); do
             read -r name status restarts < <(docker inspect -f '{{.Name}} {{.State.Status}} {{.RestartCount}}' "$container")
             echo "$name $status, restarted $restarts times"
-            [[ $status == running && $restarts == 0 ]] || stopped=1
+            [[ $status == running && $restarts == 0 ]] || failed=1
           done
-          exit "$stopped"
+          exit "$failed"
       - name: The probe
         run: |
           address=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')

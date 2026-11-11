@@ -5,7 +5,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,8 @@ import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
+
+type Node = any;
 const script = (name: string) => fileURLToPath(new URL(`scripts/${name}`, root));
 
 /** `scripts/release-number.sh <month>` with the tags on stdin. */
@@ -22,24 +24,24 @@ function nextRelease(month: string, tags: string[]) {
     input: tags.map((tag) => `${tag}\n`).join(""),
     encoding: "utf8",
   });
-  return { status: run.status, out: run.stdout.trim(), err: run.stderr };
+  return run.stdout.trim();
 }
 
 describe("the release number", () => {
   it("is .0 for the first release in a month", () => {
-    expect(nextRelease("2026.11", []).out).toBe("2026.11.0");
-    expect(nextRelease("2026.12", ["2026.11.0", "2026.11.1"]).out).toBe("2026.12.0");
+    expect(nextRelease("2026.11", [])).toBe("2026.11.0");
+    expect(nextRelease("2026.12", ["2026.11.0", "2026.11.1"])).toBe("2026.12.0");
   });
 
   it("counts on from the highest release of the month, as a number", () => {
-    expect(nextRelease("2026.11", ["2026.11.0", "2026.11.1"]).out).toBe("2026.11.2");
-    expect(nextRelease("2026.11", ["2026.11.9", "2026.11.10", "2026.11.2"]).out).toBe(
+    expect(nextRelease("2026.11", ["2026.11.0", "2026.11.1"])).toBe("2026.11.2");
+    expect(nextRelease("2026.11", ["2026.11.9", "2026.11.10", "2026.11.2"])).toBe(
       "2026.11.11",
     );
   });
 
   it("ignores tags that are not release numbers of the month", () => {
-    expect(nextRelease("2026.1", ["2026.11.4", "2026.1.0-rc", "v2026.1.3", "2026.1.0"]).out).toBe(
+    expect(nextRelease("2026.1", ["2026.11.4", "2026.1.0-rc", "v2026.1.3", "2026.1.0"])).toBe(
       "2026.1.1",
     );
   });
@@ -168,9 +170,16 @@ describe("the release workflow", () => {
   it("makes the pre-release only after the check passed on both runners", () => {
     expect(workflow.jobs.check.strategy.matrix.runner).toEqual(["ubuntu-24.04", "ubuntu-24.04-arm"]);
     expect(workflow.jobs.release.needs).toContain("check");
-    const tagging = Object.entries<any>(workflow.jobs).filter(([, job]) =>
+    const tagging = Object.entries<Node>(workflow.jobs).filter(([, job]) =>
       JSON.stringify(job.steps ?? []).includes("gh release create"),
     );
     expect(tagging.map(([name]) => name)).toEqual(["release"]);
+  });
+
+  it("lays out the box files where the repository has no directory of its own", () => {
+    const download = workflow.jobs.files.steps.find(
+      (step: Node) => step.with?.pattern === "*-box-files",
+    );
+    expect(existsSync(new URL(download.with.path, root))).toBe(false);
   });
 });
