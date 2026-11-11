@@ -66,9 +66,14 @@ services:
       # This container is on two networks and the docker provider otherwise
       # picks whichever address it finds first (ADR-0004).
       - traefik.docker.network=rails49
-      - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}`)
+      - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)
       - traefik.http.routers.jmri.entrypoints=websecure
       - traefik.http.routers.jmri.tls.certresolver=le
+      # noVNC over plain HTTP on JMRI's UI port, at any host. On a box with no
+      # certificate the router above names an entry point that does not exist;
+      # the door drops it and serves this one.
+      - traefik.http.routers.jmri-http.rule=PathPrefix(`/`)
+      - traefik.http.routers.jmri-http.entrypoints=jmri
       # Named, because the image exposes three ports and the door would
       # otherwise pick one of them for us.
       - traefik.http.services.jmri.loadbalancer.server.port=6901

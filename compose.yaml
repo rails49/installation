@@ -6,8 +6,9 @@
 #     docker compose --env-file /etc/rails49/box.env up -d
 #
 # `--env-file` is how the box's declaration reaches this file. Compose reads it
-# for the labels and the provider below; the door reads `acme.env` beside it
-# for the credential, which no other stack is handed. README.md is the install.
+# for the labels and for the door's and the page's environment; the door reads
+# `acme.env` beside it for the credential, which no other stack is handed.
+# README.md is the install.
 #
 # The project's name, which compose otherwise takes from the directory this
 # file sits in — a clone under another name would spell it differently. Said
@@ -34,13 +35,19 @@ services:
     # v3.7 rather than a newer patch of what was here.
     image: traefik:v3.7
     restart: unless-stopped
-    # 80 carries a redirect and nothing else. A person types a bare hostname
-    # and the browser tries http, so a box that publishes 443 alone refuses
-    # the connection and the site reads as down. The certificate comes from a
-    # DNS-01 challenge, so nothing here needs 80 to reach the outside.
+    # 80 is the page and 8081-8084 are the UI ports, in README's table. On a
+    # box with a box name 80 redirects to 443: a person types a bare hostname
+    # and the browser tries http, so a box that published 443 alone would
+    # refuse the connection and the site would read as down. The certificate
+    # comes from a DNS-01 challenge, so nothing here needs 80 to reach the
+    # outside.
     ports:
       - "80:80"
       - "443:443"
+      - "8081:8081"
+      - "8082:8082"
+      - "8083:8083"
+      - "8084:8084"
     # The credential and the ACME account address, whole, from the file the
     # operator wrote. Read by this service and no other.
     #
@@ -48,30 +55,57 @@ services:
     # env_file that is not there, and this one is the box's rather than the
     # repository's: a clone on a dev machine could not be read at all, gate
     # included. A box missing it gets a door that starts and a resolver that
-    # cannot, which the door's log says and README.md repeats.
+    # cannot, which the door's log says and README.md repeats. A box with no
+    # certificate has no resolver and needs no such file.
     env_file:
       - path: /etc/rails49/acme.env
         required: false
+    # Read by the script below. `BOX_DOMAIN` empty is a box with no
+    # certificate; unset is a door started without the declaration.
+    # `BOX_ACME_PROVIDER` is required only with a box name, so the script
+    # checks it: compose's own check would refuse it on every box.
+    environment:
+      BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
+      BOX_ACME_PROVIDER: ${BOX_ACME_PROVIDER-}
+    # Traefik takes its static configuration from flags, a file or the
+    # environment and never a mix, so the kind of box is chosen by building
+    # the flags here and `exec`ing Traefik with them. `$$` is a `$` compose
+    # leaves for the shell.
+    #
+    # With a box name, the DNS provider is the operator's, because being
+    # reachable cannot require the DNS host this project happens to use. The
+    # stock binary carries every provider already; which credential it reads
+    # is `acme.env`'s business.
+    #
+    # Before writing the TXT record lego asks which zone the name belongs to,
+    # and a consumer router answers that question with SERVFAIL often enough
+    # that the resolver cannot be left to whatever the network hands the
+    # container. These two are asked instead. A hardcoded default rather than
+    # a parameter: an operator who has to name a resolver to get a certificate
+    # has been handed somebody else's bug.
     command:
-      - --providers.docker=true
-      - --providers.docker.exposedByDefault=false
-      - --entryPoints.web.address=:80
-      - --entryPoints.web.http.redirections.entryPoint.to=websecure
-      - --entryPoints.web.http.redirections.entryPoint.scheme=https
-      - --entryPoints.websecure.address=:443
-      - --certificatesResolvers.le.acme.storage=/acme/acme.json
-      # The provider is the operator's, because being reachable cannot require
-      # the DNS host this project happens to use. The stock binary carries
-      # every provider already; which credential it reads is `acme.env`'s
-      # business.
-      - --certificatesResolvers.le.acme.dnsChallenge.provider=${BOX_ACME_PROVIDER:?start this with --env-file /etc/rails49/box.env}
-      # Before writing the TXT record lego asks which zone the name belongs
-      # to, and a consumer router answers that question with SERVFAIL often
-      # enough that the resolver cannot be left to whatever the network hands
-      # the container. These two are asked instead. A hardcoded default rather
-      # than a parameter: an operator who has to name a resolver to get a
-      # certificate has been handed somebody else's bug.
-      - --certificatesResolvers.le.acme.dnsChallenge.resolvers=1.1.1.1:53,9.9.9.9:53
+      - /bin/sh
+      - -c
+      - |
+        set -- \
+          --providers.docker=true \
+          --providers.docker.exposedByDefault=false \
+          --entryPoints.web.address=:80 \
+          --entryPoints.control.address=:8081 \
+          --entryPoints.dccex.address=:8082 \
+          --entryPoints.jmri.address=:8083 \
+          --entryPoints.occupancy.address=:8084
+        if [ -n "$$BOX_DOMAIN" ]; then
+          provider=$${BOX_ACME_PROVIDER:?a box with a box name names its DNS provider in /etc/rails49/box.env}
+          set -- "$$@" \
+            --entryPoints.web.http.redirections.entryPoint.to=websecure \
+            --entryPoints.web.http.redirections.entryPoint.scheme=https \
+            --entryPoints.websecure.address=:443 \
+            --certificatesResolvers.le.acme.storage=/acme/acme.json \
+            --certificatesResolvers.le.acme.dnsChallenge.provider="$$provider" \
+            --certificatesResolvers.le.acme.dnsChallenge.resolvers=1.1.1.1:53,9.9.9.9:53
+        fi
+        exec traefik "$$@"
     volumes:
       # Read-only: the provider watches containers and starts none.
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -87,7 +121,7 @@ services:
     image: nginx:alpine
     restart: unless-stopped
     environment:
-      BOX_DOMAIN: ${BOX_DOMAIN:?start this with --env-file /etc/rails49/box.env}
+      BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
       BOX_UIS: ${BOX_UIS}
     # The directory, not the script inside it. A single-file bind mount binds
     # the inode, and `git pull` replaces a file rather than writing through it,
@@ -95,10 +129,12 @@ services:
     # it started with (control#353). Mounting the directory is one character
     # away from the mount that does not, so a test holds it here. `look/` is
     # served as it is, at `/look/`, and mounted as a directory for the same
-    # reason.
+    # reason. The box's hostname is the page's title and band on a box with no
+    # certificate, and is read once, at start.
     volumes:
       - ./page:/page:ro
       - ./look:/usr/share/nginx/html/look:ro
+      - /etc/hostname:/host/hostname:ro
     # The image's own entrypoint still runs, so this is what it execs: render
     # once, then be nginx. `exec` because nginx is what this container is —
     # a shell holding pid 1 would swallow the signal that stops it.
@@ -114,6 +150,11 @@ services:
       - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
       - traefik.http.routers.page.entrypoints=websecure
       - traefik.http.routers.page.tls.certresolver=le
+      # The page over plain HTTP on 80, at any host. The rule is written out
+      # because a docker router with none gets `Host(<container name>)`. On a
+      # box with a box name the redirect on `web` outranks it.
+      - traefik.http.routers.page-http.rule=PathPrefix(`/`)
+      - traefik.http.routers.page-http.entrypoints=web
     networks:
       - rails49
 
@@ -145,6 +186,13 @@ services:
       - traefik.http.routers.box.entrypoints=websecure
       # No resolver: each name's own router already has its certificate.
       - traefik.http.routers.box.tls=true
+      # The same two paths over plain HTTP, on the page's port and every UI
+      # port. A second router, because one with `tls=true` does not match
+      # plain HTTP. On a box with a box name the redirect on `web` outranks
+      # it, so `/box` on 80 redirects there.
+      - traefik.http.routers.box-http.rule=PathPrefix(`/box`)
+      - traefik.http.routers.box-http.priority=100
+      - traefik.http.routers.box-http.entrypoints=web,control,dccex,jmri,occupancy
       - traefik.http.services.box.loadbalancer.server.port=8080
     networks:
       - rails49

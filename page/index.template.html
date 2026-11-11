@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{BOX_DOMAIN}}</title>
+<title>{{NAME}}</title>
 <script type="module" src="/look/look.bundle.js"></script>
 <style>
   /* The page's own: the list and the footer. The band is look's. */
@@ -47,7 +47,7 @@
 </head>
 <body>
 <look-shell>
-<look-band><look-about name="{{BOX_DOMAIN}}"></look-about></look-band>
+<look-band><look-about name="{{NAME}}"></look-about></look-band>
 <main>
 <ul>
 {{LINKS}}
@@ -55,5 +55,10 @@
 </main>
 <footer><a href="https://rails49.org/">rails49.org</a></footer>
 </look-shell>
+<script>
+  // On a box with no certificate a link names its UI port, and its host is
+  // whatever this page was reached at: an address or `<hostname>.local`.
+  for (const a of document.querySelectorAll("a[data-same-host]")) a.hostname = location.hostname;
+</script>
 </body>
 </html>

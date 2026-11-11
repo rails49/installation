@@ -36,8 +36,8 @@ _Avoid_: entry point (Traefik's word for the socket), app port
 **Label**:
 One name under a box name, serving exactly one UI, listed in `BOX_UIS`. Each
 label also has a UI port, which is all it has on a box with no certificate. The UI's own
-container declares the router for it; the installation knows the label and
-nothing else about the UI; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+container declares the router for it; the installation knows the label and its
+UI port and nothing else about the UI; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
 _Avoid_: subdomain, route, service, app name
 
 **Declaration**:
