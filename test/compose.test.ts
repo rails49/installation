@@ -438,7 +438,7 @@ describe("JMRI", () => {
     expect(jmri.services.jmri.ports).toBeUndefined();
   });
 
-  it("is reachable at its label under the box's name and on its UI port, and nowhere else", () => {
+  it("is reachable at its label under the box name and on its UI port, and nowhere else", () => {
     const router = labels(jmri.services.jmri);
     const routers = Object.keys(router).filter((label) =>
       label.startsWith("traefik.http.routers."),

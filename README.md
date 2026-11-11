@@ -109,8 +109,9 @@ text is the label. On a box with a box name the address is
 `https://<label>.$BOX_DOMAIN`. On a box with no certificate it is the label's UI
 port at the host the page was reached at, and a label with no UI port is listed
 with no link. The installation holds two facts about a UI, its label and its UI
-port, so a UI that did not exist when this was written needs a row in the table
-above and nothing else.
+port. A new UI takes the next free number in the table above; the door's flags
+and ports, `box`'s plain-HTTP router and `page/render.sh` name the same ports,
+and a test checks that they agree.
 
 The band across the top carries the box name, or on a box with no certificate
 the box's hostname, which is the thing you want to know on landing there. A
@@ -292,9 +293,9 @@ profile.
 
 It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN` and on its UI
 port, 8083, so put `jmri` in `BOX_UIS` to have the page list it. Over plain
-HTTP noVNC shows a banner saying HTTPS is recommended, and works. JMRI's own web server and raw VNC
-are not reachable: the first is a browser's and is behind the door or nowhere,
-and the second is not a browser's at all.
+HTTP noVNC shows a banner saying HTTPS is recommended, and works. JMRI's own
+web server and raw VNC are not reachable: the first is a browser's and is
+behind the door or nowhere, and the second is not a browser's at all.
 
 ## Deploying
 
