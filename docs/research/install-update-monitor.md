@@ -9,7 +9,7 @@ Repo claims cite `repo/path:line` at the commits pulled on 2026-11-11. Outside c
 1. Today every stack is a git clone on the box, built on the box with `docker compose up --build`, and updated over ssh from a development machine by that repository's `deploy.sh`. No repository publishes a container image. Installing needs docker, git, a shell, a domain with a DNS API token, files under `/etc/rails49`, and, for `control`, node and pnpm on the box. It is not a path for a non-programmer.
 2. A box with hardware needs Linux. The command station (USB serial), the camera (V4L2) and the GPU are device files, and turning the box off needs systemd as PID 1. Docker Desktop on macOS and Windows has no USB passthrough and no Intel GPU, and the installation already answers no to turning it off. It can run the simulator for someone trying the software, and nothing more.
 3. Starting point: a 64-bit Debian-family Linux (Ubuntu Server LTS on x86-64, Raspberry Pi OS 64-bit on a Pi) plus one install script. A prepared image, flashed with Raspberry Pi Imager or a disk writer, can come later and run the same script on first boot through cloud-init. An OS of our own with A/B updates (the Home Assistant OS or balenaOS shape) costs far more than this project needs now.
-4. The hardest install step is not docker but the box name: a domain, A records and a DNS API token (org ADR-0018 rule 7). The domain buys a secure context, and what a box loses without one is small: the screen wake lock and one copy button. What stops a box with no domain today is the door's configuration, which serves HTTPS only. rails49/installation#53 proposes a mode with no domain: each UI over plain HTTP on a port of its own, at `<box>.local` or the box's address. A label under a zone the project runs would also work, and puts the project in the path of every box's renewal.
+4. The hardest install step is not docker but the box name: a domain, A records and a DNS API token (org ADR-0018 rule 7). The domain buys a secure context, and what a box loses without one is small: the screen wake lock and one copy button. What stops a box with no certificate today is the door's configuration, which serves HTTPS only. rails49/installation#53 makes an empty `BOX_DOMAIN` mean a box with no certificate: each UI over plain HTTP on its UI port, at `<hostname>.local` or the box's address. Every box serves the UI ports. A label under a zone the project runs would also work, and puts the project in the path of every box's renewal.
 5. Update: publish each stack's images to GHCR, named by commit as dccex ADR-0005 already does, for amd64 and arm64. One installation release is a manifest that pins every stack's images by digest, and the box runs the stacks it declares from that release. An updater container in the installation checks for a newer release, shows it, and applies it on a press, with the previous release kept for one-step rollback. Watchtower is archived (Dec 2025) and follows moving tags, which dccex ADR-0005 forbids.
 6. Two recorded decisions change under prebuilt images: control ADR-0067 (the image carries the person's uid and is never pushed) and the installation's own "builds and publishes no image" line. A thin layer built on the box over the published image keeps ADR-0067's rule with no toolchain on the box.
 7. Monitoring: necessary are each stack's state, versions, update available, disk, certificate expiry and whether the box name still resolves to the box. Useful are temperatures, the devices present, and a log bundle for an issue. Failures on the railroad already show in each UI's band (`.github/docs/OPERATING.md`), and the box's status should not repeat them. No compose file has a healthcheck or log rotation today.
@@ -54,7 +54,7 @@ The installation runs first, since it creates the `rails49` network (installatio
 
 | Decision | What it requires | Where a strategy meets it |
 | --- | --- | --- |
-| org ADR-0018 rule 7 | An installation brings a name; the certificate comes from DNS-01 over a zone the operator controls. A CA on the box and `.local` were rejected (`:115`). | Every install path has to produce a name and a certificate. Let's Encrypt validates DNS-01 by a TXT record in public DNS [S44] and does not issue for names nobody owns [S43]; `.local` is link-local [S45]. rails49/installation#53 proposes amending it with a mode that has no domain (section 4). |
+| org ADR-0018 rule 7 | An installation brings a name; the certificate comes from DNS-01 over a zone the operator controls. A CA on the box and `.local` were rejected (`:115`). | Every install path has to produce a name and a certificate. Let's Encrypt validates DNS-01 by a TXT record in public DNS [S44] and does not issue for names nobody owns [S43]; `.local` is link-local [S45]. rails49/installation#53 changes it with the box with no certificate (section 4). |
 | org ADR-0018 rule 8 | The installation runs with no internet. | An update check fails quietly offline. No step of operation may need the cloud. |
 | org ADR-0018 rules 5, 6 | Nothing from the cloud reaches an installation's data; one door per box. | No cloud page can push to a box. An updater's UI sits behind the door. |
 | org ADR-0009, installation ADR-0002 | Each stack is its own repository and compose project. The installation knows names and nothing about builds. A box may run the installation and `dccex` only. | A release must let a box run a subset of stacks. |
@@ -94,20 +94,20 @@ B is the base to build on. C is B packaged, worth doing once B is stable. F is a
 
 ### Setup from a page
 
-The script, or a prepared image, starts only the updater container of section 5.3. Its page asks for the box name, a domain or none, the DNS provider and token when there is a domain, and the stacks to run. On confirm it writes `/etc/rails49`, pulls the release and starts the stacks. The same page then shows status and updates.
+The script, or a prepared image, starts only the updater container of section 5.3. Its page asks for the box name or none, the DNS provider and token when there is a box name, and the stacks to run. On confirm it writes `/etc/rails49`, pulls the release and starts the stacks. The same page then shows status and updates.
 
-Before setup the box has no name the person chose. Ways to reach the page the first time:
+Before setup the box has no box name. Ways to reach the page the first time:
 
 | Way | Works when | Notes |
 | --- | --- | --- |
-| The script prints `http://<address>` and `http://<box>.local` | It ran from a terminal | Covers the script path. |
+| The script prints `http://<address>` and `http://<hostname>.local` | It ran from a terminal | Covers the script path. |
 | `http://localhost` on the box | The box has a screen and a browser | `localhost` is a secure context [S43], and the DNS token does not cross the LAN. |
 | The box's screen shows the address and a QR code | A prepared image with a monitor | A phone scans it. |
 | The router's list of connected devices | The person can log in to the router | Hard for a non-programmer. |
 | A finder page on rails49.org | The box has internet | The box reports its LAN address and the page lists the boxes behind the same public address. Synology and Philips Hue do this (unverified). The project then runs a service and sees public addresses. |
-| `http://<box>.local` | The client resolves mDNS | Varies by client; see below. |
+| `http://<hostname>.local` | The client resolves mDNS | Varies by client; see below. |
 
-An address printed or shown changes when the router hands out another. The setup page tells the person to reserve the box's address in the router. With a domain, the DNS token crosses the LAN once in plain HTTP, which control ADR-0042's trust boundary allows and a decision should state.
+An address printed or shown changes when the router hands out another. The setup page tells the person to reserve the box's address in the router. With a box name, the DNS token crosses the LAN once in plain HTTP, which control ADR-0042's trust boundary allows and a decision should state.
 
 ### The box name
 
@@ -125,9 +125,9 @@ A certificate the browser trusts, so the page has a secure context. The UIs use 
 | Save-file picker | `occupancy/ui/src/persistence.ts:278` | Falls back to a download. |
 | Cross-origin isolation, threaded WASM | `occupancy/ui/src/detectorSession.ts:44` | Not used in service mode: the model runs on the server. |
 
-Not affected: `control` and `dccex` open `ws://` from an HTTP page and `wss://` from an HTTPS one (`control/ui/src/model/session.ts:178`, `dccex/ui/src/framing.js:84`). `control` mints throttle ids with `getRandomValues` because `randomUUID` is missing over plain HTTP (`session.ts:258`). The store's origin rule compares `Origin` with `Host`, not scheme with scheme (`control/src/tc49/lib/origin.py`). JMRI's noVNC: not checked.
+Not affected: `control` and `dccex` open `ws://` from an HTTP page and `wss://` from an HTTPS one (`control/ui/src/model/session.ts:178`, `dccex/ui/src/framing.js:84`). `control` mints throttle ids with `getRandomValues` because `randomUUID` is missing over plain HTTP (`session.ts:258`). The store's origin rule compares `Origin` with `Host`, not scheme with scheme (`control/src/tc49/lib/origin.py`). JMRI's noVNC works over plain HTTP and shows a banner, "Running without HTTPS is not recommended": the image starts its VNC server with no authentication, and only noVNC's RSA-AES authentication needs `crypto.subtle` (rails49/installation#53).
 
-What does stop a box with no name is the door. Every router is on the `websecure` entry point with a certificate resolver (`control/deploy/compose.yaml:65,114,209`, `dccex/compose.box.yaml:73`, `installation/jmri/compose.yaml:70`, `occupancy-service/compose.yaml:45,63`), and port 80 only redirects (`installation/compose.yaml:58-60`). ADR-0004's "`control`'s run view loses its socket" comes to this configuration.
+What does stop a box with no certificate is the door. Every router is on the `websecure` entry point with a certificate resolver (`control/deploy/compose.yaml:65,114,209`, `dccex/compose.box.yaml:73`, `installation/jmri/compose.yaml:70`, `occupancy-service/compose.yaml:45,63`), and port 80 only redirects (`installation/compose.yaml:58-60`). ADR-0004's "`control`'s run view loses its socket" comes to this configuration.
 
 The name also gives one origin per UI under one readable name, and the same name for ssh and deploy (org ADR-0007).
 
@@ -144,7 +144,7 @@ The name also gives one origin per UI under one readable name, and the same name
 | Way | The person | Secure context | Against |
 | --- | --- | --- | --- |
 | A. The operator's own zone (today) | Buys a domain, gets a token, writes records | Yes | The step above. Traefik's ACME client carries every provider (`installation/compose.yaml`, `dnsChallenge.provider`). |
-| B. No name: plain HTTP on a port per UI (rails49/installation#53) | Nothing | No | Loses the features above. Nothing outside the house. |
+| B. No certificate: plain HTTP on a UI port per label (rails49/installation#53) | Nothing | No | Loses the features above. Nothing outside the house. |
 | C. A label under a zone the project runs, e.g. `<railroad>.box.rails49.org` | Picks a name | Yes | Below. |
 | D. A certificate authority on the box | Installs a root certificate on every phone | Yes | Rejected in org ADR-0018: "that step is where people stop". |
 | E. Tailscale and its `ts.net` certificates | Installs Tailscale on the box and every phone | Yes | An app and an account on every device; a third party in the path. |
@@ -164,7 +164,7 @@ One wildcard for `*.rails49.org` shared by every box does not work. It covers on
 
 What has to be up, and when:
 
-| | A. Own domain | C. Project zone | B. No name |
+| | A. Own domain | C. Project zone | B. No certificate |
 | --- | --- | --- | --- |
 | To start a train | Public DNS for the domain, unless the router answers | Public DNS for the project's zone, unless the router answers | Nothing outside the house |
 | Every ~60 days, to renew | The operator's DNS provider's API | The project's acme-dns or function | Nothing |
@@ -173,20 +173,26 @@ What has to be up, and when:
 
 C adds nothing to name resolution if the zone is with a large DNS provider; where rails49.org's DNS is hosted: unverified. The new dependency is renewal, with about 30 days of slack, which shrinks as Let's Encrypt shortens certificate lifetimes (schedule unverified). The real cost is the last row. A zone of its own, apart from rails49.org, keeps a mistake there off the project's own sites.
 
-#### A box with no name: one port per UI
+#### A box with no certificate: one UI port per label
 
-rails49/installation#53 has the changes. In short: `box.env` says whether the box has a domain. With one, the box is as today. Without one, the door asks for no certificate, does not redirect port 80, and opens one entry point per UI on a port the installation owns. Each stack declares a router per entry point beside its `Host()` router.
+rails49/installation#53 has the decisions. In short:
+
+- `BOX_DOMAIN=`, set and empty, means a box with no certificate. An unset `BOX_DOMAIN` is still refused.
+- The installation owns the table of UI ports: the page 80, `control` 8081, `dccex` 8082, `jmri` 8083, `occupancy` 8084.
+- The door's command builds Traefik's flags and execs it. With a box name it adds `websecure`, the certificate resolver and the redirect on port 80. With none, port 80 serves the page.
+- Every box serves the UI ports, so a box with a box name stays reachable when DNS or the certificate fails. Each stack declares a router per UI port beside its `Host()` routers. On a box with no certificate, Traefik drops the `websecure` routers with an error in its log and serves the rest, so no compose file is split by kind of box.
+- The installation's part merges first; `control`, `dccex` and `occupancy-service` each get a child issue for their routers and origin rule.
 
 Ports rather than labels under `.local`:
 
 | Way | For | Against |
 | --- | --- | --- |
-| Labels under `.local`, `control.<box>.local` | The door's `Host()` rules stay. | Avahi publishes only `<box>.local` by default; more names go in `/etc/avahi/hosts`, one line each [S65], rewritten when the address changes. Linux's `nss-mdns` rejects names of more than two labels in its recommended setup: "If the request has more than two labels, it is rejected" [S64]. Android and Windows: unverified. |
-| A port per UI, `http://<box>.local:8081` | Works at `<box>.local`, which Avahi publishes by default, and at the bare address. One origin per UI, as the origin rules need. | Ports to remember; the installation page links them. |
+| Labels under `.local`, `control.<hostname>.local` | The door's `Host()` rules stay. | Avahi publishes only `<hostname>.local` by default; more names go in `/etc/avahi/hosts`, one line each [S65], rewritten when the address changes. Linux's `nss-mdns` rejects names of more than two labels in its recommended setup: "If the request has more than two labels, it is rejected" [S64]. Android and Windows: unverified. |
+| A UI port per label, `http://<hostname>.local:8081` | Works at `<hostname>.local`, which Avahi publishes by default, and at the bare address. One origin per UI, as the origin rules need. | Ports to remember; the installation page links them. |
 | A path per UI, `http://<box>/control/` | One port. | Rejected in org ADR-0007: one origin for every UI, and each app built under a prefix. |
 | nip.io names, `control.192-168-1-20.nip.io` | Labels with no mDNS. | Internet and a third party in the path, DNS rebinding protection, a URL that changes with the address. |
 
-The door's refusal of a foreign `Origin` on `/mqtt` matches a fixed origin built from `BOX_DOMAIN` (`control/deploy/compose.yaml:119`, `dccex/compose.box.yaml:78`, which admits only `https://`). With no domain the box's address is not known when the rule is written. #53 proposes admitting `http://` origins on the UI's own port whose host is `<box>.local` or a private address, which no page on the internet can have.
+The door's refusal of a foreign `Origin` on `/mqtt` matches a fixed origin built from `BOX_DOMAIN` (`control/deploy/compose.yaml:119`, `dccex/compose.box.yaml:78`, which admits only `https://`). On a box with no certificate the box's address is not known when the rule is written. #53 admits only an `http://` origin on the UI's own port whose host is a `.local` name or an RFC 1918 IPv4 address, which no page on the internet can have. A page served by another host on the LAN at the same port passes, as control ADR-0042's trust boundary allows.
 
 ### OS independence
 
@@ -256,7 +262,7 @@ Ubuntu Server installs `unattended-upgrades` by default and applies security upd
 | Update available, last check | Necessary | Updater | Section 5.1. |
 | Disk free | Necessary | `statfs` | The json-file log driver does not rotate by default [S15]; kept images grow. journald caps itself at 10% of the file system, at most 4G [S49]. Set rotation in `daemon.json` or per service, and prune images beyond one step back. |
 | Certificate expiry; the box name resolving to this box | Necessary on a box with a domain | The door's `acme.json`; a DNS lookup against the box's own address | A renewal that failed, an A record left at an old address, or a router blocking the name as DNS rebinding makes every UI unreachable. |
-| The box's address, and whether the router reserves it | Useful on a box with no domain | The box's interfaces | The links people saved hold the address. |
+| The box's address, and whether the router reserves it | Useful on a box with no certificate | The box's interfaces | The links people saved hold the address. |
 | Camera and command station present | Useful | `/dev/v4l/by-id`, `/dev/serial/by-id` [S52][S53] | Bands already say "camera lost" or "link down" (`.github/docs/OPERATING.md`). The box view can say which device is missing. by-id names exist only for devices that report a serial [S53]. |
 | Engine and device the classifier runs on | Useful | `latest`, once #62 adds it | Says whether the GPU is in use. |
 | Temperatures, throttling | Useful | `/sys/class/thermal/thermal_zone*/temp` [S50]; `vcgencmd get_throttled` on a Pi [S51] | A Pi that throttles scores fewer frames. |
@@ -279,7 +285,7 @@ The cloud page cannot write to a box: nothing from the cloud reaches an installa
 | B. Upload on the box's page | Saves the `.r49` from the cloud page, opens the box's occupancy page, chooses "Put on the service" | A route in `LIVE.md` that takes a `.r49` zip, writes it into the archive folder, accepts a new `id`, and reloads. Today a change of `id` is refused (`LIVE.md:280`). | One archive per service stays, so a second layout replaces the first. |
 | C. Several archives on the service | Picks one on the box's page | `LIVE.md` gains a list and a choice; the service's one `--archive` becomes a directory | The service is "one archive and one camera" (`occupancy-service/GLOSSARY.md`). |
 | D. Archives as documents in `control`'s store | Loads them as railroads are loaded | The service reads from the store | Ties the service to `control`; `.github#60` says the service code names no controller. |
-| E. Do the work on the box's page | Makes and edits the archive on the box's page from the start | None | The box's page is the same build as the cloud page at a pinned commit (`occupancy-service/compose.yaml:57`); a phone's camera needs the box's certificate, which a box with no domain does not have. |
+| E. Do the work on the box's page | Makes and edits the archive on the box's page from the start | None | The box's page is the same build as the cloud page at a pinned commit (`occupancy-service/compose.yaml:57`); a phone's camera needs the box's certificate, which a box with no certificate does not have. |
 
 ### Changing the archive on the box
 
@@ -315,8 +321,8 @@ A published service image with `DETECTOR_VERSION` set distributes `rails49-detec
 1. Support one kind of box: a 64-bit Debian-family Linux on x86-64, and on arm64 only if the hardware question below says so. Say plainly that macOS and Windows run the simulator for trying the software and are not a box.
 2. Publish images. Each stack's CI builds its images on native runners for the supported architectures and pushes them to GHCR, named by commit, with the revision label (dccex ADR-0005 for every stack). `control` keeps its uid rule with a thin layer built on the box (5.4).
 3. Release the installation as one unit. A manifest in `installation`, under a version tag, pins each stack's images by digest and names the tested Docker Engine versions. CI starts the release with the simulator before it is tagged. The box runs the stacks it declares from that release.
-4. Install with one script. It installs Docker Engine from Docker's apt repository, starts the updater, and prints the address of its setup page. The page asks for the box name, a domain or none, and the stacks, writes `/etc/rails49`, and starts the release. The README stays the prose of what it does. A prepared image that runs the same script through cloud-init, and shows the address on the box's screen, comes after.
-5. A box installs with or without a domain (rails49/installation#53). With one, as today. Without one, each UI is served over plain HTTP on a port of its own. The project runs no zone for others' boxes; that can be added later if people ask.
+4. Install with one script. It installs Docker Engine from Docker's apt repository, starts the updater, and prints the address of its setup page. The page asks for the box name or none, and the stacks, writes `/etc/rails49`, and starts the release. The README stays the prose of what it does. A prepared image that runs the same script through cloud-init, and shows the address on the box's screen, comes after.
+5. A box installs with or without a certificate (rails49/installation#53). With a box name, as today. With none, each UI is served over plain HTTP on its UI port. Every box serves the UI ports. The project runs no zone for others' boxes; that can be added later if people ask.
 6. Add an updater to the installation. It checks for a new release once a day when online, shows status, versions and "update available" on a page under the door, updates and rolls back on a press, and keeps a record as dccex does. No automatic updates.
 7. Configure log rotation and image pruning in the release, and show disk, certificate expiry and name resolution on the status page.
 8. Add one route to the live contract that puts an uploaded `.r49` on the service, so a cloud-made archive reaches the box through the box's page.
@@ -328,7 +334,7 @@ A published service image with `DETECTOR_VERSION` set distributes `rails49-detec
 
 1. Which hardware is a supported box: Intel x86-64 with an iGPU only, or also arm64 (Raspberry Pi 5)? This decides whether arm64 images are published and tested.
 2. Is there a supported path on macOS and Windows (the simulator under Docker Desktop), or none?
-3. The box name: the operator's own domain or none (rails49/installation#53, with its own open questions: the port table, how `box.env` states the mode, whether a box with a domain also serves the ports, and noVNC over plain HTTP). A label under a zone the project runs is left out for now.
+3. Settled in rails49/installation#53: a box name in the operator's own zone, or a box with no certificate. A label under a zone the project runs is left out for now.
 4. Move from building on the box to published images? This amends control ADR-0067 and the installation's "publishes no image". Which uid approach: a thin layer on the box, `nss_wrapper`, or one fixed uid?
 5. One installation release, or per-stack versions?
 6. Who may press update and rollback: anyone on the LAN (as control ADR-0042 and installation ADR-0005 have it), or only someone at the box? May an update run while track power is on?

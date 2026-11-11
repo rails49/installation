@@ -16,13 +16,28 @@ _Avoid_: host, server, node, machine
 The name a box is reached at, held in `BOX_DOMAIN`. It may be a domain bought
 for the box, as `gleis49.org` is, or a label in a zone somebody already runs,
 as `dev.rails49.org` is; both are supported and neither is the normal case.
-The variable's name says domain and is wrong about it; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+The variable's name says domain and is wrong about it. Only a box with a
+certificate has one; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
 _Avoid_: box domain, domain, hostname, FQDN
 
+**Box with no certificate**:
+A box whose `BOX_DOMAIN` is empty. It serves each UI over plain HTTP on a UI
+port, at its hostname under `.local` or at its address; see
+[#53](https://github.com/rails49/installation/issues/53).
+_Avoid_: box with no name, box with no domain, HTTP mode, no-domain mode
+
+**UI port**:
+The port that serves one UI over plain HTTP, one per label, from a table the
+installation owns. Every box serves them; on a box with no certificate they
+are the only way in. See
+[#53](https://github.com/rails49/installation/issues/53).
+_Avoid_: entry point (Traefik's word for the socket), app port
+
 **Label**:
-One name under a box name, serving exactly one UI, listed in `BOX_UIS`. The
-UI's own container declares the router for it; the installation knows the
-label and nothing else about the UI; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+One name under a box name, serving exactly one UI, listed in `BOX_UIS`. Each
+label also has a UI port, which is all it has on a box with no certificate. The UI's own
+container declares the router for it; the installation knows the label and
+nothing else about the UI; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
 _Avoid_: subdomain, route, service, app name
 
 **Declaration**:
