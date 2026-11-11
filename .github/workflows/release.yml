@@ -62,7 +62,7 @@ jobs:
             echo "$stack=$commit" >> "$GITHUB_OUTPUT"
           done
           tags=$(git ls-remote --tags --refs origin | sed 's|.*refs/tags/||')
-          release=$(jq -r .release <<<"$INPUTS")
+          release=$(jq -r '.release // ""' <<<"$INPUTS")
           if [ -z "$release" ]; then
             release=$(scripts/release-number.sh "$(date -u +%Y.%-m)" <<<"$tags")
           fi
