@@ -15,8 +15,8 @@
 #
 # Last, scripts/probe.sh asks every way into every UI on the box whether it
 # admits the UI's own page and refuses a foreign one, from this machine, which
-# has to be on the box's LAN. A refusal there makes the deploy exit 1, with the
-# installation already up.
+# has to be on the box's LAN. It prints what it found. The exit code is the
+# deploy's, not the probe's.
 #
 # JMRI is not deployed here. It is an optional extra with a compose project of
 # its own (ADR-0002), and a box that wants it says so once by hand.
@@ -64,4 +64,4 @@ if [ -n "$restart" ]; then
 fi
 REMOTE
 
-"$(dirname "$0")/scripts/probe.sh" "$box"
+"$(dirname "$0")/scripts/probe.sh" "$box" || echo "probe: some answers were not the ones wanted, above" >&2

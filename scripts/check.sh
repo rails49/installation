@@ -76,17 +76,18 @@ done
 # reading missed: a regex GNU awk accepts and busybox rejects took the page
 # down on the first box it reached, and nothing here saw it.
 if [ -f page/render.sh ]; then
-  # The page in both kinds of box, reading the hostname the way compose mounts
-  # it. Each has to hold a link with its UI port and a label with no UI port:
-  # with a box name, a link under the box name and one with no port; with no
-  # certificate, a link on `.local` and a label listed as text.
+  # The page in both kinds of box. With no certificate it reads the hostname
+  # the way compose mounts it. Each has to hold a link with its UI port and a
+  # label with no UI port: with a box name, a link under the box name and one
+  # with no port; with no certificate, a link on `.local` and a label listed
+  # as text.
   # shellcheck disable=SC2329  # called through `run`
   page_renders() {
-    local domain=$1 out
+    local domain=$1 out mounts=(-v "$ROOT/page:/page:ro")
     shift
+    [ -n "$domain" ] || mounts+=(-v /etc/hostname:/host/hostname:ro)
     out=$(docker run --rm -e BOX_DOMAIN="$domain" -e BOX_UIS='control turntable' \
-      -v "$ROOT/page:/page:ro" -v /etc/hostname:/host/hostname:ro \
-      nginx:alpine /page/render.sh) || return 1
+      "${mounts[@]}" nginx:alpine /page/render.sh) || return 1
     for want in "$@"; do
       grep -qF "$want" <<<"$out" || { printf 'missing: %s\n%s\n' "$want" "$out"; return 1; }
     done

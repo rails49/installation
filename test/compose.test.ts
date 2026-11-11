@@ -177,8 +177,6 @@ describe("the door", () => {
   });
 
   it("with a box name answers on 443 and serves every UI port", () => {
-    // No redirect on the entry point: that would take every name on 80, an
-    // address included. The `to-https` router takes the box's names alone.
     expect([...door].sort()).toEqual(
       [
         ...EVERY_BOX,
@@ -278,6 +276,36 @@ describe("the door", () => {
     expect(major).toBeGreaterThanOrEqual(3);
     expect(major > 3 || minor >= 7).toBe(true);
   });
+
+  it("redirects 80 to HTTPS for the box name and the names under it, and no other", () => {
+    // An address or a `.local` name gets the page over plain HTTP. `/box`
+    // under the box's names redirects too, so this is above `box-http`.
+    const door = labels(installation.services.door);
+    expect(door["traefik.enable"]).toBe("true");
+    expect(door["traefik.http.routers.to-https.rule"]).toBe(
+      "Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\\.\\Q${BOX_DOMAIN}\\E$$`)",
+    );
+    expect(door["traefik.http.routers.to-https.entrypoints"]).toBe("web");
+    expect(door["traefik.http.routers.to-https.service"]).toBe("noop@internal");
+    expect(door["traefik.http.routers.to-https.middlewares"]).toBe("to-https");
+    expect(door["traefik.http.middlewares.to-https.redirectscheme.scheme"]).toBe("https");
+    expect(Number(door["traefik.http.routers.to-https.priority"])).toBeGreaterThan(
+      Number(labels(installation.services.box)["traefik.http.routers.box-http.priority"]),
+    );
+  });
+
+  it("declares every middleware itself, so none goes away with another container", () => {
+    // A router naming a middleware that is not there is dropped, and the
+    // request falls to the next router that matches: for `/websockify`, the
+    // one with no check (#58).
+    const others = [installation.services.page, installation.services.box, jmri.services.jmri];
+    for (const service of others) {
+      const declared = Object.keys(labels(service)).filter((label) =>
+        label.startsWith("traefik.http.middlewares."),
+      );
+      expect(declared).toEqual([]);
+    }
+  });
 });
 
 describe("the page", () => {
@@ -299,21 +327,6 @@ describe("the page", () => {
     expect(page["traefik.http.routers.page-http.rule"]).toBe("PathPrefix(`/`)");
     expect(page["traefik.http.routers.page-http.entrypoints"]).toBe("web");
     expect(page["traefik.http.routers.page-http.tls"]).toBeUndefined();
-  });
-
-  it("redirects 80 to HTTPS for the box name and the names under it, and no other", () => {
-    // An address or a `.local` name gets the page over plain HTTP. `/box`
-    // under the box's names redirects too, so this is above `box-http`.
-    const page = labels(installation.services.page);
-    expect(page["traefik.http.routers.to-https.rule"]).toBe(
-      "Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\\.${BOX_DOMAIN}$$`)",
-    );
-    expect(page["traefik.http.routers.to-https.entrypoints"]).toBe("web");
-    expect(page["traefik.http.routers.to-https.middlewares"]).toBe("to-https");
-    expect(page["traefik.http.middlewares.to-https.redirectscheme.scheme"]).toBe("https");
-    expect(Number(page["traefik.http.routers.to-https.priority"])).toBeGreaterThan(
-      Number(labels(installation.services.box)["traefik.http.routers.box-http.priority"]),
-    );
   });
 
   it("mounts the render script's directory and look's, not the files in them", () => {
@@ -405,7 +418,8 @@ describe("the box", () => {
   it("answers the origin check every UI names as same-origin@docker", () => {
     // The door dials `box` by its service name on the shared network, and
     // the script answers `/origin`.
-    expect(router["traefik.http.middlewares.same-origin.forwardauth.address"]).toBe(
+    const door = labels(installation.services.door);
+    expect(door["traefik.http.middlewares.same-origin.forwardauth.address"]).toBe(
       `http://box:${router["traefik.http.services.box.loadbalancer.server.port"]}/origin`,
     );
     expect(box.networks).toEqual([NETWORK]);
@@ -610,6 +624,15 @@ describe("the UI ports", () => {
       ([, port, label]) => [label, Number(port)],
     );
     expect(linked).toEqual(uis.map(([label, , port]) => [label, port]));
+  });
+
+  it("are what the probe asks", () => {
+    const probe = readFileSync(new URL("scripts/probe.sh", root), "utf8");
+    const block = probe.match(/^ui_port\(\) \{\n([\s\S]*?)\n\}$/m)![1]!;
+    const asked = [...block.matchAll(/^\s+([a-z]+)\) echo (\d+) ;;$/gm)].map(
+      ([, label, port]) => [label, Number(port)],
+    );
+    expect(asked).toEqual(uis.map(([label, , port]) => [label, port]));
   });
 
   it("each reach the box's own requests", () => {
