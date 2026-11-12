@@ -64,15 +64,17 @@ export DEBIAN_FRONTEND=noninteractive
 if ! command -v docker >/dev/null; then
   echo "Installing Docker Engine from Docker's apt repository."
   # shellcheck disable=SC1091  # the box's, not this repository's
-  distro=$(. /etc/os-release && echo "$ID $VERSION_CODENAME")
-  case ${distro% *} in
+  os=$(. /etc/os-release && echo "$ID")
+  # shellcheck disable=SC1091
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+  case $os in
     ubuntu | debian) ;;
-    *) fail "Docker's apt repository has no packages for ${distro% *}. Install Docker Engine by hand, then run this again." ;;
+    *) fail "Docker's apt repository has no packages for $os. Install Docker Engine by hand, then run this again." ;;
   esac
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL -o /etc/apt/keyrings/docker.asc "https://download.docker.com/linux/${distro% *}/gpg"
+  curl -fsSL -o /etc/apt/keyrings/docker.asc "https://download.docker.com/linux/$os/gpg"
   chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${distro% *} ${distro#* } stable" \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$os $codename stable" \
     >/etc/apt/sources.list.d/docker.list
   apt-get update -q
   apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -121,7 +123,8 @@ if [ ! -e "$dir/manifest.json" ]; then
   mv "$dir.part" "$dir"
 fi
 
-# 7. The host facts, and last the declaration of a box that serves nothing.
+# 7. The store, control.env and occupancy.env, and last box.env, which
+# declares a box with no certificate that serves nothing.
 uid=$(id -u rails49)
 gid=$(id -g rails49)
 install -d -o rails49 -g rails49 "$STORE" "$STORE/occupancy" "$STORE/jmri"
@@ -142,8 +145,9 @@ OCCUPANCY_ARCHIVES=$STORE/occupancy
 EOF
 printf 'BOX_DOMAIN=\nBOX_UIS=\n' >/etc/rails49/box.env
 
-# 8. Installing is updating from nothing: `rails49-update` from the release's
-# `installation-box` image brings the installation up and checks it.
+# 8. `rails49-update` from the release's `installation-box` image brings the
+# installation up and checks it, as an update from no release. `start()` in
+# `box/update.mjs` starts it the same way.
 image=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/rails49\/installation-box:.*\)$/\1/p' \
   "$dir/installation/compose.yaml")
 echo "Starting release $release. This takes a few minutes."
@@ -152,16 +156,24 @@ set --
 if [ -n "$address" ]; then
   set -- --add-host "$host.local:$address"
 fi
-docker run -d --name rails49-update \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /etc/rails49:/etc/rails49:ro \
-  -v /var/lib/rails49:/var/lib/rails49 \
-  -e BOX_DOMAIN= -e BOX_UIS= -e "BOX_HOSTNAME=$host" -e "BOX_ADDRESS=$address" \
-  "$@" "$image" node /box/update.mjs update - "$release" >/dev/null
-docker wait rails49-update >/dev/null
-if ! grep -q '"passed":true' /var/lib/rails49/update.json; then
-  echo "Release $release did not come up: $(sed -n 's/.*"failure":"\(.*\)"}$/\1/p' /var/lib/rails49/update.json)" >&2
-  echo "The status page may say more:" >&2
+# A run that failed left its container and its progress.
+docker rm -f rails49-update >/dev/null 2>&1 || true
+rm -f /var/lib/rails49/update.json
+if ! {
+  docker run -d --name rails49-update \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /etc/rails49:/etc/rails49:ro \
+    -v /var/lib/rails49:/var/lib/rails49 \
+    -e BOX_DOMAIN= -e BOX_UIS= -e "BOX_HOSTNAME=$host" -e "BOX_ADDRESS=$address" \
+    "$@" "$image" node /box/update.mjs update - "$release" >/dev/null &&
+    docker wait rails49-update >/dev/null &&
+    grep -q '"passed":true' /var/lib/rails49/update.json
+}; then
+  failure=$(sed -n 's/.*"failure":"\(.*\)"}$/\1/p' /var/lib/rails49/update.json 2>/dev/null || true)
+  # So that the script runs again.
+  rm /etc/rails49/box.env
+  echo "Release $release did not come up${failure:+: $failure}" >&2
+  echo "Run the install script again once that is fixed. The status page, if it answers, has the log bundle:" >&2
   addresses >&2
   exit 1
 fi

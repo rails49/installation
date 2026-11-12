@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Push this checkout to a box and bring the installation back up. A
-# maintainer's convenience for the routine case, not the install path —
-# installing is prose, and README.md is where it is written.
+# maintainer's convenience for the routine case, not the install path, which
+# is `install.sh`.
 #
 # On the box it pulls, refuses a clone that is not clean, and builds the page
 # and the box there under the commit it pulled. Nothing is pulled from GHCR.

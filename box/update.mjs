@@ -291,7 +291,7 @@ export async function updater(docker) {
 /**
  * Starts `rails49-update` for an update to the latest release, for going
  * back, or for applying the setup, and answers null; or answers in a sentence
- * why not. Nothing it runs takes anything from the request: the release is
+ * why not. `install.sh` starts it the same way on a new box. Nothing it runs takes anything from the request: the release is
  * the latest the last check found, the one the record says the box ran
  * before, or the one it runs. `env.BOX_UIS` is what the container brings up.
  *

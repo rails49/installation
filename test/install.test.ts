@@ -180,7 +180,7 @@ describe("installing a fresh box", () => {
     expect(run.files["/etc/rails49/box.env"]).toEqual({ owner: "root:root 644", text: "BOX_DOMAIN=\nBOX_UIS=\n" });
   });
 
-  it("writes the host facts for control and occupancy, with the rails49 user's ids", () => {
+  it("writes control.env and occupancy.env, with the rails49 user's ids", () => {
     const control = run.files["/etc/rails49/control.env"]!;
     const uid = control.text.match(/^TC49_UID=(\d+)$/m)![1];
     const gid = control.text.match(/^TC49_GID=(\d+)$/m)![1];
@@ -225,9 +225,10 @@ describe("installing a fresh box", () => {
     ]);
   });
 
-  it("brings the installation up by updating from nothing with the release's rails49-update", () => {
+  it("brings the installation up with the release's rails49-update, as an update from no release", () => {
     const docker = run.calls.filter((call) => call.startsWith("docker "));
     expect(docker).toEqual([
+      "docker rm -f rails49-update",
       "docker run -d --name rails49-update -v /var/run/docker.sock:/var/run/docker.sock " +
         "-v /etc/rails49:/etc/rails49:ro -v /var/lib/rails49:/var/lib/rails49 " +
         "-e BOX_DOMAIN= -e BOX_UIS= -e BOX_HOSTNAME=shed -e BOX_ADDRESS=192.168.1.20 " +
@@ -309,11 +310,20 @@ describe("installing", () => {
     expect(run.files).toEqual({});
   });
 
-  it("fails with the update's sentence and the status page's addresses when the installation does not come up", () => {
+  it("fails with the update's sentence when the installation does not come up, and can be run again", () => {
     const failure = "installation is not running 60 seconds after updating to release 2026.11.3: installation-door-1 restarted.";
     const run = installed({ update: { step: "Failed.", passed: false, failure } });
     expect(run.status).toBe(1);
     expect(run.stderr).toContain(`Release 2026.11.3 did not come up: ${failure}`);
-    for (const address of ADDRESSES) expect(run.stderr).toContain(address);
+    expect(run.stderr).toContain("Run the install script again");
+    expect(run.files["/etc/rails49/box.env"]).toBeUndefined();
+  });
+
+  it("removes the last run's rails49-update before it starts its own", () => {
+    // A run that failed leaves its container, under the same name.
+    const run = installed();
+    const docker = run.calls.filter((call) => call.startsWith("docker "));
+    expect(docker[0]).toBe("docker rm -f rails49-update");
+    expect(docker[1]).toMatch(/^docker run -d --name rails49-update /);
   });
 });

@@ -26,6 +26,7 @@ function box(options: { files?: Record<string, string>; state?: string; refusal?
     ...options.files,
   };
   const started: string[] = [];
+  const domains: string[] = [];
   const io: Io = {
     read: async (path) => files[path] ?? null,
     write: async (path, text) => void (files[path] = text),
@@ -35,12 +36,13 @@ function box(options: { files?: Record<string, string>; state?: string; refusal?
         "/dev/v4l/by-id": ["usb-046d_HD_Pro_Webcam_C920-video-index0", "usb-046d_HD_Pro_Webcam_C920-video-index1"],
       })[dir] ?? [],
     docker: async () => options.state ?? "",
-    start: async (uis) => {
+    start: async (uis, domain) => {
       started.push(uis);
+      domains.push(domain);
       return options.refusal ?? null;
     },
   };
-  return { io, files, started };
+  return { io, files, started, domains };
 }
 
 /** A form as the page posts it. */
@@ -59,6 +61,13 @@ describe("applying", () => {
     expect(await apply(post(["dccex"]), io)).toBeNull();
     expect(files[BOX]).toBe('# the box\nBOX_DOMAIN=\nBOX_UIS="control dccex"\nEXTRA=1\n');
     expect(started).toEqual(["control dccex"]);
+  });
+
+  it("starts the stacks at the box name box.env declares, not the one box was started with", async () => {
+    // README's "A box name": the name is written by hand, then applied.
+    const { io, domains } = box({ files: { [BOX]: "BOX_DOMAIN=shed.example.org\nBOX_UIS=control\n" } });
+    expect(await apply(post(["control"]), io)).toBeNull();
+    expect(domains).toEqual(["shed.example.org"]);
   });
 });
 
