@@ -98,6 +98,7 @@ _Avoid_: dashboard, admin page, box page, setup page
 **Install script**:
 The one command that makes a Debian-family Linux computer a box with no
 certificate that serves nothing yet. Run again on a box, it refuses; see
+[Install](README.md#install) and
 [#69](https://github.com/rails49/installation/issues/69).
 _Avoid_: installer, bootstrap, setup script
 

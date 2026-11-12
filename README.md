@@ -281,44 +281,93 @@ use
 ([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
 While `box` is down, every path behind the middleware is refused.
 
-## Installing
+## Install
 
-Installing is prose, not a program: this is what is about to happen to your
-box, and you can read it before it does.
+On a computer with a 64-bit Debian-family Linux, amd64 or arm64, such as
+Ubuntu Server or Raspberry Pi OS, on the network the box will serve:
 
-You need docker. For a box with a box name you also need a name of your own in a
-zone you control, and an API token for that zone's DNS provider. No port is
-forwarded — the certificate is proved by writing a TXT record — and nothing
-inbound from the internet is needed. A box with no certificate needs neither,
-does step 1 its own way, and skips step 3.
+```bash
+curl -fsSL https://rails49.org/install | sudo sh
+```
+
+That installs the latest release. Another, a pre-release included, is named:
+
+```bash
+curl -fsSL https://rails49.org/install | sudo sh -s -- --release 2026.11.4
+```
+
+`https://rails49.org/install` redirects to the `install.sh` of the latest
+release on GitHub. In order, the script:
+
+1. Stops unless it runs as root on a computer with apt. On a box already
+   installed, one with `/etc/rails49/box.env`, it stops and prints the status
+   page's addresses: updates are made there.
+2. Installs Docker Engine from Docker's apt repository, unless `docker` is
+   there.
+3. Installs `avahi-daemon`, which answers `<hostname>.local`, unless it is
+   there.
+4. Writes `/etc/docker/daemon.json` as `{"log-driver": "local"}` and restarts
+   Docker. A `daemon.json` that is there already is left as it is, and the
+   status page says which log driver Docker uses.
+5. Makes the system user and group `rails49`.
+6. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
+   into `/var/lib/rails49/releases/<release>/`, unless they are there.
+7. Makes the store, `/var/lib/rails49/tc49`, with `occupancy/` for
+   occupancy's archives and `jmri/` for JMRI's profile, all owned by
+   `rails49`. Writes `/etc/rails49/control.env` with `rails49`'s
+   `TC49_UID` and `TC49_GID`, `TC49_STORE` and
+   `COMPOSE_PROFILES=layout,sim`, and `occupancy.env` with the same ids and
+   store, `VIDEO_GID` and `RENDER_GID` from the box's groups, and
+   `OCCUPANCY_ARCHIVES`. Last it writes `box.env` with `BOX_DOMAIN=` and
+   `BOX_UIS=`: a box with no certificate that serves nothing yet.
+8. Starts `rails49-update` from the release's `installation-box` image, which
+   updates the box from nothing, as an
+   [update](#updating-the-box-and-going-back) does: it brings up the door, the
+   page and `box`, waits 60 seconds and runs the probe. This takes a few
+   minutes.
+9. Prints the status page's addresses, `http://<hostname>.local/box/` and
+   `http://<address>/box/`.
+
+It leaves the hostname as the OS installer set it.
+
+Open one of the two addresses from a phone or a computer on the same network,
+or `http://localhost/box/` on the box itself. On the status page, tick the
+stacks the box runs, choose its command station and camera, and apply
+([Setup](#setup)). Reserve the box's address in your router, so the addresses
+people save keep working.
+
+`COMPOSE_PROFILES=layout,sim` runs control's simulated railroad. On a box wired
+to a command station, set `COMPOSE_PROFILES=layout,steel` in
+`/etc/rails49/control.env` and apply the setup again.
+
+## A box name
+
+A box with a box name is reached at `https://<label>.<box name>`, with a
+certificate. The status page does not set one up, so no DNS token crosses
+plain HTTP. Install the box as above, then do these steps by hand.
+
+You need a name of your own in a zone you control, and an API token for that
+zone's DNS provider. No port is forwarded — the certificate is proved by
+writing a TXT record — and nothing inbound from the internet is needed.
 
 **1. Point the name at the box.** An `A` record for the apex and one per label,
 each holding the box's address on your LAN. A public record holding a private
 address is the design rather than a trick: anyone may resolve the name, and it
 only works on the LAN.
 
-On a box with no certificate, reserve the box's address in your router instead,
-so the addresses people save keep working. `<hostname>.local` needs an mDNS
-responder on the box: Raspberry Pi OS ships one, and on Ubuntu Server install it
-with `sudo apt install avahi-daemon`.
-
-**2. Write the box's declaration.** As root, because every stack reads it and
-only the status page's setup rewrites it:
+**2. Name the box in its declaration.** Set `BOX_DOMAIN` to the box name and
+add `BOX_ACME_PROVIDER`, as in [`box.env.example`](box.env.example). Leave
+`BOX_UIS` as the status page wrote it.
 
 ```bash
-sudo install -d -m 755 /etc/rails49
-sudo install -m 644 box.env.example /etc/rails49/box.env
 sudo editor /etc/rails49/box.env
 ```
 
-For a box with no certificate, set `BOX_DOMAIN=` and leave `BOX_ACME_PROVIDER`
-out.
-
 **3. Write the door's file.** Same directory, tighter mode, and the door alone
-reads it:
+reads it. Its lines are those of [`acme.env.example`](acme.env.example):
 
 ```bash
-sudo install -m 640 -o root -g docker acme.env.example /etc/rails49/acme.env
+sudo install -m 640 -o root -g docker /dev/null /etc/rails49/acme.env
 sudo editor /etc/rails49/acme.env
 ```
 
@@ -327,32 +376,16 @@ How that file is populated is not this repository's business. A machine with
 file, because `op` unlocks through a desktop app that a headless box does not
 have and the certificate has to renew months from now with nobody present.
 
-**4. Start the installation.**
-
-```bash
-docker compose --env-file /etc/rails49/box.env up -d --build
-```
-
-`--build` builds the page and the box from this clone. The door comes up, 80 redirects the box name to 443, and the first request for the name is
-what makes it ask for a certificate. Give it a few seconds and open
-`https://$BOX_DOMAIN`. Renewal is the door's, at about a third of the
-certificate's remaining life, and needs only outbound HTTPS.
+**4. Apply the setup on the status page.** It starts every stack again against
+the new declaration. Port 80 now redirects the box name to 443, and the first
+request for the name is what makes the door ask for a certificate. Give it a
+few seconds and open `https://<box name>`. Renewal is the door's, at about a
+third of the certificate's remaining life, and needs only outbound HTTPS.
 
 A label with nothing serving it yet answers 404. That is the point: the name
 works, the certificate is real, and no railroad was installed to get there.
 
-On a box with no certificate the door serves 80 and the UI ports at once. Open
-`http://<hostname>.local` or `http://<address>`. The door's log names each
-`websecure` router it dropped; that is expected there.
-
-**5. Install what the box is for.** `control`, `dccex`, whatever this box has.
-Each is its own repository with its own compose, started against the same
-declaration, joining the network this one created. A stack started before the
-installation says so:
-
-    network rails49 declared as external, but could not be found
-
-## Working on a development machine
+## Development
 
 A development machine is reached at `localhost`, or it runs the installation.
 Two shapes and no third
@@ -362,7 +395,31 @@ name, no certificate and no door, because `localhost` is a secure context and a
 browser asks for nothing more. The second is this one, and it is for seeing
 what an operator actually receives.
 
-Running it is the five steps above. What is different is below.
+Running it is a clone of each stack instead of the install script. Write the
+declaration by hand, as root, because every stack reads it:
+
+```bash
+sudo install -d -m 755 /etc/rails49
+sudo install -m 644 box.env.example /etc/rails49/box.env
+sudo editor /etc/rails49/box.env
+```
+
+For a box with no certificate, set `BOX_DOMAIN=` and leave `BOX_ACME_PROVIDER`
+out. With a box name, write the door's file and the records as in
+[A box name](#a-box-name). Then start the installation from this clone:
+
+```bash
+docker compose --env-file /etc/rails49/box.env up -d --build
+```
+
+`--build` builds the page and the box from this clone. Each other stack is its
+own repository with its own compose, started against the same declaration,
+joining the network this one created. A stack started before the installation
+says so:
+
+    network rails49 declared as external, but could not be found
+
+What is different from a box is below.
 
 **Stop the development servers first.** The two shapes publish some of the same
 ports, and they are alternatives rather than neighbours.
@@ -385,9 +442,9 @@ app, which a development machine has and a headless box does not. Write
 Rendering it again before each start buys nothing: the door reads it at
 renewal, months later, and not at `up -d`.
 
-**That file's owner is not the box's.** Step 3 above gives it to `root:docker`,
-which is the boundary on a machine where the daemon's socket belongs to a
-group. macOS has no `docker` group and Docker Desktop's socket belongs to
+**That file's owner is not the box's.** [A box name](#a-box-name)'s step 3
+gives it to `root:docker`, which is the boundary on a machine where the
+daemon's socket belongs to a group. macOS has no `docker` group and Docker Desktop's socket belongs to
 whoever is logged in, so compose reads the file as you — and a root-owned
 `640` file is one your own `up -d` cannot open. Own it yourself, mode `600`.
 The declaration beside it stays root's: every stack reads that one and only the
@@ -410,46 +467,7 @@ last build. That is
 what makes the machine useful for changing the door at all, and it is worth
 knowing before you wonder why 443 is behaving strangely.
 
-## JMRI
-
-JMRI's compose rides here as an optional extra. It is not part of the
-installation — it is the one UI no repository of this project owns — so it is a
-compose project of its own rather than a profile
-([ADR-0002](docs/adr/0002-jmri-is-a-compose-project-of-its-own.md)), started
-and stopped without touching the door or the page:
-
-```bash
-(. /etc/rails49/control.env && mkdir -p "$TC49_STORE/jmri")
-TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
-  --env-file /etc/rails49/box.env --env-file /etc/rails49/control.env \
-  -f jmri/compose.yaml up -d --build
-```
-
-JMRI's profile — the connection to the command station, the roster and every
-loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
-that `control` writes to `/etc/rails49/control.env`, and is backed up, restored
-and moved to a new box with it
-([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
-The image is the stock one with its user renumbered to yours, so the files it
-writes there are yours. The directory has to exist first: compose refuses to
-start rather than let docker make it owned by root. On a new box, take the store
-over from its repository before opening DecoderPro, or the profile it writes
-makes the store not empty. Quit DecoderPro before a restore and open it again
-after; it reads the profile once, at launch. The stock image is pinned by
-digest in `jmri/Dockerfile`, and a newer one is a change to that line.
-
-JMRI reaches the command station as a client of the mirror's 2560, like any
-hand-held throttle: a DCC++ over TCP connection whose host is the box, not a
-compose service name. Set it in DecoderPro once and save; it is part of the
-profile.
-
-It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN` and on its UI
-port, 8083, so put `jmri` in `BOX_UIS` to have the page list it. Over plain
-HTTP noVNC shows a banner saying HTTPS is recommended, and works. JMRI's own
-web server and raw VNC are not reachable: the first is a browser's and is
-behind the door or nowhere, and the second is not a browser's at all.
-
-## Deploying
+### Deploying
 
 `./deploy.sh` is a maintainer's convenience for pushing this checkout to a box
 from a dev machine. Over ssh it runs `git pull`, then `up -d --build`, which
@@ -487,6 +505,47 @@ in the script, and a UI that adds or moves one changes the list there.
 Every other stack deploys itself. A repository that knows nothing about
 railroads does not build a railroad's UI.
 
+## JMRI
+
+JMRI's compose rides here as an optional extra. It is not part of the
+installation — it is the one UI no repository of this project owns — so it is a
+compose project of its own rather than a profile
+([ADR-0002](docs/adr/0002-jmri-is-a-compose-project-of-its-own.md)), started
+and stopped without touching the door or the page. On a box, tick `jmri` on
+the status page. From a clone:
+
+```bash
+(. /etc/rails49/control.env && mkdir -p "$TC49_STORE/jmri")
+TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
+  --env-file /etc/rails49/box.env --env-file /etc/rails49/control.env \
+  -f jmri/compose.yaml up -d --build
+```
+
+JMRI's profile — the connection to the command station, the roster and every
+loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
+that `control` writes to `/etc/rails49/control.env`, and is backed up, restored
+and moved to a new box with it
+([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
+The image is the stock one with its user renumbered to yours, so the files it
+writes there are yours. The directory has to exist first: compose refuses to
+start rather than let docker make it owned by root. The install script makes
+it, and from a clone the first line above does. On a new box, take the store
+over from its repository before opening DecoderPro, or the profile it writes
+makes the store not empty. Quit DecoderPro before a restore and open it again
+after; it reads the profile once, at launch. The stock image is pinned by
+digest in `jmri/Dockerfile`, and a newer one is a change to that line.
+
+JMRI reaches the command station as a client of the mirror's 2560, like any
+hand-held throttle: a DCC++ over TCP connection whose host is the box, not a
+compose service name. Set it in DecoderPro once and save; it is part of the
+profile.
+
+It publishes no port. noVNC answers at `https://jmri.$BOX_DOMAIN` and on its UI
+port, 8083, and ticking `jmri` puts it in `BOX_UIS`, so the page lists it.
+Over plain HTTP noVNC shows a banner saying HTTPS is recommended, and works. JMRI's own
+web server and raw VNC are not reachable: the first is a browser's and is
+behind the door or nowhere, and the second is not a browser's at all.
+
 ## Making a release
 
 A release is one installation release
@@ -512,16 +571,19 @@ every stock image a compose file starts or a Dockerfile builds on. It writes
 `image:` pinned to its digest in the manifest. A box needs no clone and no git
 to run them.
 
-Then it checks the release on an amd64 and an arm64 runner, from the archive
-alone, as a box with no certificate: the installation; `control` with the
-simulator; `dccex` with no station; occupancy with no camera and
-occupancy-service's check archive. After 60 seconds every container has to be
-running with no restart, and `scripts/probe.sh` has to pass. A failure stops
-the workflow before any tag is made.
+Then it checks the release on an amd64 and an arm64 runner. Each puts the
+manifest and the box files where an update leaves them, runs
+`install.sh --release <number>`, which downloads nothing and leaves the
+runner's Docker Engine alone, and applies the setup on the status page:
+`control` with the simulator, `dccex` with no station, occupancy with no
+camera and no archive. The update that applying starts has to pass. After
+another 60 seconds every container has to be running with no restart, and
+`scripts/probe.sh` has to pass. A failure stops the workflow before any tag
+is made.
 
 Last, it tags the installation's commit with the release number and publishes
 a GitHub pre-release with `manifest.json`, which now also has each runner's
-Docker Engine version, and `box-files.tar.gz`. It does both as the
+Docker Engine version, `box-files.tar.gz` and `install.sh`. It does both as the
 `rails49-release` GitHub App, installed on this repository only with Contents
 and Workflows write. Its client ID is the Actions variable
 `RELEASE_APP_CLIENT_ID`; its private key is the Actions secret
@@ -536,7 +598,11 @@ op read "op://rails49/rails49-release/credential" |
 **2. Check it by hand.** Install the pre-release on `gleis49` and
 `pi49` and run trains on it for as long as it takes
 ([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
-8). Add `gleis49`'s Docker Engine version (`docker version --format
+8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
+Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
+`--release <number>`. Each has to reach `/box/` at both printed addresses,
+have every stack ticked and applied, and pass `scripts/probe.sh`
+([#69](https://github.com/rails49/installation/issues/69) decision 18). Add `gleis49`'s Docker Engine version (`docker version --format
 '{{.Server.Version}}'`) to the release notes.
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
@@ -555,7 +621,8 @@ page is built on for both kinds of box, and the tests: one over the page the
 render script produces, one over the box's requests and the origin check, one
 each over the status, the check for a new release, the log bundle and the
 status page `box` renders, one over the compose files as data and the door's
-script, one over what a deploy builds and refuses, one over the images
+script, one over what a deploy builds and refuses, one over what the install
+script does to a box, in the stock image `box` is built on, one over the images
 workflow as data, and one over the release's number and its pinned box
 files. Nothing in it needs a box or a secret, and it builds no image.
 

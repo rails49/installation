@@ -110,7 +110,8 @@ jobs:
     with:
       commit: ${{ needs.plan.outputs.occupancy-service }}
 
-  # `manifest.json`, and `box-files.tar.gz` with one directory per stack.
+  # `manifest.json`, `box-files.tar.gz` with one directory per stack, and the
+  # install script.
   files:
     needs: [plan, installation, control, dccex, occupancy-service]
     runs-on: ubuntu-24.04
@@ -125,6 +126,7 @@ jobs:
           sparse-checkout: |
             page/Dockerfile
             box/Dockerfile
+            install.sh
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
@@ -182,12 +184,14 @@ jobs:
           scripts/pin.sh manifest.json files
           tar -czf box-files.tar.gz -C files .
           tar -tzvf box-files.tar.gz
+          cp installation/install.sh install.sh
       - uses: actions/upload-artifact@v7
         with:
           name: release
           path: |
             manifest.json
             box-files.tar.gz
+            install.sh
           if-no-files-found: error
 
   # README's "Making a release" says what this checks.
@@ -220,31 +224,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # The `.local` name is the box's mDNS; here the runner's hosts file
-      # answers it.
-      - name: A box with no certificate
+      # answers it. The release is not published yet, so its files are put
+      # where an update leaves them, and the script downloads nothing.
+      - name: The release's files on the runner
+        env:
+          RELEASE: ${{ needs.plan.outputs.release }}
         run: |
-          sudo mkdir -p /etc/rails49
-          printf 'BOX_DOMAIN=\nBOX_UIS="control dccex occupancy"\n' | sudo tee /etc/rails49/box.env
-          printf 'TC49_STORE=%s\n' "$RUNNER_TEMP/store" | sudo tee /etc/rails49/control.env
-          mkdir "$RUNNER_TEMP/store" files
-          tar -xzf release/box-files.tar.gz -C files
           echo "127.0.0.1 $(hostname).local" | sudo tee -a /etc/hosts
-      - name: Bring up the release
-        working-directory: files
+          dir=/var/lib/rails49/releases/$RELEASE
+          sudo mkdir -p "$dir"
+          sudo cp release/manifest.json "$dir/"
+          sudo tar -xzf release/box-files.tar.gz -C "$dir"
+      - name: Install with the install script
+        env:
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: sudo sh release/install.sh --release "$RELEASE"
+      # As a person would on the status page: control, dccex with no station,
+      # occupancy with no camera and no archive. JMRI is built on the box and
+      # is in no release.
+      - name: Set up the stacks on the status page
         run: |
-          box=/etc/rails49/box.env
-          TC49_UID=$(id -u) TC49_GID=$(id -g)
-          export TC49_UID TC49_GID
-          docker compose --env-file "$box" -f installation/compose.yaml up -d --no-build
-          docker compose --env-file "$box" --env-file /etc/rails49/control.env \
-            -f control/compose.yaml --profile layout --profile sim up -d --no-build
-          docker compose --env-file "$box" \
-            -f dccex/compose.yaml -f dccex/compose.box.yaml up -d --no-build
-          VIDEO_GID=$(getent group video | cut -d: -f3) \
-          RENDER_GID=$(getent group render | cut -d: -f3) \
-          OCCUPANCY_ARCHIVE=$PWD/occupancy-service/deploy/check.r49 \
-          OCCUPANCY_CAMERA=/dev/v4l/by-id/no-camera \
-            docker compose --env-file "$box" -f occupancy-service/compose.yaml up -d --no-build
+          curl -fsS --fail-with-body -o /dev/null -d ui=control -d ui=dccex -d ui=occupancy \
+            -d station=/dev/serial/by-id/none -d camera=/dev/v4l/by-id/none http://localhost/box/setup
+          docker wait rails49-update
+          cat /var/lib/rails49/update.json
+          grep -q '"passed":true' /var/lib/rails49/update.json
+          docker rm rails49-update
       - name: Every container still running after 60 seconds
         run: |
           sleep 60
@@ -262,6 +267,7 @@ jobs:
       - name: Each container's log
         if: failure()
         run: |
+          sudo cat /var/lib/rails49/update.json || true
           for container in $(docker ps -aq); do
             echo "::group::$(docker inspect -f '{{.Name}}' "$container")"
             docker logs --tail 200 "$container" 2>&1
@@ -269,8 +275,9 @@ jobs:
           done
 
   # The tag on the installation's commit, and the pre-release carrying the
-  # manifest, with each runner's Docker Engine version, and the archive. Both
-  # are made with the rails49-release app's token, not the job's (#76).
+  # manifest, with each runner's Docker Engine version, the archive and the
+  # install script. Both are made with the rails49-release app's token, not
+  # the job's (#76).
   release:
     needs: [plan, files, check]
     runs-on: ubuntu-24.04
@@ -303,4 +310,4 @@ jobs:
             (.stacks | to_entries[] | "- \(.key) \(.value.commit)")' manifest.json)
           gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --target "$COMMIT" \
             --prerelease --title "$RELEASE" --notes "$notes" \
-            manifest.json release/box-files.tar.gz
+            manifest.json release/box-files.tar.gz release/install.sh
