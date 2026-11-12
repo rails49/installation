@@ -195,11 +195,12 @@ function compose(release: string, files: string[], env: string | null) {
   return `compose ${envs.join(" ")} ${files.map((f) => `-f ${RELEASES}/${release}/${f}`).join(" ")}`;
 }
 
-// `ENV` has a box name, so each stack but JMRI is started with its HTTPS file.
+// `ENV` has a box name, so each stack is started with its HTTPS file.
 const INSTALLATION = (r: string) =>
   compose(r, ["installation/compose.yaml", "installation/compose.https.yaml"], null);
 const CONTROL = (r: string) => compose(r, ["control/compose.yaml", "control/compose.https.yaml"], "control.env");
-const JMRI = (r: string) => compose(r, ["installation/jmri/compose.yaml"], "control.env");
+const JMRI = (r: string) =>
+  compose(r, ["installation/jmri/compose.yaml", "installation/jmri/compose.https.yaml"], "control.env");
 
 describe("an update that passes", () => {
   it("downloads the release, pulls every image, then brings up the declared stacks in order", async () => {
@@ -688,13 +689,12 @@ describe("the compose files of each stack", () => {
       .map((line) => [...line.matchAll(/-f (\S+)/g)].map(([, file]) => file!.slice(`${RELEASES}/${NEW}/`.length)));
   }
 
-  it("include each stack's compose.https.yaml but JMRI's on a box with a box name", async () => {
-    // JMRI has no HTTPS router of its own, so it has no such file.
+  it("include each stack's compose.https.yaml on a box with a box name", async () => {
     expect(await upFiles("example.org")).toEqual([
       ["installation/compose.yaml", "installation/compose.https.yaml"],
       ["control/compose.yaml", "control/compose.https.yaml"],
       ["dccex/compose.yaml", "dccex/compose.box.yaml", "dccex/compose.https.yaml"],
-      ["installation/jmri/compose.yaml"],
+      ["installation/jmri/compose.yaml", "installation/jmri/compose.https.yaml"],
       ["occupancy-service/compose.yaml", "occupancy-service/compose.https.yaml"],
     ]);
   });

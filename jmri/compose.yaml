@@ -7,7 +7,10 @@
 #     (. /etc/rails49/control.env && mkdir -p "$TC49_STORE/jmri")
 #     TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
 #       --env-file /etc/rails49/box.env --env-file /etc/rails49/control.env \
-#       -f jmri/compose.yaml up -d --build
+#       -f jmri/compose.yaml -f jmri/compose.https.yaml up -d --build
+#
+# On a box with no certificate, leave out `-f jmri/compose.https.yaml`: it
+# holds JMRI's routers that need a box name (#102).
 #
 # The installation runs first: this file joins the network that one creates,
 # and compose says so plainly if it is not there. `control` need not run: the
@@ -15,6 +18,10 @@
 # `/etc/rails49/control.env` and makes `jmri/` in it (#89).
 
 name: jmri
+
+# `?` and not `:?`: an unset `BOX_DOMAIN` is refused, and an empty one is a box
+# with no certificate.
+x-require-box-domain: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
 
 services:
   jmri:
@@ -67,21 +74,12 @@ services:
       # This container is on two networks and the docker provider otherwise
       # picks whichever address it finds first (ADR-0004).
       - traefik.docker.network=rails49
-      - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)
-      - traefik.http.routers.jmri.entrypoints=websecure
-      - traefik.http.routers.jmri.tls.certresolver=le
-      # noVNC over plain HTTP on JMRI's UI port, at any host. On a box with no
-      # certificate the router above names an entry point that does not exist;
-      # the door drops it and serves this one.
+      # noVNC over plain HTTP on JMRI's UI port, at any host. On a box with a
+      # box name, `compose.https.yaml` adds `jmri.$BOX_DOMAIN` on 443.
       - traefik.http.routers.jmri-http.rule=PathPrefix(`/`)
       - traefik.http.routers.jmri-http.entrypoints=jmri
-      # noVNC's websocket, on both ways in, behind the installation's origin
-      # check. Each rule is longer than the one above it, which is what puts
-      # it first.
-      - traefik.http.routers.jmri-ws.rule=Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)
-      - traefik.http.routers.jmri-ws.entrypoints=websecure
-      - traefik.http.routers.jmri-ws.tls.certresolver=le
-      - traefik.http.routers.jmri-ws.middlewares=same-origin@docker
+      # noVNC's websocket behind the installation's origin check. The rule is
+      # longer than the one above it, which is what puts it first.
       - traefik.http.routers.jmri-ws-http.rule=PathPrefix(`/websockify`)
       - traefik.http.routers.jmri-ws-http.entrypoints=jmri
       - traefik.http.routers.jmri-ws-http.middlewares=same-origin@docker
