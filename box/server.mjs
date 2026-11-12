@@ -242,7 +242,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         const { name, entries } = await bundle(env, bundleIo);
         return { name, body: await pack(name, entries) };
       },
-      start: async (action) => start(action, { ...env, address: await address() }, { docker, read, fetch }),
+      start: async (action) => start(action, { ...env, address: await address() }, { docker, read, write: writeFile, now, fetch }),
     }).catch((error) => {
       console.error(`${req.method} ${req.url}: ${error.stack}`);
       return text(500, `${error.message}`);

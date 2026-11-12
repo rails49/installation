@@ -58,6 +58,18 @@ const WAIT = 60_000;
 class Failure extends Error {}
 
 /**
+ * The progress file's text: what runs, the step it is at, and once it has
+ * finished, when, whether it passed, and why not.
+ *
+ * @param {{ action: "update" | "back", from: string, to: string, started: string, step: string }} run
+ * @param {{ finished: Date, passed: boolean, failure: string | null } | null} result
+ */
+function progressText(run, result) {
+  const finished = result?.finished.toISOString() ?? null;
+  return `${JSON.stringify({ ...run, finished, passed: result?.passed ?? null, failure: result?.failure ?? null })}\n`;
+}
+
+/**
  * @param {"update" | "back"} action
  * @param {string} from the release the box runs, or `-`
  * @param {string} to
@@ -68,19 +80,7 @@ export async function run(action, from, to, env, io) {
   const started = io.now().toISOString();
   /** @param {string} step @param {{ passed: boolean, failure: string | null } | null} [result] */
   const progress = (step, result = null) =>
-    io.write(
-      PROGRESS,
-      `${JSON.stringify({
-        action,
-        from,
-        to,
-        started,
-        step,
-        finished: result && io.now().toISOString(),
-        passed: result?.passed ?? null,
-        failure: result?.failure ?? null,
-      })}\n`,
-    );
+    io.write(PROGRESS, progressText({ action, from, to, started, step }, result && { ...result, finished: io.now() }));
 
   const stacks = declared(env.BOX_UIS);
   const dir = `${RELEASES}/${to}`;
@@ -257,7 +257,7 @@ async function prune(keep, ran, io) {
  *
  * @param {"update" | "back"} action
  * @param {Omit<Env, "address"> & { address: string | null }} env
- * @param {{ docker: Io["docker"], read: Io["read"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
+ * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
  * @returns {Promise<string | null>}
  */
 export async function start(action, env, io) {
@@ -288,6 +288,9 @@ export async function start(action, env, io) {
   const image = `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
 
   if (state) await io.docker(["rm", CONTAINER]);
+  // The page reads this file while the container runs, so the last run's
+  // progress is replaced before it starts.
+  await io.write(PROGRESS, progressText({ action, from, to, started: io.now().toISOString(), step: "Starting." }, null));
   // The probe asks for `<hostname>.local`, which nothing in a container
   // resolves, so it is named here.
   const host = env.address ? ["--add-host", `${env.hostname}.local:${env.address}`] : [];

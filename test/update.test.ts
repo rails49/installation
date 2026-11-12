@@ -340,12 +340,18 @@ describe("starting one", () => {
     };
     return {
       asked,
+      files,
       io: {
         docker: async (args: string[]) => {
           asked.push(args.join(" "));
           return args[0] === "ps" ? (options.state ?? "") : "";
         },
         read: async (path: string) => files[path] ?? null,
+        write: async (path: string, text: string) => {
+          asked.push(`write ${path}`);
+          files[path] = text;
+        },
+        now: () => new Date("2026-11-12T10:00:00Z"),
         fetch: async (url: string) => {
           asked.push(`fetch ${url}`);
           return new Response(JSON.stringify(manifest(NEW, 3)));
@@ -369,6 +375,7 @@ describe("starting one", () => {
     expect(asked).toEqual([
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
       "fetch https://github.com/rails49/installation/releases/download/2026.11.1/manifest.json",
+      `write ${PROGRESS}`,
       `${RUN} ghcr.io/rails49/installation-box:inst3@${DIGEST(4)} node /box/update.mjs update ${OLD} ${NEW}`,
     ]);
   });
@@ -383,10 +390,26 @@ describe("starting one", () => {
     );
   });
 
+  it("says the new one is starting before its container runs, so the page shows no earlier one", async () => {
+    const { io, asked, files } = starting({ state: "exited\n" });
+    expect(await start("update", ENV, io)).toBeNull();
+    expect(asked.slice(-3, -1)).toEqual(["rm rails49-update", `write ${PROGRESS}`]);
+    expect(JSON.parse(files[PROGRESS]!)).toEqual({
+      action: "update",
+      from: OLD,
+      to: NEW,
+      started: "2026-11-12T10:00:00.000Z",
+      step: "Starting.",
+      finished: null,
+      passed: null,
+      failure: null,
+    });
+  });
+
   it("removes the container of the last one first", async () => {
     const { io, asked } = starting({ state: "exited\n" });
     expect(await start("update", ENV, io)).toBeNull();
-    expect(asked.at(-2)).toBe("rm rails49-update");
+    expect(asked.at(-3)).toBe("rm rails49-update");
   });
 
   it("is refused while one runs", async () => {
