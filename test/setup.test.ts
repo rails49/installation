@@ -140,6 +140,13 @@ describe("applying is refused, and writes nothing,", () => {
       `${STATION} is not a camera plugged into this box.`,
     );
   });
+
+  it("for a camera's metadata device, which captures no video (#87)", async () => {
+    const metadata = "/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920-video-index1";
+    expect(await refused(box(), post(["occupancy"], STATION, metadata))).toBe(
+      `${metadata} is not a camera plugged into this box.`,
+    );
+  });
 });
 
 describe("applying when the update will not start", () => {
@@ -165,9 +172,15 @@ describe("what the page offers", () => {
         field: "camera",
         none: "/dev/v4l/by-id/none",
         current: CAMERA,
-        found: [CAMERA, "/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920-video-index1"],
+        found: [CAMERA],
       },
     ]);
+  });
+
+  it("is for the camera only the capture device, not a UVC camera's metadata device (#87)", async () => {
+    // udev names a camera's `/dev/v4l/by-id` link after its sysfs `index`,
+    // which is 0 on the device that captures video.
+    expect((await form(box().io)).devices[1]!.found).toEqual([CAMERA]);
   });
 
   it("leaves out a device whose name an env file cannot hold unquoted", async () => {
