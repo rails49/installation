@@ -32,6 +32,7 @@ import {
   manifestPath,
   message,
   named,
+  older,
   PROGRESS,
   RECORD,
   RELEASES,
@@ -314,6 +315,7 @@ export async function start(action, env, io) {
     /** @type {string | null} */
     const latest = text ? JSON.parse(text).latest : null;
     if (!latest || latest === from) return "This box runs the latest release.";
+    if (from !== "-" && older(latest, from)) return `This box runs ${from}, newer than the latest release, ${latest}.`;
     to = latest;
     const answer = await io.fetch(`${DOWNLOAD}/${to}/manifest.json`, { signal: AbortSignal.timeout(30_000) });
     if (!answer.ok) return `Could not read release ${to}'s manifest: GitHub answered ${answer.status}.`;
