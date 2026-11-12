@@ -269,13 +269,17 @@ jobs:
           done
 
   # The tag on the installation's commit, and the pre-release carrying the
-  # manifest, with each runner's Docker Engine version, and the archive.
+  # manifest, with each runner's Docker Engine version, and the archive. Both
+  # are made with the rails49-release app's token, not the job's (#76).
   release:
     needs: [plan, files, check]
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       - uses: actions/download-artifact@v8
         with:
           name: release
@@ -287,7 +291,7 @@ jobs:
           path: docker
       - name: Tag and publish the pre-release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           RELEASE: ${{ needs.plan.outputs.release }}
           COMMIT: ${{ needs.plan.outputs.installation }}
         run: |

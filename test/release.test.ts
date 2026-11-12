@@ -176,6 +176,15 @@ describe("the release workflow", () => {
     expect(tagging.map(([name]) => name)).toEqual(["release"]);
   });
 
+  it("makes the tag and the pre-release with the app's token, not the job's", () => {
+    // The job's token got HTTP 403 creating the tag (#76).
+    const steps = workflow.jobs.release.steps;
+    const app = steps.find((step: Node) => step.id === "app");
+    expect(app.uses).toMatch(/^actions\/create-github-app-token@/);
+    const publish = steps.find((step: Node) => step.run?.includes("gh release create"));
+    expect(publish.env.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+
   it("numbers the release itself when the release input is left empty", () => {
     // GitHub leaves an empty input out of `inputs`, so INPUTS has no release.
     const plan = workflow.jobs.plan.steps.find((step: Node) => step.id === "plan");
