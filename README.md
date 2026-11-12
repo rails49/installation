@@ -6,8 +6,8 @@ the box's declaration of itself, and the install instructions.
 
 ## What an installation is
 
-The door, the page, the service that turns the box off, and how the box is
-reached: at a box name with a certificate for it, or with no certificate over
+The door, the page, the service that turns the box off and shows its status,
+and how the box is reached: at a box name with a certificate for it, or with no certificate over
 plain HTTP on the UI ports. None of them is about a railroad, a camera or a
 command station. A box with a command station and no layout installs this and
 then `dccex` — no broker, no store, no trains, and a page listing what it has. The
@@ -121,7 +121,8 @@ name the same ports, and a test checks that they agree.
 
 The band across the top carries the box name, or on a box with no certificate
 the box's hostname, which is the thing you want to know on landing there. A
-footer links to [rails49.org](https://rails49.org/). The band is
+footer links to the [status page](#the-status-page) as "Box status", always,
+and to [rails49.org](https://rails49.org/). The band is
 [look](https://github.com/rails49/look)'s, from a copy in
 [`look/`](look/README.md).
 
@@ -137,6 +138,51 @@ the button; the page has none. A request from a page on another origin is refuse
 On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual
 machine, not the Mac. Coming back takes a person at the box.
 
+## The status page
+
+`box` serves the status page at `/box/`, on every name and every UI port the
+door serves
+([#65](https://github.com/rails49/installation/issues/65)). It uses look's
+band, from the same copy as the page, and says each failure in a sentence at
+the top. It shows:
+
+- Each stack's state (running, restarting or stopped) and commit. The stacks
+  are the installation and one per label in `BOX_UIS`: `control`, `dccex`,
+  `jmri` (this repository's JMRI project) and `occupancy`
+  (occupancy-service). The commit is the `org.opencontainers.image.revision`
+  of the stack's images. A stack whose commit is not the release's runs a
+  local build, and a sentence says so; on a box never updated every stack
+  does. JMRI is built on the box and is in no release.
+- The release. It is the one the last line of
+  `/var/lib/rails49/deploys/installation` that passed moved the box to, and
+  its manifest is `/var/lib/rails49/releases/<release>/manifest.json`. A line
+  reads `<time>  <from>  ->  <to>  passed` or `failed`. A box never updated has
+  none.
+- Whether a newer release is out, and when the box last checked. The box asks
+  GitHub for `rails49/installation`'s latest release, which is never a
+  pre-release, once a day, and on "Check now". Offline it says it could not
+  check, and when the last check succeeded. What it found is kept in
+  `/var/lib/rails49/check.json`.
+- Disk free, on the file system Docker keeps its images on.
+- The box's address on its LAN.
+- Docker Engine's version, against the versions the release was tested on,
+  and the daemon's log driver, with a sentence when it is not `local`. Set it
+  in `/etc/docker/daemon.json`, `{"log-driver": "local"}`, and restart
+  Docker.
+- On a box with a box name, when the certificate expires, read from a TLS
+  connection to the door and never from `acme.json`, and whether the box name
+  resolves to this box's address.
+
+`GET /box/status` answers the same as JSON. `POST /box/check` checks now.
+`GET /box/bundle` downloads the log bundle, one `.tar.gz` of the records, the
+current manifest, `docker version` and `docker info`, `box.env` and every
+`<stack>.env`, `docker compose ps -a` for each stack, and the last 1000 lines
+of each container's log. It holds neither `acme.env` nor `acme.json`.
+
+For this, `box` has the Docker socket, `/etc/rails49` read-only,
+`/var/lib/rails49` and the Docker CLI with compose. With the socket it can do
+anything on the box that root can, as it already could by being privileged.
+
 ## A page on another origin
 
 A request is checked against the origin it arrived at. It is admitted if it
@@ -146,7 +192,7 @@ at the door. The rule is the same over HTTPS, on a UI port, at a `.local` name,
 at an address, and on a box with no certificate
 ([rails49/.github#69](https://github.com/rails49/.github/issues/69)).
 
-`box` applies it to `/box`. For everything else the door asks `box`: the
+`box` applies it to everything under `/box`. For everything else the door asks `box`: the
 `same-origin` middleware, which `compose.yaml` declares on the door, sends each
 request's headers to `GET /origin` and passes the request on only when that
 answers 2xx. Every websocket and write path of every UI names it as
@@ -294,15 +340,15 @@ compose project of its own rather than a profile
 and stopped without touching the door or the page:
 
 ```bash
-(. /etc/rails49/deploy.env && mkdir -p "$TC49_STORE/jmri")
+(. /etc/rails49/control.env && mkdir -p "$TC49_STORE/jmri")
 TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
-  --env-file /etc/rails49/box.env --env-file /etc/rails49/deploy.env \
+  --env-file /etc/rails49/box.env --env-file /etc/rails49/control.env \
   -f jmri/compose.yaml up -d --build
 ```
 
 JMRI's profile — the connection to the command station, the roster and every
 loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
-that `control` writes to `/etc/rails49/deploy.env`, and is backed up, restored
+that `control` writes to `/etc/rails49/control.env`, and is backed up, restored
 and moved to a new box with it
 ([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
 The image is the stock one with its user renumbered to yours, so the files it
@@ -427,10 +473,11 @@ The gate, and what `main` moves by. It runs shellcheck over every shell script,
 actionlint over every workflow, `docker compose config` over every compose file
 with `BOX_DOMAIN` set, empty and unset, the page's render in the stock image the
 page is built on for both kinds of box, and the tests: one over the page the
-render script produces, one over the box's two requests and the origin check,
-one over the compose files as data and the door's script, one over what a
-deploy builds and refuses, one over the images workflow as data, and one over
-the release's number and its pinned box files. Nothing in it needs a box or
+render script produces, one over the box's requests and the origin check, one
+each over the status, the check for a new release, the log bundle and the
+status page `box` renders, one over the compose files as data and the door's
+script, one over what a deploy builds and refuses, one over the images
+workflow as data, and one over the release's number and its pinned box files. Nothing in it needs a box or
 a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and

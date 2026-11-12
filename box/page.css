@@ -1,0 +1,62 @@
+/* The status page's own: the sentences, the table and the items. The band is
+   look's. */
+body {
+  margin: 0;
+  background: var(--sl-color-neutral-0);
+  color: var(--sl-color-neutral-900);
+  font-family: var(--sl-font-sans);
+  line-height: 1.6;
+}
+
+main {
+  margin: 0 auto;
+  max-width: 48rem;
+  padding: 2rem 1.5rem;
+}
+
+ul {
+  margin: 0 0 1.5rem;
+  padding-left: 1.25rem;
+}
+
+.failures { color: var(--sl-color-danger-700); }
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--sl-color-neutral-200);
+  padding: 0.5rem 0;
+  text-align: left;
+}
+
+dl {
+  display: grid;
+  gap: 0.5rem 1.5rem;
+  grid-template-columns: max-content 1fr;
+  margin: 0 0 1.5rem;
+}
+
+dt { font-weight: var(--sl-font-weight-semibold); }
+
+dd { margin: 0; }
+
+form { display: inline; }
+
+button {
+  background: var(--sl-color-neutral-0);
+  border: 1px solid var(--sl-color-neutral-300);
+  border-radius: var(--sl-border-radius-medium);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.125rem 0.75rem;
+}
+
+button:hover { background: var(--sl-color-neutral-100); }
+
+a { color: inherit; }

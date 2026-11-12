@@ -134,10 +134,15 @@ describe("the links the page lists", () => {
 });
 
 describe("the footer", () => {
-  it("links to the project", () => {
-    expect(page).toContain(
-      '<footer><a href="https://rails49.org/">rails49.org</a></footer>',
-    );
+  it("links to the box's status page, always, and to the project", () => {
+    // The one place an update is announced is the status page, so the link is
+    // there whatever the box's state (#65 decision 17). Relative, so it stays
+    // on the host and port the page was reached at.
+    for (const html of [page, render("", ""), render("control", "")]) {
+      expect(html).toContain(
+        '<footer><a href="/box/">Box status</a><a href="https://rails49.org/">rails49.org</a></footer>',
+      );
+    }
   });
 });
 

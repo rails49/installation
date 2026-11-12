@@ -1,5 +1,6 @@
 # The installation: the door in front of everything a browser reaches on this
-# box, the page listing what the box serves, and the box's own two requests.
+# box, the page listing what the box serves, and the box's own requests and
+# status page.
 # Nothing here is about a railroad. The door is stock; the page and the box are
 # this repository's images, `installation-page` and `installation-box`.
 #
@@ -179,13 +180,16 @@ services:
     networks:
       - rails49
 
-  # The box's own two requests, `GET /box` and `POST /box/off`: whether it can
-  # be turned off from here, and turning it off. A UI asks; the installation
-  # answers (ADR-0005). Stock node with `box/` copied in (`box/Dockerfile`),
-  # named by its commit as the page is.
+  # The box's own requests: `GET /box` and `POST /box/off`, whether it can be
+  # turned off from here and turning it off, which a UI asks and the
+  # installation answers (ADR-0005); and the status page at `/box/` with what
+  # it shows and offers (#65 decisions 5 to 7). Stock node with `box/`,
+  # `look/` and the Docker CLI in it (`box/Dockerfile`), named by its commit
+  # as the page is.
   #
   # Privileged and in the box's PID namespace, because turning off is
-  # `nsenter` into PID 1 and `systemctl poweroff` there.
+  # `nsenter` into PID 1 and `systemctl poweroff` there, and the box's address
+  # is read in PID 1's network.
   box:
     image: ghcr.io/rails49/installation-box:${INSTALLATION_COMMIT:-dev}
     build:
@@ -196,13 +200,27 @@ services:
     restart: unless-stopped
     privileged: true
     pid: host
+    # `BOX_UIS` says which stacks the box runs (#65 decision 6).
+    environment:
+      BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
+      BOX_UIS: ${BOX_UIS}
+    # The socket, through which the status page reads the stacks. The box's
+    # settings, read only: the log bundle takes `box.env` and each stack's
+    # file by name, and never `acme.env`. `/var/lib/rails49`, which holds the
+    # releases, the record and the last check for a new release. The
+    # hostname names a box with no certificate, as on the page.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/rails49:/etc/rails49:ro
+      - /var/lib/rails49:/var/lib/rails49
+      - /etc/hostname:/host/hostname:ro
     command:
       - node
       - /box/server.mjs
     labels:
       - traefik.enable=true
       - traefik.docker.network=rails49
-      # No `Host`: the same two paths on every name the door serves, which is
+      # No `Host`: the same paths on every name the door serves, which is
       # every origin a UI is served from. Above every label's own router,
       # which otherwise takes `/box` under its name for itself.
       - traefik.http.routers.box.rule=PathPrefix(`/box`)
@@ -210,7 +228,7 @@ services:
       - traefik.http.routers.box.entrypoints=websecure
       # No resolver: each name's own router already has its certificate.
       - traefik.http.routers.box.tls=true
-      # The same two paths over plain HTTP, on the page's port and every UI
+      # The same paths over plain HTTP, on the page's port and every UI
       # port. A second router, because one with `tls=true` does not match
       # plain HTTP. On 80 `to-https` outranks it for the box name and its
       # labels.

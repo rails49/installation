@@ -1,0 +1,362 @@
+/**
+ * What the status page shows, asserted against `status()` alone: the docker
+ * CLI, the box's files, the door's certificate, DNS and the disk are handed
+ * in, so a test needs no daemon and no box. Each fact below is what the real
+ * one answers on a box, written out.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import { status, type Io } from "../box/status.mjs";
+
+const COMMIT = "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f";
+const RELEASED = "8f7e6d5c4b3a29180716253443526170819a0b1c";
+
+/** One container as `docker inspect` writes it, the fields read here. */
+function container(name: string, project: string, state = "running", revision = COMMIT) {
+  return {
+    Name: `/${name}`,
+    State: { Status: state },
+    Config: {
+      Labels: {
+        "com.docker.compose.project": project,
+        "org.opencontainers.image.revision": revision,
+      },
+    },
+  };
+}
+
+/** The installation and control, all running a local build of `COMMIT`. */
+const CONTAINERS = [
+  container("installation-door-1", "installation", "running", ""),
+  container("installation-page-1", "installation"),
+  container("installation-box-1", "installation"),
+  container("tc49-store-1", "tc49"),
+  container("tc49-broker-1", "tc49"),
+];
+
+const MANIFEST = {
+  release: "2026.11.0",
+  stacks: {
+    installation: { commit: COMMIT, images: {} },
+    control: { commit: RELEASED, images: {} },
+    dccex: { commit: RELEASED, images: {} },
+    "occupancy-service": { commit: RELEASED, images: {} },
+  },
+  stock: {},
+  docker: { "ubuntu-24.04": "29.1.3", "ubuntu-24.04-arm": "29.1.3" },
+};
+
+const RECORD = [
+  "2026-11-10T09:00:00Z  -  ->  2026.10.2  passed",
+  "2026-11-11T09:00:00Z  2026.10.2  ->  2026.11.0  passed",
+  "",
+].join("\n");
+
+/** A box with a box name that is well, on a release, with `facts` changed. */
+function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: object[] } = {}): Io {
+  const containers = facts.containers ?? CONTAINERS;
+  const files: Record<string, string> = {
+    "/var/lib/rails49/deploys/installation": RECORD,
+    "/var/lib/rails49/releases/2026.11.0/manifest.json": JSON.stringify(MANIFEST),
+    "/var/lib/rails49/check.json": JSON.stringify({
+      checked: "2026-11-12T08:00:00Z",
+      succeeded: "2026-11-12T08:00:00Z",
+      latest: "2026.11.0",
+    }),
+    ...facts.files,
+  };
+  return {
+    docker: async (args) => {
+      if (args[0] === "info") return JSON.stringify({ ServerVersion: "29.1.3", LoggingDriver: "local" });
+      if (args[0] === "ps") return containers.map((_, i) => `id${i}\n`).join("");
+      if (args[0] === "inspect") return JSON.stringify(containers);
+      throw new Error(`docker ${args.join(" ")}`);
+    },
+    read: async (path) => files[path] ?? null,
+    disk: async () => ({ free: 20e9, total: 64e9 }),
+    address: async () => "192.168.1.20",
+    certificate: async () => ({
+      valid_from: "2026-11-01T00:00:00.000Z",
+      valid_to: "2027-01-30T00:00:00.000Z",
+      error: null,
+    }),
+    resolve: async () => ["192.168.1.20"],
+    now: () => new Date("2026-11-12T10:00:00Z"),
+    ...facts,
+  };
+}
+
+const NAMED = { BOX_DOMAIN: "gleis49.org", BOX_UIS: "control", hostname: "gleis49" };
+const PLAIN = { BOX_DOMAIN: "", BOX_UIS: "control", hostname: "pi49" };
+
+describe("the stacks", () => {
+  it("are the installation and one per declared label, each with its state and commit", async () => {
+    const { stacks } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(stacks).toEqual([
+      { stack: "installation", state: "running", commit: COMMIT, local_build: true },
+      { stack: "control", state: "running", commit: COMMIT, local_build: true },
+    ]);
+  });
+});
+
+describe("the release", () => {
+  it("is the one the last update that passed moved the box to", async () => {
+    expect((await status(NAMED, io())).release).toBe("2026.11.0");
+    const failed = `${RECORD}2026-11-12T09:00:00Z  2026.11.0  ->  2026.11.1  failed\n`;
+    const after = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": failed } }));
+    expect(after.release).toBe("2026.11.0");
+  });
+
+  it("is none on a box never updated", async () => {
+    const never = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(never.release).toBeNull();
+  });
+});
+
+describe("a stack on a local build", () => {
+  it("is one whose commit differs from the release's, named in a sentence", async () => {
+    const { stacks, notes } = await status(NAMED, io());
+    expect(stacks.map((s) => [s.stack, s.local_build])).toEqual([
+      ["installation", false],
+      ["control", true],
+    ]);
+    expect(notes).toEqual(["control runs a local build of `1c3f69b`, not release 2026.11.0."]);
+  });
+
+  it("is every stack on a box never updated", async () => {
+    const { notes } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(notes).toEqual([
+      "installation runs a local build of `1c3f69b`.",
+      "control runs a local build of `1c3f69b`.",
+    ]);
+  });
+
+  it("says so when its image names no commit", async () => {
+    const containers = [...CONTAINERS.slice(0, 3), container("tc49-store-1", "tc49", "running", "")];
+    const { notes } = await status(NAMED, io({ containers }));
+    expect(notes).toEqual(["control runs a local build with no commit named, not release 2026.11.0."]);
+  });
+
+  it("is never JMRI, which is built on the box and in no release", async () => {
+    const containers = [...CONTAINERS, container("jmri-jmri-1", "jmri", "running", "")];
+    const { stacks, notes } = await status({ ...NAMED, BOX_UIS: "control jmri" }, io({ containers }));
+    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false });
+    expect(notes).toHaveLength(1);
+  });
+});
+
+describe("a stack that is not running", () => {
+  it("is restarting when any of its containers is, and says so", async () => {
+    const containers = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "restarting")];
+    const { stacks, failures } = await status(NAMED, io({ containers }));
+    expect(stacks[1]!.state).toBe("restarting");
+    expect(failures).toEqual(["control is restarting."]);
+  });
+
+  it("is stopped when a container has exited, or none is there", async () => {
+    const exited = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "exited")];
+    expect((await status(NAMED, io({ containers: exited }))).failures).toEqual(["control is stopped."]);
+    const missing = await status({ ...NAMED, BOX_UIS: "control dccex" }, io());
+    expect(missing.stacks[2]).toEqual({ stack: "dccex", state: "stopped", commit: null, local_build: false });
+    expect(missing.failures).toEqual(["dccex is stopped."]);
+  });
+
+  it("is never one the box does not declare", async () => {
+    const { stacks } = await status({ ...NAMED, BOX_UIS: "" }, io());
+    expect(stacks.map((s) => s.stack)).toEqual(["installation"]);
+  });
+});
+
+describe("the check for a new release", () => {
+  const checked = (state: object) => io({ files: { "/var/lib/rails49/check.json": JSON.stringify(state) } });
+
+  it("offers a release newer than the one the box runs, with when it last checked", async () => {
+    const { update, failures } = await status(
+      NAMED,
+      checked({ checked: "2026-11-12T08:00:00Z", succeeded: "2026-11-12T08:00:00Z", latest: "2026.11.1" }),
+    );
+    expect(update).toEqual({
+      latest: "2026.11.1",
+      available: true,
+      checked: "2026-11-12T08:00:00Z",
+      succeeded: "2026-11-12T08:00:00Z",
+      could_not_check: false,
+    });
+    expect(failures).toEqual([]);
+  });
+
+  it("offers nothing when the box runs the latest release, or there is none", async () => {
+    expect((await status(NAMED, io())).update.available).toBe(false);
+    const none = checked({ checked: "2026-11-12T08:00:00Z", succeeded: "2026-11-12T08:00:00Z", latest: null });
+    expect((await status(NAMED, none)).update.available).toBe(false);
+  });
+
+  it("offers the latest release to a box never updated", async () => {
+    const { update } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(update.available).toBe(true);
+  });
+
+  it("says it could not check, and when the last check succeeded", async () => {
+    const { update, failures } = await status(
+      NAMED,
+      checked({ checked: "2026-11-12T09:00:00Z", succeeded: "2026-11-11T08:00:00Z", latest: "2026.11.0" }),
+    );
+    expect(update.could_not_check).toBe(true);
+    expect(failures).toEqual([
+      "Could not check for a new release. The last check that succeeded was at 2026-11-11 08:00 UTC.",
+    ]);
+  });
+
+  it("says it could not check when none has ever succeeded", async () => {
+    const { update, failures } = await status(NAMED, checked({ checked: "2026-11-12T09:00:00Z", succeeded: null, latest: null }));
+    expect(update).toMatchObject({ could_not_check: true, available: false });
+    expect(failures).toEqual(["Could not check for a new release. No check has succeeded yet."]);
+  });
+
+  it("says nothing before the first check", async () => {
+    const { update, failures } = await status(NAMED, io({ files: { "/var/lib/rails49/check.json": "" } }));
+    expect(update).toEqual({ latest: null, available: false, checked: null, succeeded: null, could_not_check: false });
+    expect(failures).toEqual([]);
+  });
+});
+
+describe("the disk", () => {
+  it("is how much is free of how much", async () => {
+    expect((await status(NAMED, io())).disk).toEqual({ free: 20e9, total: 64e9 });
+  });
+
+  it("is a failure under a tenth free", async () => {
+    const { failures } = await status(NAMED, io({ disk: async () => ({ free: 3.2e9, total: 64e9 }) }));
+    expect(failures).toEqual(["The disk has 3.2 GB free of 64.0 GB."]);
+  });
+});
+
+describe("the box's address", () => {
+  it("is the one it has on its LAN", async () => {
+    expect((await status(PLAIN, io())).address).toBe("192.168.1.20");
+  });
+
+  it("is a failure when the box has none", async () => {
+    const { address, failures } = await status(PLAIN, io({ address: async () => null }));
+    expect(address).toBeNull();
+    expect(failures).toEqual(["This box has no address on a network."]);
+  });
+});
+
+describe("Docker", () => {
+  it("is its Engine version against the ones the release was tested on, and its log driver", async () => {
+    expect((await status(NAMED, io())).docker).toEqual({
+      version: "29.1.3",
+      tested: ["29.1.3"],
+      log_driver: "local",
+    });
+  });
+
+  it("is a failure on a major version the release was not tested on", async () => {
+    const docker = async (args: string[]) =>
+      args[0] === "info"
+        ? JSON.stringify({ ServerVersion: "27.5.1", LoggingDriver: "local" })
+        : io().docker(args);
+    const { failures } = await status(NAMED, io({ docker }));
+    expect(failures).toEqual(["Docker Engine 27.5.1 is not the major version release 2026.11.0 was tested on, 29.1.3."]);
+  });
+
+  it("is compared with nothing on a box never updated", async () => {
+    const { docker } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(docker.tested).toEqual([]);
+  });
+
+  it("says when the log driver is not local", async () => {
+    const docker = async (args: string[]) =>
+      args[0] === "info"
+        ? JSON.stringify({ ServerVersion: "29.1.3", LoggingDriver: "json-file" })
+        : io().docker(args);
+    const { failures } = await status(NAMED, io({ docker }));
+    expect(failures).toEqual([
+      'Docker\'s log driver is json-file, not local. Set "log-driver": "local" in /etc/docker/daemon.json and restart Docker.',
+    ]);
+  });
+});
+
+describe("the certificate", () => {
+  it("is its expiry, read from the door, on a box with a box name", async () => {
+    const { certificate, failures } = await status(NAMED, io());
+    expect(certificate).toEqual({ expires: "2027-01-30T00:00:00.000Z", valid: true });
+    expect(failures).toEqual([]);
+  });
+
+  it("is none on a box with no certificate, which asks the door nothing", async () => {
+    const certificate = async () => {
+      throw new Error("asked");
+    };
+    expect((await status(PLAIN, io({ certificate }))).certificate).toBeNull();
+  });
+
+  it("is a failure when the door presents one that is not valid for the name", async () => {
+    const certificate = async () => ({
+      valid_from: "2026-11-01T00:00:00.000Z",
+      valid_to: "2027-11-01T00:00:00.000Z",
+      error: "Hostname/IP does not match certificate's altnames",
+    });
+    const status_ = await status(NAMED, io({ certificate }));
+    expect(status_.certificate).toEqual({ expires: "2027-11-01T00:00:00.000Z", valid: false });
+    expect(status_.failures).toEqual([
+      "The certificate the door presents for gleis49.org is not valid: Hostname/IP does not match certificate's altnames.",
+    ]);
+  });
+
+  it("is a failure when it was not renewed at a third of its life", async () => {
+    // A 90-day certificate is renewed with 30 days left; with 20 left it was not.
+    const certificate = async () => ({
+      valid_from: "2026-09-03T00:00:00.000Z",
+      valid_to: "2026-12-02T00:00:00.000Z",
+      error: null,
+    });
+    const { failures } = await status(NAMED, io({ certificate }));
+    expect(failures).toEqual(["The certificate for gleis49.org expires on 2026-12-02 and has not been renewed."]);
+  });
+
+  it("is a failure when the door cannot be reached", async () => {
+    const certificate = async () => {
+      throw new Error("connect ECONNREFUSED 172.18.0.2:443");
+    };
+    const status_ = await status(NAMED, io({ certificate }));
+    expect(status_.certificate).toBeNull();
+    expect(status_.failures).toEqual([
+      "Could not read the certificate the door presents for gleis49.org: connect ECONNREFUSED 172.18.0.2:443.",
+    ]);
+  });
+});
+
+describe("the box name", () => {
+  it("resolves to this box", async () => {
+    expect((await status(NAMED, io())).resolves).toEqual({ addresses: ["192.168.1.20"], to_this_box: true });
+  });
+
+  it("is not asked about on a box with no certificate", async () => {
+    expect((await status(PLAIN, io())).resolves).toBeNull();
+  });
+
+  it("is a failure when it resolves to another address", async () => {
+    const { resolves, failures } = await status(NAMED, io({ resolve: async () => ["192.168.1.30"] }));
+    expect(resolves).toEqual({ addresses: ["192.168.1.30"], to_this_box: false });
+    expect(failures).toEqual(["gleis49.org resolves to 192.168.1.30, not to this box at 192.168.1.20."]);
+  });
+
+  it("is a failure when it does not resolve", async () => {
+    const resolve = async () => {
+      throw Object.assign(new Error("getaddrinfo ENOTFOUND gleis49.org"), { code: "ENOTFOUND" });
+    };
+    const { resolves, failures } = await status(NAMED, io({ resolve }));
+    expect(resolves).toEqual({ addresses: [], to_this_box: false });
+    expect(failures).toEqual(["gleis49.org does not resolve: getaddrinfo ENOTFOUND gleis49.org."]);
+  });
+});
+
+describe("the box", () => {
+  it("is named by its box name, or its hostname on a box with no certificate", async () => {
+    expect((await status(NAMED, io())).name).toBe("gleis49.org");
+    expect((await status(PLAIN, io())).name).toBe("pi49");
+  });
+});

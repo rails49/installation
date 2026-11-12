@@ -225,7 +225,7 @@ jobs:
         run: |
           sudo mkdir -p /etc/rails49
           printf 'BOX_DOMAIN=\nBOX_UIS="control dccex occupancy"\n' | sudo tee /etc/rails49/box.env
-          printf 'TC49_STORE=%s\n' "$RUNNER_TEMP/store" | sudo tee /etc/rails49/deploy.env
+          printf 'TC49_STORE=%s\n' "$RUNNER_TEMP/store" | sudo tee /etc/rails49/control.env
           mkdir "$RUNNER_TEMP/store" files
           tar -xzf release/box-files.tar.gz -C files
           echo "127.0.0.1 $(hostname).local" | sudo tee -a /etc/hosts
@@ -236,7 +236,7 @@ jobs:
           TC49_UID=$(id -u) TC49_GID=$(id -g)
           export TC49_UID TC49_GID
           docker compose --env-file "$box" -f installation/compose.yaml up -d --no-build
-          docker compose --env-file "$box" --env-file /etc/rails49/deploy.env \
+          docker compose --env-file "$box" --env-file /etc/rails49/control.env \
             -f control/compose.yaml --profile layout --profile sim up -d --no-build
           docker compose --env-file "$box" \
             -f dccex/compose.yaml -f dccex/compose.box.yaml up -d --no-build

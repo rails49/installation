@@ -38,7 +38,7 @@ const DECLARATION = "/etc/rails49/box.env";
 /** Where `control` writes the root of its store, `TC49_STORE`, when it deploys
  *  itself. JMRI's profile lives under that root, so JMRI is started against
  *  this file as well as the declaration. */
-const DEPLOYMENT = "/etc/rails49/deploy.env";
+const DEPLOYMENT = "/etc/rails49/control.env";
 
 /** Any node of a parsed compose file. Its shape is the file's rather than
  *  anything this repository declares, so the assertions below are what say
@@ -366,11 +366,36 @@ describe("the box", () => {
     expect(box.restart).toBe("unless-stopped");
   });
 
-  it("carries the script in its image and mounts nothing", () => {
+  it("carries the script and look's bundle in its image", () => {
+    // The status page loads look's bundle from under /box, since on a UI port
+    // every other path is that UI's.
     const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
     expect(dockerfile).toMatch(/^COPY box\/ \/box\/$/m);
-    expect(box.volumes).toBeUndefined();
+    expect(dockerfile).toMatch(/^COPY look\/ \/look\/$/m);
     expect(box.command).toEqual(["node", "/box/server.mjs"]);
+  });
+
+  it("carries the Docker CLI and compose, from Docker's own repository", () => {
+    const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
+    expect(dockerfile).toContain("https://download.docker.com/linux/debian");
+    expect(dockerfile).toMatch(/apt-get install .*docker-ce-cli docker-compose-plugin/);
+  });
+
+  it("has the Docker socket, the box's settings to read and its state to write", () => {
+    expect(box.volumes).toEqual([
+      "/var/run/docker.sock:/var/run/docker.sock",
+      "/etc/rails49:/etc/rails49:ro",
+      "/var/lib/rails49:/var/lib/rails49",
+      "/etc/hostname:/host/hostname:ro",
+    ]);
+  });
+
+  it("is told what the box is called and what it serves, and no more", () => {
+    // `BOX_UIS` says which stacks the box runs (#65 decision 6).
+    expect(box.environment).toEqual({
+      BOX_DOMAIN: "${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}",
+      BOX_UIS: "${BOX_UIS}",
+    });
   });
 
   it("is reached at /box on every name the door serves", () => {

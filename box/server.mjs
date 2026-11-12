@@ -1,10 +1,13 @@
-// The box's own two requests, served on every name the door serves: whether
-// this box can be turned off from here, and turning it off (ADR-0005).
+// The box's own requests, served on every name the door serves: whether this
+// box can be turned off from here, and turning it off (ADR-0005); the status
+// page at `/box/`, the status it shows at `/box/status`, a check for a new
+// release, and the log bundle (#65 decisions 5 to 7).
 //
-// Node's standard library and nothing else, run by `node:22-slim`. The
-// container shares the box's PID namespace and is privileged, so `nsenter`
-// into PID 1 reaches the box's systemd. The command takes nothing from the
-// request.
+// Node's standard library and nothing else, run by `node:22-slim` with the
+// Docker CLI added. The container shares the box's PID namespace and is
+// privileged, so `nsenter` into PID 1 reaches the box's systemd and its
+// network. It has the Docker socket, through which it reads the stacks. No
+// command it runs takes anything from the request.
 //
 // No authentication: the LAN is the trust boundary (control ADR-0042). A page
 // on another origin is refused, by the rule the store and the broker apply
@@ -13,22 +16,48 @@
 // (rails49/.github#69).
 
 import { execFile } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
+import { readdir, readFile, statfs, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { connect } from "node:tls";
+import { promisify } from "node:util";
+
+import { bundle, pack } from "./bundle.mjs";
+import { check, due } from "./check.mjs";
+import { render } from "./page.mjs";
+import { CHECK, status } from "./status.mjs";
 
 const PORT = 8080;
 
 const POWEROFF = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "systemctl", "poweroff"];
 
+/** The files the page loads, by path: where each is, beside this script or
+ *  in the image, and its type. Nothing else is read from disk. */
+/** @type {Record<string, [URL, string]>} */
+const ASSETS = {
+  "GET /box/page.css": [new URL("page.css", import.meta.url), "text/css; charset=utf-8"],
+  "GET /box/look/look.bundle.js": [
+    new URL("../look/look.bundle.js", import.meta.url),
+    "text/javascript; charset=utf-8",
+  ],
+};
+
+/**
+ * @typedef {{ status: number, type: string, body: string | Buffer, headers?: Record<string, string> }} Answer
+ */
+
 /**
  * The answer to one request. `box.pid1` is the name of the box's PID 1, and
  * `box.turnOff` is called once a `POST /box/off` has been accepted.
+ * `box.status` gathers what the status page shows, `box.check` asks GitHub
+ * for the latest release, and `box.bundle` packs the log bundle.
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, "x-forwarded-host"?: string } }} request
- * @param {{ pid1: string, turnOff: () => void }} box
- * @returns {{ status: number, type: string, body: string }}
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }> }} box
+ * @returns {Promise<Answer>}
  */
-export function handle(request, box) {
+export async function handle(request, box) {
   const { origin, host } = request.headers;
   const route = `${request.method} ${request.url?.split("?")[0]}`;
   // The door's `same-origin` middleware asks this about every websocket and
@@ -47,6 +76,27 @@ export function handle(request, box) {
     box.turnOff();
     return text(202, "");
   }
+  if (route === "GET /box/status") {
+    return { status: 200, type: "application/json", body: JSON.stringify(await box.status()) };
+  }
+  if (route === "GET /box/") {
+    return { status: 200, type: "text/html; charset=utf-8", body: render(await box.status()) };
+  }
+  if (route === "POST /box/check") {
+    await box.check();
+    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+  }
+  if (route === "GET /box/bundle") {
+    const { name, body } = await box.bundle();
+    return {
+      status: 200,
+      type: "application/gzip",
+      body,
+      headers: { "content-disposition": `attachment; filename="${name}"` },
+    };
+  }
+  const asset = ASSETS[route];
+  if (asset) return { status: 200, type: asset[1], body: await readFile(asset[0]) };
   return text(404, "");
 }
 
@@ -71,9 +121,60 @@ function refused() {
 /**
  * @param {number} status
  * @param {string} body
+ * @returns {Answer}
  */
 function text(status, body) {
   return { status, type: "text/plain; charset=utf-8", body };
+}
+
+const run = promisify(execFile);
+
+/** @param {string[]} args */
+async function docker(args) {
+  return (await run("docker", args, { maxBuffer: 64 * 1024 * 1024 })).stdout;
+}
+
+/** A file's text, or null where there is none.
+ *  @param {string} path */
+async function read(path) {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** The box's address on its LAN: the source of the route to the internet in
+ *  the box's own network namespace, as `ip route get` says it. No packet is
+ *  sent. Nothing where the box has no route. */
+const ADDRESS = `const s = require("node:dgram").createSocket("udp4");
+s.on("error", () => s.close());
+s.connect(53, "1.1.1.1", () => { console.log(s.address().address); s.close(); });`;
+
+async function address() {
+  const { stdout } = await run("nsenter", ["-t", "1", "-n", "--", "node", "-e", ADDRESS]);
+  return stdout.trim() || null;
+}
+
+/** What the door presents for `name` on 443: read from a TLS connection,
+ *  never from `acme.json`.
+ *  @param {string} name
+ *  @returns {Promise<{ valid_from: string, valid_to: string, error: string | null }>} */
+function certificate(name) {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: "door", port: 443, servername: name, rejectUnauthorized: false, timeout: 10_000 }, () => {
+      const presented = socket.getPeerCertificate();
+      socket.end();
+      resolve({
+        valid_from: new Date(presented.valid_from).toISOString(),
+        valid_to: new Date(presented.valid_to).toISOString(),
+        error: socket.authorized ? null : String(socket.authorizationError),
+      });
+    });
+    socket.on("error", reject);
+    socket.on("timeout", () => socket.destroy(new Error("the door did not answer on 443")));
+  });
 }
 
 // Listening, only when run rather than imported by the tests.
@@ -81,8 +182,55 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   // On a Mac this is the PID 1 of Docker Desktop's virtual machine, which is
   // not systemd, so the box there answers no.
   const pid1 = readFileSync("/proc/1/comm", "utf8").trim();
-  createServer((req, res) => {
-    const answer = handle(req, {
+  const env = {
+    BOX_DOMAIN: process.env.BOX_DOMAIN ?? "",
+    BOX_UIS: process.env.BOX_UIS ?? "",
+    hostname: readFileSync("/host/hostname", "utf8").trim(),
+  };
+  const now = () => new Date();
+  const checking = {
+    fetch,
+    read: () => read(CHECK),
+    write: (/** @type {string} */ text) => writeFile(CHECK, text),
+    now,
+  };
+  const looking = {
+    docker,
+    read,
+    disk: async () => {
+      // The file system Docker keeps its images and logs on.
+      const disk = await statfs("/");
+      return { free: disk.bavail * disk.bsize, total: disk.blocks * disk.bsize };
+    },
+    address,
+    certificate,
+    resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
+    now,
+  };
+  const packing = {
+    docker,
+    // Both streams, interleaved as the container wrote them.
+    logs: async (/** @type {string} */ container) =>
+      (await run("sh", ["-c", 'docker logs --tail 1000 "$1" 2>&1', "sh", container], { maxBuffer: 64 * 1024 * 1024 })).stdout,
+    read,
+    list: async (/** @type {string} */ dir) => (await readdir(dir).catch(() => [])),
+    now,
+  };
+
+  // Once a day, asked every hour so that a box that came up offline checks
+  // within the hour of its network coming back.
+  const daily = async () => {
+    try {
+      if (await due(checking)) await check(checking);
+    } catch (error) {
+      console.error(`checking for a new release: ${/** @type {Error} */ (error).message}`);
+    }
+  };
+  daily();
+  setInterval(daily, 60 * 60 * 1000);
+
+  createServer(async (req, res) => {
+    const answer = await handle(req, {
       pid1,
       // After the 202 has gone out. Where the command fails nothing is left to
       // answer, so the failure goes to the container's log.
@@ -92,7 +240,16 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
             if (error) console.error(`${POWEROFF.join(" ")}: ${error.message} ${stderr}`);
           }),
         ),
+      status: () => status(env, looking),
+      check: () => check(checking),
+      bundle: async () => {
+        const { name, entries } = await bundle(env, packing);
+        return { name, body: await pack(name, entries) };
+      },
+    }).catch((error) => {
+      console.error(`${req.method} ${req.url}: ${error.stack}`);
+      return text(500, `${error.message}`);
     });
-    res.writeHead(answer.status, { "content-type": answer.type }).end(answer.body);
+    res.writeHead(answer.status, { "content-type": answer.type, ...answer.headers }).end(answer.body);
   }).listen(PORT);
 }
