@@ -9,7 +9,7 @@ words people reach for instead are wrong here.
 
 **Box**:
 A machine that runs an installation, plus whatever that machine is for. The
-unit an operator owns and names; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+unit an operator owns and names; see [ADR-0024](https://github.com/rails49/.github/blob/main/docs/adr/0024-each-ui-has-an-origin-of-its-own-at-a-label-or-a-ui-port.md).
 _Avoid_: host, server, node, machine
 
 **Box name**:
@@ -17,7 +17,7 @@ The name a box is reached at, held in `BOX_DOMAIN`. It may be a domain bought
 for the box, as `gleis49.org` is, or a label in a zone somebody already runs,
 as `dev.rails49.org` is; both are supported and neither is the normal case.
 The variable's name says domain and is wrong about it. Only a box with a
-certificate has one; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+certificate has one; see [ADR-0024](https://github.com/rails49/.github/blob/main/docs/adr/0024-each-ui-has-an-origin-of-its-own-at-a-label-or-a-ui-port.md).
 _Avoid_: box domain, domain, hostname, FQDN
 
 **Box with no certificate**:
@@ -38,7 +38,7 @@ One name under a box name, serving exactly one UI, listed in `BOX_UIS`. Each
 label also has a UI port, which is all it has on a box with no certificate. The UI's own
 container declares the router for it; the installation knows the label, its
 UI port and, for the probe, its websocket paths, and nothing else about the
-UI; see [ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md).
+UI; see [ADR-0024](https://github.com/rails49/.github/blob/main/docs/adr/0024-each-ui-has-an-origin-of-its-own-at-a-label-or-a-ui-port.md).
 _Avoid_: subdomain, route, service, app name
 
 **Declaration**:

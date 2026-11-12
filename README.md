@@ -20,8 +20,8 @@ repository knows names and nothing about their builds. It builds and publishes
 two images of its own, `installation-page` and `installation-box`, and builds
 JMRI, which no repository of this project owns, on the box.
 
-[ADR-0007](https://github.com/rails49/.github/blob/main/docs/adr/0007-an-installation-is-a-name-and-every-ui-is-a-label-under-it.md)
-named the installation.
+[ADR-0024](https://github.com/rails49/.github/blob/main/docs/adr/0024-each-ui-has-an-origin-of-its-own-at-a-label-or-a-ui-port.md)
+says how a box and its UIs are reached.
 [ADR-0009](https://github.com/rails49/.github/blob/main/docs/adr/0009-the-door-and-the-page-are-the-installations-in-a-repository-of-their-own.md)
 moved the door and the page here.
 
