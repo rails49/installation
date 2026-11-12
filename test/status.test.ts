@@ -422,5 +422,10 @@ describe("updating and going back", () => {
     expect(box.failures).toEqual([
       "The update to 2026.11.1 stopped before it finished, at: Starting control. Its log is in the log bundle.",
     ]);
+    const applying = progress({ action: "apply", from: "2026.11.0", to: "2026.11.0", step: "Stopping dccex." });
+    const applied = await status(NAMED, io({ files: { [PROGRESS]: applying }, containers: [...CONTAINERS, stopped] }));
+    expect(applied.failures).toEqual([
+      "Applying the setup at 2026.11.0 stopped before it finished, at: Stopping dccex. Its log is in the log bundle.",
+    ]);
   });
 });

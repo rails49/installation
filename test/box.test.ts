@@ -26,6 +26,7 @@ const STATUS = {
   back: null,
   failures: [],
   notes: [],
+  setup: { uis: [], devices: [] },
 };
 
 /** A box whose PID 1 has this name, counting the times it is turned off and
@@ -37,11 +38,16 @@ function box(pid1: string, refusal: string | null = null) {
     turnedOff: 0,
     checked: 0,
     started: [] as string[],
+    applied: [] as string[],
     turnOff: () => void counted.turnedOff++,
     status: async () => STATUS,
     check: async () => void counted.checked++,
     start: async (action: "update" | "back") => {
       counted.started.push(action);
+      return refusal;
+    },
+    apply: async (body: string) => {
+      counted.applied.push(body);
       return refusal;
     },
     bundle: async () => ({ name: "gleis49.org-20261112T1000.tar.gz", body: Buffer.from("tar") }),
@@ -54,8 +60,9 @@ async function ask(
   method: string,
   url: string,
   headers: Record<string, string> = { host: HOST },
+  body = "",
 ) {
-  return await handle({ method, url, headers }, on);
+  return await handle({ method, url, headers, body }, on);
 }
 
 describe("GET /box", () => {
@@ -245,10 +252,10 @@ describe("POST /box/update and POST /box/back", () => {
   });
 
   it("answer 409 with the sentence that says why the box refused", async () => {
-    const on = box("systemd", "An update or going back is running.");
+    const on = box("systemd", "The box is already updating, going back or applying the setup.");
     expect(await ask(on, "POST", "/box/update")).toMatchObject({
       status: 409,
-      body: "An update or going back is running.",
+      body: "The box is already updating, going back or applying the setup.",
     });
   });
 
@@ -258,6 +265,39 @@ describe("POST /box/update and POST /box/back", () => {
     expect((await ask(on, "POST", "/box/update", headers)).status).toBe(403);
     expect((await ask(on, "POST", "/box/back", headers)).status).toBe(403);
     expect(on.started).toEqual([]);
+  });
+});
+
+describe("POST /box/setup", () => {
+  const FORM = "ui=dccex&station=%2Fdev%2Fserial%2Fby-id%2Fnone&camera=%2Fdev%2Fv4l%2Fby-id%2Fnone";
+
+  it("applies the form it was sent and sends the browser back to the page", async () => {
+    const on = box("systemd");
+    const answer = await ask(on, "POST", "/box/setup", { host: HOST, origin: `http://${HOST}` }, FORM);
+    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(on.applied).toEqual([FORM]);
+  });
+
+  it("answers 409 with the sentence that says why the box refused", async () => {
+    const on = box("systemd", "The box is already updating, going back or applying the setup.");
+    expect(await ask(on, "POST", "/box/setup", { host: HOST }, FORM)).toMatchObject({
+      status: 409,
+      body: "The box is already updating, going back or applying the setup.",
+    });
+  });
+
+  it("is refused from a page on another origin, and applies nothing", async () => {
+    const on = box("systemd");
+    const headers = { host: HOST, origin: "https://evil.example" };
+    expect((await ask(on, "POST", "/box/setup", headers, FORM)).status).toBe(403);
+    expect(on.applied).toEqual([]);
+  });
+});
+
+describe("GET /box/tick.js", () => {
+  it("serves the script that ticks control", async () => {
+    const answer = await ask(box("systemd"), "GET", "/box/tick.js");
+    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
   });
 });
 
@@ -275,6 +315,7 @@ describe("anything else", () => {
       ["GET", "/box/check"],
       ["GET", "/box/update"],
       ["GET", "/box/back"],
+      ["GET", "/box/setup"],
       ["POST", "/box/status"],
       ["POST", "/box/"],
       ["GET", "/box/server.mjs"],
@@ -285,5 +326,6 @@ describe("anything else", () => {
     expect(on.turnedOff).toBe(0);
     expect(on.checked).toBe(0);
     expect(on.started).toEqual([]);
+    expect(on.applied).toEqual([]);
   });
 });

@@ -381,12 +381,15 @@ describe("the box", () => {
     expect(dockerfile).toMatch(/apt-get install .*docker-ce-cli docker-compose-plugin/);
   });
 
-  it("has the Docker socket, the box's settings to read and its state to write", () => {
+  it("has the Docker socket, the box's settings and state to write, and the devices to list", () => {
+    // The setup on the status page writes `/etc/rails49` and lists
+    // `/dev/serial/by-id` and `/dev/v4l/by-id` (#69 decisions 12 and 14).
     expect(box.volumes).toEqual([
       "/var/run/docker.sock:/var/run/docker.sock",
-      "/etc/rails49:/etc/rails49:ro",
+      "/etc/rails49:/etc/rails49",
       "/var/lib/rails49:/var/lib/rails49",
       "/etc/hostname:/host/hostname:ro",
+      "/dev:/host/dev:ro",
     ]);
   });
 

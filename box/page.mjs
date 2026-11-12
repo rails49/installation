@@ -1,11 +1,14 @@
 // The status page at `/box/`, rendered from the status `GET /box/status`
 // answers (#65 decision 16), with updating and going back on a press
-// (decisions 2, 10 and 13). It loads look's bundle and its stylesheet from
-// under `/box`.
+// (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
+// devices (#69 decisions 9 to 15). It loads look's bundle, its stylesheet and
+// the script that ticks control from under `/box`.
 
-import { gb, when } from "./status.mjs";
+import { gb, STACKS, when } from "./status.mjs";
 
-/** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>>} Status */
+/** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>> & { setup: Awaited<ReturnType<typeof import("./setup.mjs").form>> }} Status */
+
+const ACTIONS = { update: "Updating to", back: "Going back to" };
 
 /**
  * @param {Status} status
@@ -41,8 +44,9 @@ export function render(status) {
       ? `<form method="post" action="/box/back"><button>Go back to ${escape(status.back)}</button></form>`
       : "",
   ].filter(Boolean);
+  const doing = running?.action === "apply" ? "Applying the setup" : `${ACTIONS[running?.action ?? "update"]} ${escape(running?.to ?? "")}`;
   const press = running
-    ? `<p class="updating">${running.action === "update" ? "Updating" : "Going back"} to ${escape(running.to)}: ${escape(running.step)}</p>`
+    ? `<p class="updating">${doing}: ${escape(running.step)}</p>`
     : offers.length
       ? `<section class="update">\n<p>Updating or going back stops the railroad for about a minute.</p>\n${offers.join("\n")}\n</section>`
       : "";
@@ -65,6 +69,7 @@ export function render(status) {
 <meta name="viewport" content="width=device-width, initial-scale=1">${running ? '\n<meta http-equiv="refresh" content="5">' : ""}
 <title>Box status: ${escape(status.name)}</title>
 <script type="module" src="/box/look/look.bundle.js"></script>
+<script type="module" src="/box/tick.js"></script>
 <link rel="stylesheet" href="/box/page.css">
 </head>
 <body>
@@ -80,6 +85,7 @@ ${press}
 ${stacks}
 </tbody>
 </table>
+${running ? "" : setup(status.setup)}
 <dl>
 <dt>Release</dt>
 <dd>${escape(status.release ?? "none")}</dd>
@@ -88,7 +94,7 @@ ${stacks}
 <dt>Disk free</dt>
 <dd>${gb(status.disk.free)} of ${gb(status.disk.total)}</dd>
 <dt>Address</dt>
-<dd>${escape(status.address ?? "none")}</dd>
+<dd>${status.address ? `${escape(status.address)}. Reserve this address for the box in your router.` : "none"}</dd>
 <dt>Docker Engine</dt>
 <dd>${escape(docker.version)}${tested}</dd>
 <dt>Log driver</dt>
@@ -100,6 +106,48 @@ ${stacks}
 </body>
 </html>
 `;
+}
+
+/**
+ * The form that chooses the stacks and their devices, and applies them.
+ *
+ * @param {Status["setup"]} setup
+ */
+function setup({ uis, devices }) {
+  const boxes = STACKS.flatMap(({ label }) =>
+    label
+      ? [`<label><input type="checkbox" name="ui" value="${label}"${uis.includes(label) ? " checked" : ""}> ${label}</label>`]
+      : [],
+  );
+  const selects = devices.map(({ field, what, none, current, found }) => {
+    const chosen = current ?? none;
+    /** @param {string} value @param {string} text */
+    const option = (value, text) =>
+      `<option value="${escape(value)}"${value === chosen ? " selected" : ""}>${escape(text)}</option>`;
+    const name = (/** @type {string} */ path) => path.slice(path.lastIndexOf("/") + 1);
+    const options = [
+      option(none, "none"),
+      ...found.map((path) => option(path, name(path))),
+      ...(current !== null && current !== none && !found.includes(current)
+        ? [option(current, `${name(current)}, not plugged in`)]
+        : []),
+    ];
+    const label = what[0]?.toUpperCase() + what.slice(1);
+    return [
+      `<label>${label} <select name="${field}">\n${options.join("\n")}\n</select></label>`,
+      ...(found.length ? [] : [`<p>No ${what} is plugged in.</p>`]),
+    ].join("\n");
+  });
+  return `<form method="post" action="/box/setup" class="setup">
+<fieldset>
+<legend>Stacks</legend>
+${boxes.join("\n")}
+<p>Ticking dccex, jmri or occupancy ticks control too: dccex and occupancy dial its broker, and JMRI reads <code>TC49_STORE</code> from <code>control.env</code>.</p>
+</fieldset>
+${selects.join("\n")}
+<p>Applying stops the railroad for about a minute.</p>
+<button>Apply</button>
+</form>`;
 }
 
 /** A sentence as a list item, with a commit in backticks set as code.
