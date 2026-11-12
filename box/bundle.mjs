@@ -10,12 +10,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import { currentRelease, declared, manifestPath } from "./status.mjs";
+import { currentRelease, declared, DEPLOYS, manifestPath, message } from "./status.mjs";
 
 /** The declaration and each stack's settings (decision 14). */
 const SETTINGS = ["box.env", "control.env", "dccex.env", "occupancy.env"];
-
-const DEPLOYS = "/var/lib/rails49/deploys";
 
 /**
  * @typedef {{
@@ -46,7 +44,7 @@ export async function bundle(env, io) {
     try {
       text = await content();
     } catch (error) {
-      text = `${error instanceof Error ? error.message : error}\n`;
+      text = `${message(error)}\n`;
     }
     if (text !== null) entries.push({ path, content: text });
   };

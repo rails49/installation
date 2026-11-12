@@ -1,7 +1,8 @@
 // The check for a new release (#65 decision 4): GitHub's latest release of
-// the installation, which is never a pre-release, so marking a release full
-// is what offers it. What a check found is kept in `CHECK`, which the status
+// the installation, which is never a pre-release. What a check found is kept in `CHECK`, which the status
 // page reads; a check that fails keeps when the last one succeeded.
+
+import { message } from "./status.mjs";
 
 export const LATEST = "https://api.github.com/repos/rails49/installation/releases/latest";
 
@@ -36,7 +37,7 @@ export async function check(io) {
     const latest = answer.status === 404 ? null : /** @type {{ tag_name: string }} */ (await answer.json()).tag_name;
     after = { checked: now, succeeded: now, latest };
   } catch (error) {
-    console.error(`checking for a new release: ${error instanceof Error ? error.message : error}`);
+    console.error(`checking for a new release: ${message(error)}`);
     after = { ...before, checked: now };
   }
   await io.write(`${JSON.stringify(after)}\n`);

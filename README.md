@@ -7,11 +7,12 @@ the box's declaration of itself, and the install instructions.
 ## What an installation is
 
 The door, the page, the service that turns the box off and shows its status,
-and how the box is reached: at a box name with a certificate for it, or with no certificate over
-plain HTTP on the UI ports. None of them is about a railroad, a camera or a
-command station. A box with a command station and no layout installs this and
-then `dccex` — no broker, no store, no trains, and a page listing what it has. The
-railroad, the detector and JMRI are what an operator adds on top.
+and how the box is reached: at a box name with a certificate for it, or with no
+certificate over plain HTTP on the UI ports. None of them is about a railroad,
+a camera or a command station. A box with a command station and no layout
+installs this and then `dccex` — no broker, no store, no trains, and a page
+listing what it has. The railroad, the detector and JMRI are what an operator
+adds on top.
 
 The bus and the store are `control`'s. Every UI brings the container that
 serves it and declares its own routes as labels on its own containers, so this
@@ -181,7 +182,7 @@ of each container's log. It holds neither `acme.env` nor `acme.json`.
 
 For this, `box` has the Docker socket, `/etc/rails49` read-only,
 `/var/lib/rails49` and the Docker CLI with compose. With the socket it can do
-anything on the box that root can, as it already could by being privileged.
+anything on the box that root can.
 
 ## A page on another origin
 
@@ -192,14 +193,15 @@ at the door. The rule is the same over HTTPS, on a UI port, at a `.local` name,
 at an address, and on a box with no certificate
 ([rails49/.github#69](https://github.com/rails49/.github/issues/69)).
 
-`box` applies it to everything under `/box`. For everything else the door asks `box`: the
-`same-origin` middleware, which `compose.yaml` declares on the door, sends each
-request's headers to `GET /origin` and passes the request on only when that
-answers 2xx. Every websocket and write path of every UI names it as
+`box` applies it to everything under `/box`. For everything else the door asks
+`box`: the `same-origin` middleware, which `compose.yaml` declares on the door,
+sends each request's headers to `GET /origin` and passes the request on only
+when that answers 2xx. Every websocket and write path of every UI names it as
 `same-origin@docker`, on its HTTPS router and on its UI port router. A path
 that checks `Origin` itself may do that instead. So the door dials `box` by its
 service name across the shared network, and `box` is a name no other stack may
-use ([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
+use
+([ADR-0004](docs/adr/0004-the-shared-network-carries-the-doors-traffic-and-traffic-between-stacks.md)).
 While `box` is down, every path behind the middleware is refused.
 
 ## Installing
@@ -477,8 +479,8 @@ render script produces, one over the box's requests and the origin check, one
 each over the status, the check for a new release, the log bundle and the
 status page `box` renders, one over the compose files as data and the door's
 script, one over what a deploy builds and refuses, one over the images
-workflow as data, and one over the release's number and its pinned box files. Nothing in it needs a box or
-a secret, and it builds no image.
+workflow as data, and one over the release's number and its pinned box
+files. Nothing in it needs a box or a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and
 `installation-box` at one commit, for amd64 and arm64, and pushes them to

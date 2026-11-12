@@ -1,6 +1,6 @@
 // The status page at `/box/`, rendered from the status `GET /box/status`
-// answers (#65 decision 16). Everything under `/box`, look's bundle included,
-// because on a UI port every other path is that UI's.
+// answers (#65 decision 16). It loads look's bundle and its stylesheet from
+// under `/box`.
 
 import { gb, when } from "./status.mjs";
 

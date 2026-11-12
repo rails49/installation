@@ -26,7 +26,7 @@ import { promisify } from "node:util";
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
 import { render } from "./page.mjs";
-import { CHECK, status } from "./status.mjs";
+import { CHECK, message, status } from "./status.mjs";
 
 const PORT = 8080;
 
@@ -129,9 +129,12 @@ function text(status, body) {
 
 const run = promisify(execFile);
 
+/** The most a command may print: a container's last 1000 lines fit. */
+const MAX_OUTPUT = 64 * 1024 * 1024;
+
 /** @param {string[]} args */
 async function docker(args) {
-  return (await run("docker", args, { maxBuffer: 64 * 1024 * 1024 })).stdout;
+  return (await run("docker", args, { maxBuffer: MAX_OUTPUT })).stdout;
 }
 
 /** A file's text, or null where there is none.
@@ -148,12 +151,12 @@ async function read(path) {
 /** The box's address on its LAN: the source of the route to the internet in
  *  the box's own network namespace, as `ip route get` says it. No packet is
  *  sent. Nothing where the box has no route. */
-const ADDRESS = `const s = require("node:dgram").createSocket("udp4");
+const ADDRESS_SCRIPT = `const s = require("node:dgram").createSocket("udp4");
 s.on("error", () => s.close());
 s.connect(53, "1.1.1.1", () => { console.log(s.address().address); s.close(); });`;
 
 async function address() {
-  const { stdout } = await run("nsenter", ["-t", "1", "-n", "--", "node", "-e", ADDRESS]);
+  const { stdout } = await run("nsenter", ["-t", "1", "-n", "--", "node", "-e", ADDRESS_SCRIPT]);
   return stdout.trim() || null;
 }
 
@@ -166,6 +169,7 @@ function certificate(name) {
     const socket = connect({ host: "door", port: 443, servername: name, rejectUnauthorized: false, timeout: 10_000 }, () => {
       const presented = socket.getPeerCertificate();
       socket.end();
+      if (!presented.valid_to) return reject(new Error("the door presented no certificate"));
       resolve({
         valid_from: new Date(presented.valid_from).toISOString(),
         valid_to: new Date(presented.valid_to).toISOString(),
@@ -188,13 +192,13 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     hostname: readFileSync("/host/hostname", "utf8").trim(),
   };
   const now = () => new Date();
-  const checking = {
+  const checkIo = {
     fetch,
     read: () => read(CHECK),
     write: (/** @type {string} */ text) => writeFile(CHECK, text),
     now,
   };
-  const looking = {
+  const statusIo = {
     docker,
     read,
     disk: async () => {
@@ -207,23 +211,23 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
     now,
   };
-  const packing = {
+  const bundleIo = {
     docker,
     // Both streams, interleaved as the container wrote them.
     logs: async (/** @type {string} */ container) =>
-      (await run("sh", ["-c", 'docker logs --tail 1000 "$1" 2>&1', "sh", container], { maxBuffer: 64 * 1024 * 1024 })).stdout,
+      (await run("sh", ["-c", 'docker logs --tail 1000 "$1" 2>&1', "sh", container], { maxBuffer: MAX_OUTPUT })).stdout,
     read,
     list: async (/** @type {string} */ dir) => (await readdir(dir).catch(() => [])),
     now,
   };
 
-  // Once a day, asked every hour so that a box that came up offline checks
-  // within the hour of its network coming back.
+  // Asked every hour, and checks when a day has passed since the last check
+  // that succeeded.
   const daily = async () => {
     try {
-      if (await due(checking)) await check(checking);
+      if (await due(checkIo)) await check(checkIo);
     } catch (error) {
-      console.error(`checking for a new release: ${/** @type {Error} */ (error).message}`);
+      console.error(`checking for a new release: ${message(error)}`);
     }
   };
   daily();
@@ -240,10 +244,10 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
             if (error) console.error(`${POWEROFF.join(" ")}: ${error.message} ${stderr}`);
           }),
         ),
-      status: () => status(env, looking),
-      check: () => check(checking),
+      status: () => status(env, statusIo),
+      check: () => check(checkIo),
       bundle: async () => {
-        const { name, entries } = await bundle(env, packing);
+        const { name, entries } = await bundle(env, bundleIo);
         return { name, body: await pack(name, entries) };
       },
     }).catch((error) => {

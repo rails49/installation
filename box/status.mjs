@@ -36,7 +36,8 @@ export const STACKS = [
   { label: "occupancy", stack: "occupancy-service", project: "occupancy" },
 ];
 
-export const RECORD = "/var/lib/rails49/deploys/installation";
+export const DEPLOYS = "/var/lib/rails49/deploys";
+export const RECORD = `${DEPLOYS}/installation`;
 export const CHECK = "/var/lib/rails49/check.json";
 
 /** @param {string} release */
@@ -149,7 +150,8 @@ export async function status(env, io) {
       const presented = await io.certificate(name);
       certificate = { expires: presented.valid_to, valid: presented.error === null };
       const end = Date.parse(presented.valid_to);
-      // The door renews with a third of the certificate's life left.
+      // The door renews with a third of the certificate's life left. Under a
+      // quarter left, it has not.
       const life = end - Date.parse(presented.valid_from);
       if (presented.error !== null) {
         failures.push(`The certificate the door presents for ${name} is not valid: ${presented.error}.`);
@@ -188,7 +190,7 @@ export async function status(env, io) {
 }
 
 /** @param {unknown} error */
-function message(error) {
+export function message(error) {
   return error instanceof Error ? error.message : String(error);
 }
 

@@ -306,7 +306,7 @@ describe("the certificate", () => {
     ]);
   });
 
-  it("is a failure when it was not renewed at a third of its life", async () => {
+  it("is a failure under a quarter of its life left, when it was not renewed at a third", async () => {
     // A 90-day certificate is renewed with 30 days left; with 20 left it was not.
     const certificate = async () => ({
       valid_from: "2026-09-03T00:00:00.000Z",
