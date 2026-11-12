@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { render } from "../box/page.mjs";
+import type { Pull } from "../box/update.mjs";
 
 const STATUS = {
   name: "example.org",
@@ -67,6 +68,16 @@ const UPDATING = {
     failure: null,
     running: true,
   },
+};
+
+/** What the page says before a press while a declared stack runs. */
+const KEEPS = "<p>The railroad keeps running while images download. It stops for about a minute while the stacks start.</p>";
+
+/** STATUS on a box where no container of a declared stack runs but the
+ *  installation's, which serves the page. */
+const IDLE = {
+  ...STATUS,
+  stacks: [STATUS.stacks[0]!, ...STATUS.stacks.slice(1).map((stack) => ({ ...stack, state: "stopped" }))],
 };
 
 const PLAIN = {
@@ -188,8 +199,8 @@ describe("the status page", () => {
     expect(page).toContain('<form method="post" action="/box/check"><button>Check now</button></form>');
   });
 
-  it("offers updating to the newer release and going back, after saying that it stops the railroad", () => {
-    const stops = page.indexOf("<p>Updating or going back stops the railroad for about a minute.</p>");
+  it("offers updating to the newer release and going back, after saying when the railroad stops", () => {
+    const stops = page.indexOf(`<section class="update">\n${KEEPS}`);
     const update = page.indexOf('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
     const back = page.indexOf('<form method="post" action="/box/back"><button>Go back to 2026.10.2</button></form>');
     expect(stops).toBeGreaterThan(-1);
@@ -199,7 +210,17 @@ describe("the status page", () => {
 
   it("offers neither on a box with no newer release and nothing to go back to", () => {
     expect(plain).not.toMatch(/action="\/box\/(update|back)"/);
-    expect(plain).not.toContain("Updating or going back stops the railroad");
+    expect(plain).not.toContain('class="update"');
+  });
+
+  it("says nothing of the railroad stopping where no declared stack runs", () => {
+    const idle = render(IDLE);
+    expect(idle).toContain('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
+    expect(idle).not.toContain("The railroad keeps running");
+    expect(render({ ...STATUS, stacks: STATUS.stacks.slice(0, 1) })).not.toContain("The railroad keeps running");
+    // One stack running is enough.
+    const one = render({ ...IDLE, stacks: [...IDLE.stacks.slice(0, 2), STATUS.stacks[2]!] });
+    expect(one).toContain(KEEPS);
   });
 
   it("offers going back alone when there is no newer release", () => {
@@ -217,6 +238,23 @@ describe("the status page", () => {
     expect(page).not.toContain('http-equiv="refresh"');
     const back = render({ ...UPDATING, updating: { ...UPDATING.updating, action: "back" as const, to: "2026.10.2" } });
     expect(back).toContain('<p class="updating">Going back to 2026.10.2: Starting control.</p>');
+  });
+
+  it("while one pulls an image says which, of how many, and its bytes", () => {
+    const pulling = (pull: Pull | null, step = "Pulling occupancy-service's images.") =>
+      render({ ...UPDATING, updating: { ...UPDATING.updating, to: "2026.11.5", step, pull } });
+    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
+    expect(pulling({ image, index: 4, count: 10, current: 1.23e9, total: 2.34e9 })).toContain(
+      '<p class="updating">Updating to 2026.11.5: Pulling occupancy-service\'s images: ghcr.io/rails49/occupancy-service, image 4 of 10, 1.2 GB of 2.3 GB.</p>',
+    );
+    // Under a gigabyte in megabytes, and no bytes before the stream says any.
+    expect(pulling({ image: "traefik:v3.7", index: 1, count: 10, current: 12.4e6, total: 48e6 })).toContain(
+      ": traefik, image 1 of 10, 12 MB of 48 MB.</p>",
+    );
+    expect(pulling({ image, index: 4, count: 10, current: 0, total: 0 })).toContain(
+      ": ghcr.io/rails49/occupancy-service, image 4 of 10.</p>",
+    );
+    expect(pulling(null, "Pulling jmri's images.")).toContain('<p class="updating">Updating to 2026.11.5: Pulling jmri\'s images.</p>');
   });
 
   it("shows the disk, the address and Docker", () => {
@@ -304,11 +342,16 @@ describe("the setup on the status page", () => {
     expect(setup(plain)).toContain("<p>No command station is plugged in.</p>");
   });
 
-  it("says that applying stops the railroad before the button", () => {
+  it("says when applying stops the railroad, before the button", () => {
     const form = setup(page);
-    const stops = form.indexOf("<p>Applying stops the railroad for about a minute.</p>");
+    const stops = form.indexOf(KEEPS);
     expect(stops).toBeGreaterThan(-1);
     expect(form.indexOf("<button>Apply</button>")).toBeGreaterThan(stops);
+  });
+
+  it("says nothing of the railroad stopping where no declared stack runs", () => {
+    expect(setup(render(IDLE))).toContain("<button>Apply</button>");
+    expect(setup(render(IDLE))).not.toContain("railroad");
   });
 
   it("is not offered while an update, going back or applying runs, which the page says", () => {
