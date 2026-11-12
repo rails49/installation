@@ -218,6 +218,8 @@ describe("the check for a new release", () => {
     );
     expect(update).toEqual({
       latest: "2026.11.1",
+      prerelease: false,
+      prereleases: false,
       available: true,
       newer: false,
       checked: "2026-11-12T08:00:00Z",
@@ -268,6 +270,41 @@ describe("the check for a new release", () => {
     });
   });
 
+  it("says whether box.env offers pre-releases, and whether the latest is one", async () => {
+    const offered = (text: string, prerelease: boolean) =>
+      io({
+        files: {
+          "/etc/rails49/box.env": text,
+          "/var/lib/rails49/check.json": JSON.stringify({
+            checked: "2026-11-12T08:00:00Z",
+            succeeded: "2026-11-12T08:00:00Z",
+            latest: "2026.11.1",
+            prerelease,
+          }),
+        },
+      });
+    expect((await status(NAMED, offered("BOX_DOMAIN=\nBOX_PRERELEASES=yes\n", true))).update).toMatchObject({
+      latest: "2026.11.1",
+      prerelease: true,
+      prereleases: true,
+      available: true,
+    });
+    for (const text of ["BOX_DOMAIN=\n", "BOX_PRERELEASES=no\n", 'BOX_PRERELEASES=""\n']) {
+      expect((await status(NAMED, offered(text, false))).update, text).toMatchObject({ prerelease: false, prereleases: false });
+    }
+  });
+
+  it("with pre-releases off, says a box on a pre-release runs one newer than the latest (#88)", async () => {
+    const box = on("2026.11.6", "2026.11.5");
+    expect((await status(NAMED, box)).update).toMatchObject({
+      latest: "2026.11.5",
+      prerelease: false,
+      prereleases: false,
+      available: false,
+      newer: true,
+    });
+  });
+
   it("compares counts as numbers, not strings", async () => {
     expect((await status(NAMED, on("2026.11.10", "2026.11.9"))).update).toMatchObject({ available: false, newer: true });
     expect((await status(NAMED, on("2026.11.9", "2026.11.10"))).update).toMatchObject({ available: true, newer: false });
@@ -293,7 +330,16 @@ describe("the check for a new release", () => {
 
   it("says nothing before the first check", async () => {
     const { update, failures } = await status(NAMED, io({ files: { "/var/lib/rails49/check.json": "" } }));
-    expect(update).toEqual({ latest: null, available: false, newer: false, checked: null, succeeded: null, could_not_check: false });
+    expect(update).toEqual({
+      latest: null,
+      prerelease: false,
+      prereleases: false,
+      available: false,
+      newer: false,
+      checked: null,
+      succeeded: null,
+      could_not_check: false,
+    });
     expect(failures).toEqual([]);
   });
 });

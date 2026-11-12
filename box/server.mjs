@@ -2,8 +2,9 @@
 // box can be turned off from here, and turning it off (ADR-0005); the status
 // page at `/box/`, the status it shows at `/box/status`, a check for a new
 // release, the log bundle (#65 decisions 5 to 7), starting an update or
-// going back (decisions 8 to 10, `update.mjs`), and applying the setup of
-// stacks and devices (#69 decisions 10 to 15, `setup.mjs`).
+// going back (decisions 8 to 10, `update.mjs`), applying the setup of
+// stacks and devices (#69 decisions 10 to 15, `setup.mjs`), and offering
+// pre-releases (#105).
 //
 // Node's standard library and nothing else, run by `node:22-slim` with the
 // Docker CLI added. The container shares the box's PID namespace and is
@@ -28,8 +29,8 @@ import { promisify } from "node:util";
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
 import { render } from "./page.mjs";
-import { apply, form } from "./setup.mjs";
-import { CHECK, message, status } from "./status.mjs";
+import { apply, form, offerPrereleases } from "./setup.mjs";
+import { CHECK, message, prereleases, status } from "./status.mjs";
 import { docker, read, start } from "./update.mjs";
 
 const PORT = 8080;
@@ -60,9 +61,10 @@ const ASSETS = {
  * for the latest release, and `box.bundle` packs the log bundle.
  * `box.start` starts an update or going back, and `box.apply` applies the
  * setup the page posted as its form's body; each says why it will not.
+ * `box.prereleases` writes whether the check takes pre-releases.
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -107,6 +109,11 @@ export async function handle(request, box) {
     return { status: 200, type: "text/html; charset=utf-8", body: render(await box.status()) };
   }
   if (route === "POST /box/check") {
+    await box.check();
+    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+  }
+  if (route === "POST /box/prereleases") {
+    await box.prereleases(new URLSearchParams(request.body ?? "").get("prereleases") === "yes");
     await box.check();
     return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
   }
@@ -215,6 +222,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     read: () => read(CHECK),
     write: (/** @type {string} */ text) => writeFile(CHECK, text),
     now,
+    prereleases: () => prereleases(read),
   };
   const statusIo = {
     docker,
@@ -285,6 +293,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       },
       start: async (action) => start(action, { ...env, address: await address() }, startIo),
       apply: (body) => apply(new URLSearchParams(body), setupIo),
+      prereleases: (on) => offerPrereleases(on, setupIo),
     }).catch((error) => {
       console.error(`${req.method} ${req.url}: ${error.stack}`);
       return text(500, `${error.message}`);

@@ -3,11 +3,13 @@
 // shows. `apply()` is a press of "Apply": it writes `BOX_UIS` into `box.env`
 // and the device lines into `dccex.env` and `occupancy.env`, keeping every
 // line it does not write, and starts `rails49-update` at the current release.
+// `offerPrereleases()` is a press of the pre-releases toggle beside "Check
+// now": it writes `BOX_PRERELEASES` into `box.env` (#105).
 //
 // The box's files, its `/dev`, the docker CLI and starting the update are
 // handed in as `io`, so this reads nothing itself.
 
-import { currentRelease, STACKS } from "./status.mjs";
+import { BOX, currentRelease, setting, STACKS } from "./status.mjs";
 import { BUSY, NO_RELEASE, updater } from "./update.mjs";
 
 /**
@@ -25,8 +27,6 @@ import { BUSY, NO_RELEASE, updater } from "./update.mjs";
  * declares and the box name `domain`, and answers null, or why not in a
  * sentence.
  */
-
-const BOX = "/etc/rails49/box.env";
 
 /** The labels the page offers, in the order `BOX_UIS` lists them. */
 export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
@@ -136,21 +136,20 @@ export async function apply(posted, io) {
 }
 
 /**
- * The value the env file's text sets `key` to, without its quotes, or null
- * where it sets none.
+ * Writes `BOX_PRERELEASES=yes`, or `no`, into `box.env`, keeping every other
+ * line. The check reads it each time it runs.
  *
- * @param {string} text @param {string} key
+ * @param {boolean} on @param {Pick<Io, "read" | "write">} io
  */
-function setting(text, key) {
-  const value = text.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1]?.trim();
-  return value === undefined ? null : value.replace(/^(["'])(.*)\1$/, "$2");
+export async function offerPrereleases(on, io) {
+  await rewrite(BOX, "BOX_PRERELEASES", on ? "yes" : "no", io);
 }
 
 /**
  * Writes `key=value` into the file at `path` in place of the line that set
  * `key`, or at its end, and keeps every other line.
  *
- * @param {string} path @param {string} key @param {string} value @param {Io} io
+ * @param {string} path @param {string} key @param {string} value @param {Pick<Io, "read" | "write">} io
  */
 async function rewrite(path, key, value, io) {
   const text = (await io.read(path)) ?? "";

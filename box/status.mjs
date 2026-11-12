@@ -88,6 +88,7 @@ export const STACKS = [
   },
 ];
 
+export const BOX = "/etc/rails49/box.env";
 export const DEPLOYS = "/var/lib/rails49/deploys";
 export const RECORD = `${DEPLOYS}/installation`;
 export const CHECK = "/var/lib/rails49/check.json";
@@ -133,6 +134,27 @@ export async function backTo(read) {
   const [, from = "-", to = "-", result] = last;
   if (from === "-" || (result === "passed" && !older(from, to))) return null;
   return from;
+}
+
+/**
+ * Whether `box.env` sets `BOX_PRERELEASES=yes`, with which the check takes
+ * the newest release, pre-releases included (#105).
+ *
+ * @param {(path: string) => Promise<string | null>} read
+ */
+export async function prereleases(read) {
+  return setting((await read(BOX)) ?? "", "BOX_PRERELEASES") === "yes";
+}
+
+/**
+ * The value the env file's text sets `key` to, without its quotes, or null
+ * where it sets none.
+ *
+ * @param {string} text @param {string} key
+ */
+export function setting(text, key) {
+  const value = text.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1]?.trim();
+  return value === undefined ? null : value.replace(/^(["'])(.*)\1$/, "$2");
 }
 
 /** Whether release `a` is older than release `b`, by year, month and count.
@@ -205,7 +227,7 @@ export async function status(env, io) {
     return { stack, state, commit, local_build };
   });
 
-  /** @type {{ checked?: string | null, succeeded?: string | null, latest?: string | null }} */
+  /** @type {{ checked?: string | null, succeeded?: string | null, latest?: string | null, prerelease?: boolean }} */
   const check = parse(await io.read(CHECK)) ?? {};
   const succeeded = check.succeeded ?? null;
   const could_not_check = Boolean(check.checked) && check.checked !== succeeded;
@@ -214,6 +236,8 @@ export async function status(env, io) {
   // newer than the latest full release is offered nothing (#88).
   const update = {
     latest,
+    prerelease: check.prerelease ?? false,
+    prereleases: await prereleases(io.read),
     available: latest !== null && (release === null || older(release, latest)),
     newer: latest !== null && release !== null && older(latest, release),
     checked: check.checked ?? null,

@@ -19,6 +19,8 @@ const STATUS = {
   ],
   update: {
     latest: "2026.11.1",
+    prerelease: false,
+    prereleases: false,
     available: true,
     newer: false,
     checked: "2026-11-12T08:00:00.000Z",
@@ -84,7 +86,16 @@ const PLAIN = {
   ...STATUS,
   name: "box",
   release: null,
-  update: { latest: null, available: false, newer: false, checked: null, succeeded: null, could_not_check: false },
+  update: {
+    latest: null,
+    prerelease: false,
+    prereleases: false,
+    available: false,
+    newer: false,
+    checked: null,
+    succeeded: null,
+    could_not_check: false,
+  },
   docker: { ...STATUS.docker, tested: [] },
   certificate: null,
   resolves: null,
@@ -164,16 +175,16 @@ describe("the status page", () => {
   it("shows the release, the update and the last check", () => {
     expect(items(page)).toMatchObject({
       Release: "2026.11.0",
-      Update: "Release 2026.11.1 is out. Checked at 2026-11-12 08:00 UTC. Check now",
+      Update: "Release 2026.11.1 is out. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
     });
     expect(items(plain)).toMatchObject({
       Release: "none",
-      Update: "Not checked yet. Check now",
+      Update: "Not checked yet. Check now Pre-releases: off",
     });
     const latest = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.0", available: false } });
-    expect(items(latest).Update).toBe("This box runs the latest release. Checked at 2026-11-12 08:00 UTC. Check now");
+    expect(items(latest).Update).toBe("This box runs the latest release. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off");
     const none = render({ ...STATUS, update: { ...STATUS.update, latest: null, available: false } });
-    expect(items(none).Update).toBe("No release yet. Checked at 2026-11-12 08:00 UTC. Check now");
+    expect(items(none).Update).toBe("No release yet. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off");
   });
 
   it("says when the box runs a release newer than the latest, and offers no update to it", () => {
@@ -183,7 +194,7 @@ describe("the status page", () => {
       update: { ...STATUS.update, latest: "2026.11.3", available: false, newer: true },
     });
     expect(items(newer).Update).toBe(
-      "This box runs 2026.11.5, newer than the latest release, 2026.11.3. Checked at 2026-11-12 08:00 UTC. Check now",
+      "This box runs 2026.11.5, newer than the latest release, 2026.11.3. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
     );
     expect(newer).not.toContain('action="/box/update"');
   });
@@ -191,12 +202,30 @@ describe("the status page", () => {
   it("says it could not check, as the failure says", () => {
     const offline = render({ ...STATUS, update: { ...STATUS.update, checked: "2026-11-12T09:00:00.000Z", could_not_check: true } });
     expect(items(offline).Update).toBe(
-      "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC. Check now",
+      "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
     );
   });
 
   it("checks now by a POST to /box/check", () => {
     expect(page).toContain('<form method="post" action="/box/check"><button>Check now</button></form>');
+  });
+
+  it("shows whether pre-releases are offered, beside Check now, and switches them by a POST to /box/prereleases", () => {
+    expect(page).toContain(
+      '<form method="post" action="/box/check"><button>Check now</button></form> <form method="post" action="/box/prereleases"><button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form>',
+    );
+    const on = render({ ...STATUS, update: { ...STATUS.update, prereleases: true } });
+    expect(on).toContain(
+      '<form method="post" action="/box/prereleases"><button name="prereleases" value="no" aria-pressed="true">Pre-releases: on</button></form>',
+    );
+  });
+
+  it("names a pre-release that is out, and the update to it, as a pre-release", () => {
+    const pre = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.2", prerelease: true, prereleases: true } });
+    expect(items(pre).Update).toBe(
+      "Pre-release 2026.11.2 is out. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: on",
+    );
+    expect(pre).toContain('<form method="post" action="/box/update"><button>Update to pre-release 2026.11.2</button></form>');
   });
 
   it("offers updating to the newer release and going back, after saying when the railroad stops", () => {
