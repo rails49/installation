@@ -19,6 +19,7 @@ const STATUS = {
   update: {
     latest: "2026.11.1",
     available: true,
+    newer: false,
     checked: "2026-11-12T08:00:00.000Z",
     succeeded: "2026-11-12T08:00:00.000Z",
     could_not_check: false,
@@ -72,7 +73,7 @@ const PLAIN = {
   ...STATUS,
   name: "box",
   release: null,
-  update: { latest: null, available: false, checked: null, succeeded: null, could_not_check: false },
+  update: { latest: null, available: false, newer: false, checked: null, succeeded: null, could_not_check: false },
   docker: { ...STATUS.docker, tested: [] },
   certificate: null,
   resolves: null,
@@ -154,6 +155,18 @@ describe("the status page", () => {
     expect(items(latest).Update).toBe("This box runs the latest release. Checked at 2026-11-12 08:00 UTC. Check now");
     const none = render({ ...STATUS, update: { ...STATUS.update, latest: null, available: false } });
     expect(items(none).Update).toBe("No release yet. Checked at 2026-11-12 08:00 UTC. Check now");
+  });
+
+  it("says when the box runs a release newer than the latest, and offers no update to it", () => {
+    const newer = render({
+      ...STATUS,
+      release: "2026.11.5",
+      update: { ...STATUS.update, latest: "2026.11.3", available: false, newer: true },
+    });
+    expect(items(newer).Update).toBe(
+      "This box runs 2026.11.5, newer than the latest release, 2026.11.3. Checked at 2026-11-12 08:00 UTC. Check now",
+    );
+    expect(newer).not.toContain('action="/box/update"');
   });
 
   it("says it could not check, as the failure says", () => {
