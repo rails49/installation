@@ -188,7 +188,7 @@ anything on the box that root can.
 
 When a newer release is out, the status page offers "Update to <release>".
 Once the record names a release the box ran before the last update, it offers
-"Go back to <release>". Above both it says that updating or going back stops
+"Go back to <release>", and after going back it offers nothing to go back to. Above both it says that updating or going back stops
 the railroad for about a minute. Anyone on the LAN may press either, as anyone
 may turn the box off, and a page on another origin is refused. Nothing is
 installed without a press, and a failed update is not gone back from by
@@ -213,7 +213,7 @@ starts the container `rails49-update` from the target release's
    stacks is still running, none has restarted, and `scripts/probe.sh` passes
    from the container.
 5. Appends one line to `/var/lib/rails49/deploys/installation`.
-6. After a pass, removes every `ghcr.io/rails49` image and pinned stock image
+6. After an update passes, removes every `ghcr.io/rails49` image and pinned stock image
    that neither the release it runs nor the one it left uses, except the
    images the stacks ran just before, which are one step back. Only those two
    releases' files are kept under `/var/lib/rails49/releases`.

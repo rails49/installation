@@ -238,7 +238,34 @@ describe("going back", () => {
   });
 });
 
+describe("going back after an update that failed", () => {
+  it("prunes nothing, so the release before stays", async () => {
+    const { io, asked } = box({
+      files: { [RECORD]: `2026-11-10T09:00:00Z  ${OLD}  ->  ${NEW}  failed\n` },
+    });
+    await run("back", OLD, OLD, ENV, io);
+    expect(asked.some((line) => line.startsWith("image rm") || line.startsWith(`remove ${RELEASES}/`))).toBe(false);
+  });
+});
+
 describe("an update that fails", () => {
+  it("whose docker CLI fails anywhere still appends a failed line and says why", async () => {
+    const { io, files, progress } = box({ fail: "inspect" });
+    await run("update", OLD, NEW, ENV, io);
+    expect(files[RECORD]!.split("\n").at(-2)).toBe(`2026-11-12T10:00:00Z  ${OLD}  ->  ${NEW}  failed`);
+    expect(progress()).toMatchObject({ passed: false, failure: `The update to ${NEW} stopped: inspect failed.` });
+  });
+
+  it("whose container stops while going back says going back", async () => {
+    const later = [container("tc49-store-1", "tc49", "sha256:local-control", "exited")];
+    const { io, progress } = box({
+      later,
+      files: { [`${RELEASES}/${NEW}/manifest.json`]: JSON.stringify(manifest(NEW, 3)) },
+    });
+    await run("back", NEW, OLD, ENV, io);
+    expect(progress().failure).toBe("control is not running 60 seconds after going back: tc49-store-1 is exited.");
+  });
+
   it("whose pull fails names the stack and recreates no container", async () => {
     const { io, asked, files, progress } = box({ fail: "pull ghcr.io/rails49/control" });
     await run("update", OLD, NEW, ENV, io);
