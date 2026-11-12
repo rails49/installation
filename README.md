@@ -165,6 +165,15 @@ the top. It shows:
   pre-release, once a day, and on "Check now". Offline it says it could not
   check, and when the last check succeeded. What it found is kept in
   `/var/lib/rails49/check.json`.
+- Beside "Check now", whether pre-releases are offered: "Pre-releases: on" or
+  "off" ([#105](https://github.com/rails49/installation/issues/105)). A press
+  writes `BOX_PRERELEASES=yes` or `no` into `box.env`, keeping every other
+  line, and checks at once. With it on, the check takes the newest release by
+  number among all of GitHub's releases, pre-releases included and drafts not,
+  and the page names a pre-release that is out, and the update to it, as a
+  pre-release. A missing line is off, and the install script writes none.
+  Turning it off leaves a box on the pre-release it runs, and the page then
+  says the box runs a release newer than the latest.
 - Disk free, on the file system Docker keeps its images on.
 - The box's address on its LAN, and that it should be reserved for the box
   in the router, so it does not change.
@@ -177,6 +186,8 @@ the top. It shows:
   resolves to this box's address.
 
 `GET /box/status` answers the same as JSON. `POST /box/check` checks now.
+`POST /box/prereleases` with `prereleases=yes` or `no` sets the toggle and
+checks.
 `GET /box/bundle` downloads the log bundle, one `.tar.gz` of the records, the
 current manifest, `docker version` and `docker info`, `box.env` and every
 `<stack>.env`, `docker compose ps -a` for each stack, and the last 1000 lines
@@ -632,10 +643,11 @@ op read "op://rails49/rails49-release/credential" |
   gh secret set RELEASE_APP_PRIVATE_KEY --repo rails49/installation
 ```
 
-**2. Check it by hand.** Install the pre-release on a 2018 Mac mini with
-Ubuntu 26.04 and a Raspberry Pi 4 and run trains on it for as long as it takes
-([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
-8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
+**2. Check it by hand.** On a 2018 Mac mini with Ubuntu 26.04 and a Raspberry
+Pi 4, which are installed already, turn "Pre-releases" on on the status page
+and press "Update to pre-release <number>". Run trains on it for as long as it
+takes ([rails49/.github#70](https://github.com/rails49/.github/issues/70)
+decision 8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
 Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
 the pre-release's own script:
 
@@ -648,8 +660,8 @@ and applied, and pass `scripts/probe.sh`
 ([#69](https://github.com/rails49/installation/issues/69) decision 18).
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
-a pre-release". A box asking GitHub for the latest release is never offered a
-pre-release, so this step is what offers it to every other box. A pre-release
+a pre-release". A box with pre-releases off is never offered a pre-release,
+so this step is what offers it to every other box. A pre-release
 that fails the hand check is never marked.
 
 ## Working on this
