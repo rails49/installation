@@ -131,7 +131,8 @@ and to [rails49.org](https://rails49.org/). The band is
 
 The `box` service answers two requests on every name and every UI port the door
 serves. `GET /box` says whether this box can be turned off from here, as
-`{"can_turn_off": true}` or `false`. `POST /box/off` answers `202` and turns it
+`{"can_turn_off": true}` or `false`; a browser asking for HTML there, someone
+who typed the status page's address without its slash, is sent to `/box/`. `POST /box/off` answers `202` and turns it
 off, or answers `409` where it cannot. A UI makes the requests — `control` has
 the button; the page has none. A request from a page on another origin is refused
 ([ADR-0005](docs/adr/0005-the-installation-turns-the-box-off.md)).

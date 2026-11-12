@@ -60,7 +60,7 @@ const ASSETS = {
  * `box.start` starts an update or going back, and `box.apply` applies the
  * setup the page posted as its form's body; each says why it will not.
  *
- * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, "x-forwarded-host"?: string }, body?: string }} request
+ * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
  * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null> }} box
  * @returns {Promise<Answer>}
  */
@@ -76,7 +76,23 @@ export async function handle(request, box) {
   if (!sameOrigin(origin, host)) return refused();
   const canTurnOff = box.pid1 === "systemd";
   if (route === "GET /box") {
-    return { status: 200, type: "application/json", body: JSON.stringify({ can_turn_off: canTurnOff }) };
+    // A person who typed the status page's address and left the slash off
+    // gets the status page; control's `fetch`, which sends `*/*`, the JSON
+    // (#86). Both vary on `Accept`, so no cache answers one with the other.
+    if (request.headers.accept?.includes("text/html")) {
+      return {
+        status: 303,
+        type: "text/plain; charset=utf-8",
+        body: "",
+        headers: { location: "/box/", vary: "accept" },
+      };
+    }
+    return {
+      status: 200,
+      type: "application/json",
+      body: JSON.stringify({ can_turn_off: canTurnOff }),
+      headers: { vary: "accept" },
+    };
   }
   if (route === "POST /box/off") {
     if (!canTurnOff) return text(409, "this server cannot be turned off from here");
