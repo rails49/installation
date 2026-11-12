@@ -212,8 +212,9 @@ The status page also chooses the stacks the box runs and their devices
 `occupancy.env`, in place, so each file keeps its owner and mode. Every other
 line stays as it is, and a file that is not there is made. It then starts `rails49-update` at the release the
 box runs and the box name `box.env` declares, as below, which first stops and removes the containers of each
-stack no longer ticked, keeping its data. The page says first that applying
-stops the railroad for about a minute. It answers 409 with a sentence while
+stack no longer ticked, keeping its data. While a declared stack runs, the
+page says first that the railroad keeps running while images download and
+stops for about a minute while the stacks start. It answers 409 with a sentence while
 an update, going back or applying runs, on a box that runs no release yet, and
 for a stack or device the page did not offer, and then writes nothing. A page
 on another origin is refused. Applying adds no line to the record and removes
@@ -223,8 +224,9 @@ nothing, so going back is offered as before.
 
 When a newer release is out, the status page offers "Update to <release>".
 Once the record names a release the box ran before the last update, it offers
-"Go back to <release>", and after going back it offers nothing to go back to. Above both it says that updating or going back stops
-the railroad for about a minute. Anyone on the LAN may press either, as anyone
+"Go back to <release>", and after going back it offers nothing to go back to. Above both, while a declared stack runs, it says that the
+railroad keeps running while images download and stops for about a minute
+while the stacks start. Anyone on the LAN may press either, as anyone
 may turn the box off, and a page on another origin is refused. Nothing is
 installed without a press, and a failed update is not gone back from by
 itself.
@@ -239,8 +241,9 @@ starts the container `rails49-update` from the target release's
 
 1. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
    into `/var/lib/rails49/releases/<release>/`, unless they are there already.
-2. Pulls every image of every declared stack, and builds JMRI. A failure here
-   changes nothing on the box.
+2. Pulls every image of every declared stack through the Engine API
+   (`POST /images/create` on the socket), and builds JMRI. A failure here
+   changes nothing on the box, and the railroad keeps running throughout.
 3. Brings the declared stacks up in order: the installation, control, dccex,
    JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and
    its own `--env-file /etc/rails49/<stack>.env`: `control.env` for control
@@ -259,7 +262,10 @@ starts the container `rails49-update` from the target release's
    releases' files are kept under `/var/lib/rails49/releases`.
 
 What it is doing is in `/var/lib/rails49/update.json`, which the status page
-shows and reloads every 5 seconds while it runs. A failure is said in a
+shows and reloads every 5 seconds while it runs. While an image is pulled it
+also holds `pull`: the image, its place among every image the run pulls, and
+the bytes downloaded of its total, so the page says, for example, "image 4 of
+10, 1.2 GB of 2.3 GB". It is written at most once a second. A failure is said in a
 sentence that names the stack, and "Go back to <release>" is offered. The
 container stays until the next press, so its log is in the log bundle.
 
