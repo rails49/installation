@@ -176,6 +176,18 @@ describe("the release workflow", () => {
     expect(tagging.map(([name]) => name)).toEqual(["release"]);
   });
 
+  it("runs no curl with both -f and --fail-with-body", () => {
+    // The runners' curl 8.5 refuses the pair; run 43238469782's check failed on it.
+    const runs = Object.values<Node>(workflow.jobs).flatMap((job) =>
+      (job.steps ?? []).map((step: Node) => step.run ?? ""),
+    );
+    const both = runs
+      .flatMap((run: string) => run.split("\n"))
+      .filter((line) => /\bcurl\b/.test(line) && /--fail-with-body/.test(line))
+      .filter((line) => /\s-[a-zA-Z]*f[a-zA-Z]*\s/.test(line));
+    expect(both).toEqual([]);
+  });
+
   it("makes the tag and the pre-release with the app's token, not the job's", () => {
     // The job's token got HTTP 403 creating the tag (#76).
     const steps = workflow.jobs.release.steps;
