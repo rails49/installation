@@ -8,7 +8,7 @@ decision 20): `box` also mounts `/etc/rails49` read-write and the box's `/dev`
 read-only, at `/host/dev`.*
 
 Resolves [#65](https://github.com/rails49/installation/issues/65) decision 22.
-First run on `gleis49` and `pi49` in
+First run on a 2018 Mac mini (Ubuntu 26.04) and a Raspberry Pi 4 in
 [#67](https://github.com/rails49/installation/issues/67)'s acceptance, on
 2026-11-12.
 

@@ -14,9 +14,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { bundle, pack } from "../box/bundle.mjs";
 
 const FILES: Record<string, string> = {
-  "/etc/rails49/box.env": 'BOX_DOMAIN=gleis49.org\nBOX_UIS="control jmri"\n',
+  "/etc/rails49/box.env": 'BOX_DOMAIN=example.org\nBOX_UIS="control jmri"\n',
   "/etc/rails49/acme.env": "CF_DNS_API_TOKEN=secret\n",
-  "/etc/rails49/control.env": "TC49_STORE=/home/ttmetro/tc49\n",
+  "/etc/rails49/control.env": "TC49_STORE=/var/lib/rails49/tc49\n",
   "/var/lib/rails49/deploys/installation": "2026-11-11T09:00:00Z  -  ->  2026.11.0  passed\n",
   "/var/lib/rails49/deploys/dccex": "2026-11-10T09:00:00Z  nothing  ->  ghcr.io/rails49/dccex:1c3f69b\n",
   "/var/lib/rails49/releases/2026.11.0/manifest.json": '{"release":"2026.11.0"}',
@@ -40,15 +40,15 @@ const io = {
   now: () => new Date("2026-11-12T10:00:00Z"),
 };
 
-const ENV = { BOX_DOMAIN: "gleis49.org", BOX_UIS: "control jmri", hostname: "gleis49" };
+const ENV = { BOX_DOMAIN: "example.org", BOX_UIS: "control jmri", hostname: "box" };
 
 const made = await bundle(ENV, io);
 const contents = Object.fromEntries(made.entries.map(({ path, content }) => [path, content]));
 
 describe("the log bundle", () => {
   it("is named for the box and the time it was made", async () => {
-    expect(made.name).toBe("gleis49.org-20261112T1000Z.tar.gz");
-    expect((await bundle({ ...ENV, BOX_DOMAIN: "" }, io)).name).toBe("gleis49-20261112T1000Z.tar.gz");
+    expect(made.name).toBe("example.org-20261112T1000Z.tar.gz");
+    expect((await bundle({ ...ENV, BOX_DOMAIN: "" }, io)).name).toBe("box-20261112T1000Z.tar.gz");
   });
 
   it("holds the records, the current manifest, and docker's version and info", () => {

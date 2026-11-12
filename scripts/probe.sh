@@ -3,7 +3,7 @@
 # Asks a running box, from a machine on its LAN, whether every way into every
 # UI admits the UI's own page and refuses a page on another origin.
 #
-#     scripts/probe.sh ttmetro@gleis49.org
+#     scripts/probe.sh rails49
 #     scripts/probe.sh <address> <hostname> <box name> <label>...
 #
 # With one argument it reads the box name and the labels from

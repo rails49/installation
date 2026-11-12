@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { render } from "../box/page.mjs";
 
 const STATUS = {
-  name: "gleis49.org",
+  name: "example.org",
   address: "192.168.1.20",
   release: "2026.11.0",
   stacks: [
@@ -70,7 +70,7 @@ const UPDATING = {
 
 const PLAIN = {
   ...STATUS,
-  name: "pi49",
+  name: "box",
   release: null,
   update: { latest: null, available: false, checked: null, succeeded: null, could_not_check: false },
   docker: { ...STATUS.docker, tested: [] },
@@ -101,9 +101,9 @@ function items(html: string) {
 describe("the status page", () => {
   it("carries look's band with the box's name, loaded from under /box", () => {
     expect(page).toContain('<script type="module" src="/box/look/look.bundle.js"></script>');
-    expect(page).toMatch(/<look-band[^>]*><look-about name="gleis49.org"><\/look-about><\/look-band>/);
-    expect(page).toContain("<title>Box status: gleis49.org</title>");
-    expect(plain).toContain('<look-about name="pi49">');
+    expect(page).toMatch(/<look-band[^>]*><look-about name="example.org"><\/look-about><\/look-band>/);
+    expect(page).toContain("<title>Box status: example.org</title>");
+    expect(plain).toContain('<look-about name="box">');
   });
 
   it("is styled by its own stylesheet and nothing inline", () => {
@@ -211,7 +211,7 @@ describe("the status page", () => {
   it("shows the certificate and the box name on a box with a box name, and not otherwise", () => {
     expect(items(page)).toMatchObject({
       Certificate: "expires 2027-01-30",
-      "Box name": "gleis49.org resolves to this box",
+      "Box name": "example.org resolves to this box",
     });
     expect(items(plain)).not.toHaveProperty("Certificate");
     expect(items(plain)).not.toHaveProperty("Box name");
@@ -222,7 +222,7 @@ describe("the status page", () => {
     });
     expect(items(wrong)).toMatchObject({
       Certificate: "not valid, expires 2027-01-30",
-      "Box name": "gleis49.org resolves to 10.0.0.5",
+      "Box name": "example.org resolves to 10.0.0.5",
     });
     expect(items(render({ ...STATUS, certificate: null }))).toMatchObject({ Certificate: "could not be read" });
   });

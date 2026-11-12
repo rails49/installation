@@ -129,7 +129,7 @@ function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; 
   return { io, files, asked, progress: () => JSON.parse(files[PROGRESS]!) };
 }
 
-const ENV = { BOX_DOMAIN: "gleis49.org", BOX_UIS: "control jmri", hostname: "gleis49", address: "192.168.1.20" };
+const ENV = { BOX_DOMAIN: "example.org", BOX_UIS: "control jmri", hostname: "box", address: "192.168.1.20" };
 
 /** The compose command for one stack of `release`. */
 function compose(release: string, files: string[], env: string | null) {
@@ -176,7 +176,7 @@ describe("an update that passes", () => {
       "sleep 60000",
       "ps -aq",
       "inspect a b c d",
-      "probe 192.168.1.20 gleis49 gleis49.org control jmri",
+      "probe 192.168.1.20 box example.org control jmri",
     ]);
   });
 
@@ -248,7 +248,7 @@ describe("applying the setup", () => {
     expect(down).toBeLessThan(asked.indexOf(`${INSTALLATION(OLD)} up -d --no-build --pull never --remove-orphans`));
     expect(asked).toContain(`${CONTROL(OLD)} up -d --no-build --pull never --remove-orphans`);
     expect(asked.filter((line) => line.endsWith(" down"))).toEqual(["compose -p dccex down"]);
-    expect(asked).toContain("probe 192.168.1.20 gleis49 gleis49.org control jmri");
+    expect(asked).toContain("probe 192.168.1.20 box example.org control jmri");
   });
 
   it("appends nothing to the record and prunes nothing, so going back stays", async () => {
@@ -398,8 +398,8 @@ describe("starting one", () => {
     "-v /var/run/docker.sock:/var/run/docker.sock",
     "-v /etc/rails49:/etc/rails49:ro",
     "-v /var/lib/rails49:/var/lib/rails49",
-    "-e BOX_DOMAIN=gleis49.org -e BOX_UIS=control jmri -e BOX_HOSTNAME=gleis49 -e BOX_ADDRESS=192.168.1.20",
-    "--add-host gleis49.local:192.168.1.20",
+    "-e BOX_DOMAIN=example.org -e BOX_UIS=control jmri -e BOX_HOSTNAME=box -e BOX_ADDRESS=192.168.1.20",
+    "--add-host box.local:192.168.1.20",
   ].join(" ");
 
   it("runs rails49-update from the new release's box image, with the socket, to the latest release", async () => {

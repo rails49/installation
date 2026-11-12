@@ -14,8 +14,8 @@ _Avoid_: host, server, node, machine
 
 **Box name**:
 The name a box is reached at, held in `BOX_DOMAIN`. It may be a domain bought
-for the box, as `gleis49.org` is, or a label in a zone somebody already runs,
-as `dev.rails49.org` is; both are supported and neither is the normal case.
+for the box or a label in a zone somebody already runs; both are supported and
+neither is the normal case.
 The variable's name says domain and is wrong about it. Only a box with a
 certificate has one; see [ADR-0024](https://github.com/rails49/.github/blob/main/docs/adr/0024-each-ui-has-an-origin-of-its-own-at-a-label-or-a-ui-port.md).
 _Avoid_: box domain, domain, hostname, FQDN
