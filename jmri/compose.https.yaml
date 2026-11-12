@@ -1,0 +1,22 @@
+# JMRI's routers that need a box name, started over `compose.yaml` on a box
+# with one and never on a box with no certificate. The start command is at the
+# top of `compose.yaml`.
+#
+# Each is on `websecure`, uses the `le` resolver and has the box name in its
+# rule, and the door of a box with no certificate has neither 443 nor a
+# resolver. There each would be dropped with an error at every start (#102).
+# Labels only, merged over the service `compose.yaml` declares.
+
+services:
+  jmri:
+    labels:
+      # noVNC at `jmri.$BOX_DOMAIN`.
+      - traefik.http.routers.jmri.rule=Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)
+      - traefik.http.routers.jmri.entrypoints=websecure
+      - traefik.http.routers.jmri.tls.certresolver=le
+      # noVNC's websocket, behind the installation's origin check. The rule is
+      # longer than the one above it, which is what puts it first.
+      - traefik.http.routers.jmri-ws.rule=Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)
+      - traefik.http.routers.jmri-ws.entrypoints=websecure
+      - traefik.http.routers.jmri-ws.tls.certresolver=le
+      - traefik.http.routers.jmri-ws.middlewares=same-origin@docker

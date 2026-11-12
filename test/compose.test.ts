@@ -54,6 +54,9 @@ const installation: Node = compose("compose.yaml");
  *  box with one (#92). */
 const https: Node = compose("compose.https.yaml");
 const jmri: Node = compose("jmri/compose.yaml");
+/** JMRI's routers that need a box name, started over its compose file only
+ *  on a box with one (#102). */
+const jmriHttps: Node = compose("jmri/compose.https.yaml");
 
 /** A service's labels, as a map. Both files declare them as a list, which is
  *  the form compose writes them in here. */
@@ -72,6 +75,12 @@ function labels(service: Node): Record<string, string> {
 function named(service: string): Record<string, string> {
   return { ...labels(installation.services[service]), ...labels(https.services?.[service] ?? {}) };
 }
+
+/** JMRI's labels on a box with a box name, merged the same way. */
+const jmriNamed: Record<string, string> = {
+  ...labels(jmri.services.jmri),
+  ...labels(jmriHttps.services.jmri),
+};
 
 /** The door's script, as compose hands it to `sh`. `$$` is compose's spelling
  *  of a `$` it leaves for the shell. */
@@ -311,6 +320,7 @@ describe("the door", () => {
       installation.services.box,
       ...Object.values<Node>(https.services),
       jmri.services.jmri,
+      jmriHttps.services.jmri,
     ].filter((service) => service !== https.services.door);
     for (const service of others) {
       const declared = Object.keys(labels(service)).filter((label) =>
@@ -340,29 +350,40 @@ describe("a box with no certificate", () => {
     "tls.certresolver" in router ||
     (router.rule ?? "").includes("BOX_DOMAIN");
 
+  /** Each stack this repository holds: its compose file and the
+   *  `compose.https.yaml` beside it. */
+  const stacks: [string, Node, Node][] = [
+    ["compose.yaml", installation, https],
+    ["jmri/compose.yaml", jmri, jmriHttps],
+  ];
+
   it("is started with no router that needs a box name", () => {
-    // The door would log an error for each at every start (#92).
-    for (const [name, service] of Object.entries<Node>(installation.services)) {
-      for (const [router, declared] of Object.entries(routers(labels(service)))) {
-        expect(needsName(declared), `${name}: ${router}`).toBe(false);
+    // The door would log an error for each at every start (#92, #102).
+    for (const [file, base] of stacks) {
+      for (const [name, service] of Object.entries<Node>(base.services)) {
+        for (const [router, declared] of Object.entries(routers(labels(service)))) {
+          expect(needsName(declared), `${file} ${name}: ${router}`).toBe(false);
+        }
       }
     }
   });
 
   it("is not handed compose.https.yaml, which holds only routers that need one", () => {
-    // Labels on the services `compose.yaml` declares, and nothing else, so a
-    // box with a box name runs the same containers.
-    for (const [name, service] of Object.entries<Node>(https.services)) {
-      expect(installation.services[name], name).toBeDefined();
-      expect(Object.keys(service), name).toEqual(["labels"]);
-      const declared = routers(labels(service));
-      for (const [router, own] of Object.entries(declared)) {
-        if (own.rule !== undefined || own.entrypoints !== undefined) {
-          expect(needsName(own), `${name}: ${router}`).toBe(true);
+    // Labels on the services the compose file beside it declares, and nothing
+    // else, so a box with a box name runs the same containers.
+    for (const [file, base, over] of stacks) {
+      for (const [name, service] of Object.entries<Node>(over.services)) {
+        expect(base.services[name], `${file} ${name}`).toBeDefined();
+        expect(Object.keys(service), `${file} ${name}`).toEqual(["labels"]);
+        const declared = routers(labels(service));
+        for (const [router, own] of Object.entries(declared)) {
+          if (own.rule !== undefined || own.entrypoints !== undefined) {
+            expect(needsName(own), `${file} ${name}: ${router}`).toBe(true);
+          }
         }
       }
+      expect(Object.keys(over), file).toEqual(["services"]);
     }
-    expect(Object.keys(https)).toEqual(["services"]);
   });
 });
 
@@ -486,7 +507,7 @@ describe("the box", () => {
     // A router with no priority of its own has its rule's length, so a label's
     // `Host` rule would otherwise take `/box` for itself.
     const priority = Number(router["traefik.http.routers.box.priority"]);
-    const others = [named("page"), labels(jmri.services.jmri)].flatMap((service) =>
+    const others = [named("page"), jmriNamed].flatMap((service) =>
       Object.entries(service)
         .filter(([label]) => /^traefik\.http\.routers\.[^.]+\.rule$/.test(label))
         .filter(([label]) => label !== "traefik.http.routers.to-https.rule")
@@ -593,12 +614,12 @@ describe("JMRI", () => {
   });
 
   it("is reachable at its label under the box name and on its UI port, and nowhere else", () => {
-    const router = labels(jmri.services.jmri);
+    const router = jmriNamed;
     const routers = Object.keys(router).filter((label) =>
       label.startsWith("traefik.http.routers."),
     );
     const named = new Set(routers.map((label) => label.split(".")[3]));
-    expect([...named]).toEqual(["jmri", "jmri-http", "jmri-ws", "jmri-ws-http"]);
+    expect([...named].sort()).toEqual(["jmri", "jmri-http", "jmri-ws", "jmri-ws-http"]);
     expect(router["traefik.http.routers.jmri.rule"]).toBe(
       "Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)",
     );
@@ -608,7 +629,7 @@ describe("JMRI", () => {
   });
 
   it("puts noVNC's websocket behind the origin check on both ways in", () => {
-    const router = labels(jmri.services.jmri);
+    const router = jmriNamed;
     expect(router["traefik.http.routers.jmri-ws.rule"]).toBe(
       "Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)",
     );
@@ -654,6 +675,27 @@ describe("JMRI", () => {
       bind: { create_host_path: false },
     });
     expect(jmri.services.jmri.volumes).toContain("jmri:/home/jmri");
+  });
+
+  it("with a box name, has the labels it had before #102", () => {
+    expect(jmriNamed).toEqual({
+      "traefik.enable": "true",
+      "traefik.docker.network": "rails49",
+      "traefik.http.routers.jmri.rule":
+        "Host(`jmri.${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}`)",
+      "traefik.http.routers.jmri.entrypoints": "websecure",
+      "traefik.http.routers.jmri.tls.certresolver": "le",
+      "traefik.http.routers.jmri-http.rule": "PathPrefix(`/`)",
+      "traefik.http.routers.jmri-http.entrypoints": "jmri",
+      "traefik.http.routers.jmri-ws.rule": "Host(`jmri.${BOX_DOMAIN}`) && PathPrefix(`/websockify`)",
+      "traefik.http.routers.jmri-ws.entrypoints": "websecure",
+      "traefik.http.routers.jmri-ws.tls.certresolver": "le",
+      "traefik.http.routers.jmri-ws.middlewares": "same-origin@docker",
+      "traefik.http.routers.jmri-ws-http.rule": "PathPrefix(`/websockify`)",
+      "traefik.http.routers.jmri-ws-http.entrypoints": "jmri",
+      "traefik.http.routers.jmri-ws-http.middlewares": "same-origin@docker",
+      "traefik.http.services.jmri.loadbalancer.server.port": "6901",
+    });
   });
 
   it("names the port the door reaches, the image exposing three", () => {

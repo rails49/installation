@@ -42,7 +42,7 @@
  *  `https` holds the routers that need a box name: on `websecure`, with the
  *  `le` resolver, or with `BOX_DOMAIN` in a rule. A box with no certificate
  *  has neither, and the door logs an error for each such router at every
- *  start (#92). JMRI has no HTTPS router of its own.
+ *  start (#92).
  *
  *  @type {{ label: string | null, stack: string, project: string, files: string[], https: string | null, env: string | null }[]} */
 export const STACKS = [
@@ -70,7 +70,14 @@ export const STACKS = [
     https: "dccex/compose.https.yaml",
     env: "dccex.env",
   },
-  { label: "jmri", stack: "jmri", project: "jmri", files: ["installation/jmri/compose.yaml"], https: null, env: "control.env" },
+  {
+    label: "jmri",
+    stack: "jmri",
+    project: "jmri",
+    files: ["installation/jmri/compose.yaml"],
+    https: "installation/jmri/compose.https.yaml",
+    env: "control.env",
+  },
   {
     label: "occupancy",
     stack: "occupancy-service",

@@ -248,7 +248,7 @@ starts the container `rails49-update` from the target release's
    JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and
    its own `--env-file /etc/rails49/<stack>.env`: `control.env` for control
    and JMRI, `dccex.env`, `occupancy.env`. The installation has none. With a
-   box name, each stack but JMRI is also started with its `compose.https.yaml`,
+   box name, each stack is also started with its `compose.https.yaml`,
    which holds its routers on 443; a box with no certificate has no 443 and
    gets none of them
    ([#92](https://github.com/rails49/installation/issues/92)).
@@ -547,8 +547,12 @@ the status page. From a clone:
 (. /etc/rails49/control.env && mkdir -p "$TC49_STORE/jmri")
 TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
   --env-file /etc/rails49/box.env --env-file /etc/rails49/control.env \
-  -f jmri/compose.yaml up -d --build
+  -f jmri/compose.yaml -f jmri/compose.https.yaml up -d --build
 ```
+
+On a box with no certificate, leave out `-f jmri/compose.https.yaml`, which
+holds JMRI's routers on 443
+([#102](https://github.com/rails49/installation/issues/102)).
 
 JMRI's profile — the connection to the command station, the roster and every
 loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
