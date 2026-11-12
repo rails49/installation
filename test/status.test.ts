@@ -100,6 +100,46 @@ describe("the stacks", () => {
   });
 });
 
+describe("a container gone between listing and inspecting it", () => {
+  /** `docker ps` lists `id0` to `id5`; `docker inspect` answers as the CLI
+   *  does, failing with a line for each id in `gone`. */
+  const listing = (gone: string[]): Io["docker"] => async (args) => {
+    const containers = [...CONTAINERS, container("dccex-dccex-1", "dccex")];
+    if (args[0] === "info") return JSON.stringify({ ServerVersion: "29.1.3", LoggingDriver: "local" });
+    if (args[0] === "ps") return containers.map((_, i) => `id${i}\n`).join("");
+    if (args[0] !== "inspect") throw new Error(`docker ${args.join(" ")}`);
+    const missing = args.slice(1).filter((id) => gone.includes(id));
+    if (missing.length) throw new Error(missing.map((id) => `error: no such object: ${id}`).join("\n"));
+    return JSON.stringify(containers.filter((_, i) => args.includes(`id${i}`)));
+  };
+
+  it("is left out, and the page shows the others", async () => {
+    const env = { ...NAMED, BOX_UIS: "control dccex" };
+    const { stacks, failures } = await status(env, io({ docker: listing(["id5"]) }));
+    expect(stacks.map((s) => [s.stack, s.state])).toEqual([
+      ["installation", "running"],
+      ["control", "running"],
+      ["dccex", "stopped"],
+    ]);
+    expect(failures).toEqual(["dccex is stopped."]);
+  });
+
+  it("is left out when several are gone", async () => {
+    const env = { ...NAMED, BOX_UIS: "control dccex" };
+    const { stacks, failures } = await status(env, io({ docker: listing(["id1", "id4"]) }));
+    expect(stacks.map((s) => s.state)).toEqual(["running", "running", "running"]);
+    expect(failures).toEqual([]);
+  });
+
+  it("does not hide another failure of docker inspect", async () => {
+    const docker: Io["docker"] = async (args) => {
+      if (args[0] === "ps") return "id0\n";
+      throw new Error("Cannot connect to the Docker daemon at unix:///var/run/docker.sock.");
+    };
+    await expect(status(NAMED, io({ docker }))).rejects.toThrow("Cannot connect to the Docker daemon");
+  });
+});
+
 describe("the release", () => {
   it("is the one the last update that passed moved the box to", async () => {
     expect((await status(NAMED, io())).release).toBe("2026.11.0");

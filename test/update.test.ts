@@ -88,6 +88,9 @@ function box(
     stream?: (image: string) => Iterable<PullMessage>;
     /** Milliseconds the clock moves on with each message of a pull. */
     tick?: number;
+    /** Ids `docker ps` lists whose container is gone by the time
+     *  `docker inspect` asks for it. */
+    gone?: string[];
   } = {},
 ): Box {
   const files: Record<string, string> = {
@@ -116,7 +119,13 @@ function box(
         return `ghcr.io/rails49/${stack}:x@${DIGEST(7)}\ntraefik:v3.7@${DIGEST(8)}\n`;
       }
       if (line === "ps -aq") return "a\nb\nc\nd\n";
-      if (args[0] === "inspect") return JSON.stringify(waited ? (options.later ?? now) : now);
+      if (args[0] === "inspect") {
+        const missing = args.slice(1).filter((id) => options.gone?.includes(id));
+        if (missing.length) throw new Error(missing.map((id) => `error: no such object: ${id}`).join("\n"));
+        const all = waited ? (options.later ?? now) : now;
+        if (!options.gone) return JSON.stringify(all);
+        return JSON.stringify(all.filter((_, i) => args.includes("abcd"[i]!)));
+      }
       if (args[0] === "image" && args[1] === "ls") {
         return [
           { Repository: "ghcr.io/rails49/control", Tag: "<none>", Digest: DIGEST(5), ID: "sha256:new-control" },
@@ -447,6 +456,22 @@ describe("applying the setup", () => {
     const stopped = box({ fail: "dccex down" });
     await run("apply", OLD, OLD, ENV, stopped.io);
     expect(stopped.progress().failure).toBe(`Applying the setup at ${OLD} stopped: dccex down failed.`);
+  });
+});
+
+describe("a container gone between listing and inspecting it", () => {
+  it("is left out of the 60-second check, and the update passes", async () => {
+    const { io, asked, progress } = box({ gone: ["b"] });
+    await run("update", OLD, NEW, ENV, io);
+    expect(asked.filter((line) => line.startsWith("inspect"))).toContain("inspect a c d");
+    expect(progress()).toMatchObject({ passed: true, failure: null });
+  });
+
+  it("is left out of the stop of undeclared stacks", async () => {
+    const { io, asked, progress } = box({ gone: ["d"] });
+    await run("apply", OLD, OLD, ENV, io);
+    expect(asked.filter((line) => line.endsWith(" down"))).toEqual([]);
+    expect(progress()).toMatchObject({ passed: true, failure: null });
   });
 });
 
