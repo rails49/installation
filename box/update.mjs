@@ -2,8 +2,8 @@
 // setup at the release the box runs (#69 decisions 14 and 15). `start()` is
 // what `box` does on a press: it starts the one-shot container
 // `rails49-update` from the target release's `installation-box` image, with
-// the socket, in no compose project. `run()` is what that container does, run
-// as
+// the socket, in no compose project. `run()` is what that container does,
+// run as
 //
 //     node /box/update.mjs <update|back|apply> <from> <to>
 //

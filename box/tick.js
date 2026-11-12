@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 // On the status page, ticking dccex, jmri or occupancy ticks control, which
-// each of them needs (#69 decision 10). The box ticks it again when the form
+// each of them needs (#69 decision 10). `box` ticks it again when the form
 // is applied, for a browser that runs no script.
 
 const form = document.querySelector("form.setup");

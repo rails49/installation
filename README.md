@@ -190,10 +190,11 @@ CLI with compose. With the socket it can do anything on the box that root can.
 The status page also chooses the stacks the box runs and their devices
 ([#69](https://github.com/rails49/installation/issues/69)):
 
-- A box for each of `control`, `dccex`, `jmri` and `occupancy`, ticked as
+- A checkbox for each of `control`, `dccex`, `jmri` and `occupancy`, ticked as
   `BOX_UIS` in `box.env` declares them. Ticking any of the last three ticks
   `control`: dccex and occupancy dial its broker, and JMRI reads `TC49_STORE`
-  from `control.env`. The box ticks it again when the form is applied.
+  from `control.env`. `box` ticks it again when the form is applied, for a
+  browser that runs no script.
 - The command station, from `/dev/serial/by-id/`, and the camera, from
   `/dev/v4l/by-id/`, or none. With none plugged in, a sentence says so. A
   device the stack's file names that is not plugged in stays offered. None is
@@ -203,8 +204,8 @@ The status page also chooses the stacks the box runs and their devices
 
 "Apply" (`POST /box/setup`) writes `BOX_UIS` into `box.env`,
 `DCCEX_STATION_DEVICE` into `dccex.env` and `OCCUPANCY_CAMERA` into
-`occupancy.env`. Every other line of each file stays as it is, and a file
-that is not there is made. It then starts `rails49-update` at the release the
+`occupancy.env`, in place, so each file keeps its owner and mode. Every other
+line stays as it is, and a file that is not there is made. It then starts `rails49-update` at the release the
 box runs, as below, which first stops and removes the containers of each
 stack no longer ticked, keeping its data. The page says first that applying
 stops the railroad for about a minute. It answers 409 with a sentence while
@@ -302,7 +303,7 @@ responder on the box: Raspberry Pi OS ships one, and on Ubuntu Server install it
 with `sudo apt install avahi-daemon`.
 
 **2. Write the box's declaration.** As root, because every stack reads it and
-none of them should be able to rewrite it:
+only the status page's setup rewrites it:
 
 ```bash
 sudo install -d -m 755 /etc/rails49
@@ -389,8 +390,8 @@ which is the boundary on a machine where the daemon's socket belongs to a
 group. macOS has no `docker` group and Docker Desktop's socket belongs to
 whoever is logged in, so compose reads the file as you — and a root-owned
 `640` file is one your own `up -d` cannot open. Own it yourself, mode `600`.
-The declaration beside it stays root's: every stack reads that one and none of
-them should be able to rewrite it.
+The declaration beside it stays root's: every stack reads that one and only the
+status page's setup rewrites it.
 
 **A box with no steel runs the simulator.** A development machine has no
 command station on USB, so the stack that serves the UI comes up with its

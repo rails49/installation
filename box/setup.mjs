@@ -28,7 +28,7 @@ import { BUSY, NO_RELEASE, updater } from "./update.mjs";
 const BOX = "/etc/rails49/box.env";
 
 /** The labels the page offers, in the order `BOX_UIS` lists them. */
-const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
+export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
 
 /** The devices the page offers: the form's field, the directory of the box's
  *  `/dev` it lists, and the line it writes into which stack's file. `none` is
