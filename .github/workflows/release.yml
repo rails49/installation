@@ -212,6 +212,22 @@ jobs:
         with:
           name: release
           path: release
+      # The runner's own Docker Engine lags what a fresh box gets (#82), so it
+      # is upgraded from the source and with the packages the install script
+      # uses. Any other list naming Docker's repository is removed first; apt
+      # refuses two with different keys.
+      - name: Docker Engine from Docker's apt repository
+        run: |
+          grep -lr download.docker.com /etc/apt/sources.list.d | xargs -r sudo rm -f
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL -o /etc/apt/keyrings/docker.asc https://download.docker.com/linux/ubuntu/gpg
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          # shellcheck disable=SC1091  # the runner's
+          codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $codename stable" |
+            sudo tee /etc/apt/sources.list.d/docker.list
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
       - name: The runner's Docker Engine, for the manifest
         run: docker version --format '{{.Server.Version}}' | tee "docker-${{ matrix.runner }}"
       - uses: actions/upload-artifact@v7
