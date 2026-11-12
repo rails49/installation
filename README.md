@@ -244,7 +244,11 @@ starts the container `rails49-update` from the target release's
 3. Brings the declared stacks up in order: the installation, control, dccex,
    JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and
    its own `--env-file /etc/rails49/<stack>.env`: `control.env` for control
-   and JMRI, `dccex.env`, `occupancy.env`. The installation has none.
+   and JMRI, `dccex.env`, `occupancy.env`. The installation has none. With a
+   box name, each stack but JMRI is also started with its `compose.https.yaml`,
+   which holds its routers on 443; a box with no certificate has no 443 and
+   gets none of them
+   ([#92](https://github.com/rails49/installation/issues/92)).
 4. Waits 60 seconds. The update passes when every container of the declared
    stacks is still running, none has restarted, and `scripts/probe.sh` passes
    from the container.
