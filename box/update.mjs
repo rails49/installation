@@ -101,6 +101,9 @@ export async function run(action, from, to, env, io) {
 
   const stacks = declared(env.BOX_UIS);
   const dir = `${RELEASES}/${to}`;
+  /** The stack's compose files, and its HTTPS routers only with a box name
+   *  (#92). @param {(typeof stacks)[number]} stack */
+  const files = (stack) => [...stack.files, ...(env.BOX_DOMAIN && stack.https ? [stack.https] : [])];
   /** @param {(typeof stacks)[number]} stack @param {string[]} args */
   const compose = (stack, args) =>
     io.docker([
@@ -108,7 +111,7 @@ export async function run(action, from, to, env, io) {
       "--env-file",
       "/etc/rails49/box.env",
       ...(stack.env ? ["--env-file", `/etc/rails49/${stack.env}`] : []),
-      ...stack.files.flatMap((file) => ["-f", `${dir}/${file}`]),
+      ...files(stack).flatMap((file) => ["-f", `${dir}/${file}`]),
       ...args,
     ]);
 

@@ -27,27 +27,49 @@
 
 /** Each stack the box can run: the label in `BOX_UIS` that declares it, its
  *  name in a release's manifest, its compose project, its compose files in
- *  the release's box files, and its settings beside `box.env` (decision 14).
+ *  the release's box files, the one more it is started with on a box with a
+ *  box name, and its settings beside `box.env` (decision 14).
  *  The installation always runs. In the order the stacks are brought up
  *  (decision 8). JMRI is the installation's, and reads control's settings.
  *
- *  @type {{ label: string | null, stack: string, project: string, files: string[], env: string | null }[]} */
+ *  `https` holds the routers that need a box name: on `websecure`, with the
+ *  `le` resolver, or with `BOX_DOMAIN` in a rule. A box with no certificate
+ *  has neither, and the door logs an error for each such router at every
+ *  start (#92). JMRI has no HTTPS router of its own.
+ *
+ *  @type {{ label: string | null, stack: string, project: string, files: string[], https: string | null, env: string | null }[]} */
 export const STACKS = [
-  { label: null, stack: "installation", project: "installation", files: ["installation/compose.yaml"], env: null },
-  { label: "control", stack: "control", project: "tc49", files: ["control/compose.yaml"], env: "control.env" },
+  {
+    label: null,
+    stack: "installation",
+    project: "installation",
+    files: ["installation/compose.yaml"],
+    https: "installation/compose.https.yaml",
+    env: null,
+  },
+  {
+    label: "control",
+    stack: "control",
+    project: "tc49",
+    files: ["control/compose.yaml"],
+    https: "control/compose.https.yaml",
+    env: "control.env",
+  },
   {
     label: "dccex",
     stack: "dccex",
     project: "dccex",
     files: ["dccex/compose.yaml", "dccex/compose.box.yaml"],
+    https: "dccex/compose.https.yaml",
     env: "dccex.env",
   },
-  { label: "jmri", stack: "jmri", project: "jmri", files: ["installation/jmri/compose.yaml"], env: "control.env" },
+  { label: "jmri", stack: "jmri", project: "jmri", files: ["installation/jmri/compose.yaml"], https: null, env: "control.env" },
   {
     label: "occupancy",
     stack: "occupancy-service",
     project: "occupancy",
     files: ["occupancy-service/compose.yaml"],
+    https: "occupancy-service/compose.https.yaml",
     env: "occupancy.env",
   },
 ];

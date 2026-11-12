@@ -137,8 +137,10 @@ function compose(release: string, files: string[], env: string | null) {
   return `compose ${envs.join(" ")} ${files.map((f) => `-f ${RELEASES}/${release}/${f}`).join(" ")}`;
 }
 
-const INSTALLATION = (r: string) => compose(r, ["installation/compose.yaml"], null);
-const CONTROL = (r: string) => compose(r, ["control/compose.yaml"], "control.env");
+// `ENV` has a box name, so each stack but JMRI is started with its HTTPS file.
+const INSTALLATION = (r: string) =>
+  compose(r, ["installation/compose.yaml", "installation/compose.https.yaml"], null);
+const CONTROL = (r: string) => compose(r, ["control/compose.yaml", "control/compose.https.yaml"], "control.env");
 const JMRI = (r: string) => compose(r, ["installation/jmri/compose.yaml"], "control.env");
 
 describe("an update that passes", () => {
@@ -311,10 +313,10 @@ describe("an update that fails", () => {
   });
 
   it("whose stack does not start names it and starts none after it", async () => {
-    const { io, asked, progress } = box({ fail: "control/compose.yaml up" });
+    const { io, asked, progress } = box({ fail: "control/compose.https.yaml up" });
     await run("update", OLD, NEW, ENV, io);
     expect(asked.some((line) => line.startsWith(`${JMRI(NEW)} up`))).toBe(false);
-    expect(progress().failure).toBe(`control did not start on release ${NEW}: control/compose.yaml up failed.`);
+    expect(progress().failure).toBe(`control did not start on release ${NEW}: control/compose.https.yaml up failed.`);
   });
 
   it("whose container is not running after 60 seconds names the stack", async () => {
@@ -356,7 +358,7 @@ describe("an update that fails", () => {
   });
 
   it("prunes nothing", async () => {
-    const { io, asked } = box({ fail: "control/compose.yaml up" });
+    const { io, asked } = box({ fail: "control/compose.https.yaml up" });
     await run("update", OLD, NEW, ENV, io);
     expect(asked.some((line) => line.startsWith("image rm") || line === `remove ${RELEASES}/2026.10.0`)).toBe(false);
   });
@@ -470,5 +472,39 @@ describe("starting one", () => {
     expect(await start("apply", ENV, starting({ record: "" }).io)).toBe(
       "This box runs no release yet, so there is none to apply the setup at.",
     );
+  });
+});
+
+describe("the compose files of each stack", () => {
+  /** The `-f` files of each `up`, in the order the stacks came up. */
+  async function upFiles(BOX_DOMAIN: string) {
+    const { io, asked } = box();
+    await run("apply", OLD, NEW, { ...ENV, BOX_DOMAIN, BOX_UIS: "control dccex jmri occupancy" }, io);
+    return asked
+      .filter((line) => line.endsWith(" up -d --no-build --pull never --remove-orphans"))
+      .map((line) => [...line.matchAll(/-f (\S+)/g)].map(([, file]) => file!.slice(`${RELEASES}/${NEW}/`.length)));
+  }
+
+  it("include each stack's compose.https.yaml but JMRI's on a box with a box name", async () => {
+    // JMRI has no HTTPS router of its own, so it has no such file.
+    expect(await upFiles("example.org")).toEqual([
+      ["installation/compose.yaml", "installation/compose.https.yaml"],
+      ["control/compose.yaml", "control/compose.https.yaml"],
+      ["dccex/compose.yaml", "dccex/compose.box.yaml", "dccex/compose.https.yaml"],
+      ["installation/jmri/compose.yaml"],
+      ["occupancy-service/compose.yaml", "occupancy-service/compose.https.yaml"],
+    ]);
+  });
+
+  it("include no compose.https.yaml on a box with no certificate", async () => {
+    // The door there has no `websecure` and no resolver, and a router naming
+    // either fills its log with errors at every start.
+    expect(await upFiles("")).toEqual([
+      ["installation/compose.yaml"],
+      ["control/compose.yaml"],
+      ["dccex/compose.yaml", "dccex/compose.box.yaml"],
+      ["installation/jmri/compose.yaml"],
+      ["occupancy-service/compose.yaml"],
+    ]);
   });
 });
