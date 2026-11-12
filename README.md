@@ -574,12 +574,14 @@ every stock image a compose file starts or a Dockerfile builds on. It writes
 `image:` pinned to its digest in the manifest. A box needs no clone and no git
 to run them.
 
-Then it checks the release on an amd64 and an arm64 runner. Each puts the
-manifest and the box files where an update leaves them, runs
-`install.sh --release <number>`, which downloads nothing and leaves the
-runner's Docker Engine alone, and applies the setup on the status page:
-`control` with the simulator, `dccex` with no station, occupancy with no
-camera and no archive. The update that applying starts has to pass. After
+Then it checks the release on an amd64 and an arm64 runner. Each upgrades
+its Docker Engine from Docker's apt repository, with the packages the install
+script installs, so that it runs the version a fresh box gets today and that
+is the version the manifest records. Each then puts the manifest and the box
+files where an update leaves them, runs `install.sh --release <number>`,
+which downloads nothing and finds Docker Engine installed, and applies the
+setup on the status page: `control` with the simulator, `dccex` with no
+station, occupancy with no camera and no archive. The update that applying starts has to pass. After
 another 60 seconds every container has to be running with no restart, and
 `scripts/probe.sh` has to pass. A failure stops the workflow before any tag
 is made.
@@ -605,9 +607,7 @@ Ubuntu 26.04 and a Raspberry Pi 4 and run trains on it for as long as it takes
 Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
 `--release <number>`. Each has to reach `/box/` at both printed addresses,
 have every stack ticked and applied, and pass `scripts/probe.sh`
-([#69](https://github.com/rails49/installation/issues/69) decision 18). Add
-the Mac mini's Docker Engine version (`docker version --format
-'{{.Server.Version}}'`) to the release notes.
+([#69](https://github.com/rails49/installation/issues/69) decision 18).
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
 a pre-release". A box asking GitHub for the latest release is never offered a
