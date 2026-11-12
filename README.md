@@ -396,7 +396,17 @@ the workflow before any tag is made.
 
 Last, it tags the installation's commit with the release number and publishes
 a GitHub pre-release with `manifest.json`, which now also has each runner's
-Docker Engine version, and `box-files.tar.gz`.
+Docker Engine version, and `box-files.tar.gz`. It does both as the
+`rails49-release` GitHub App, installed on this repository only with Contents
+and Workflows write. Its client ID is the Actions variable
+`RELEASE_APP_CLIENT_ID`; its private key is the Actions secret
+`RELEASE_APP_PRIVATE_KEY`, copied from the `rails49-release` item in
+1Password:
+
+```bash
+op read "op://rails49/rails49-release/credential" |
+  gh secret set RELEASE_APP_PRIVATE_KEY --repo rails49/installation
+```
 
 **2. Check it by hand.** Install the pre-release on `gleis49` and
 `pi49` and run trains on it for as long as it takes

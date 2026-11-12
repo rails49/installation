@@ -1,0 +1,8 @@
+# actionlint 1.7.12 knows the inputs of actions/create-github-app-token from
+# before v3: it requires `app-id` and does not know `client-id`, which v3 takes
+# in its place.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'by action "actions/create-github-app-token@v3"'
+      - 'is not defined in action "actions/create-github-app-token@v3"'
