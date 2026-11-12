@@ -240,6 +240,23 @@ describe("the release workflow", () => {
     expect(recorded).toBeGreaterThan(upgrade);
   });
 
+  it("finds no router in the door's log that needs a box name, on a box with no certificate", () => {
+    // Each was dropped with an error at every start before #92, and a real
+    // error was hard to find among them.
+    const steps: Node[] = workflow.jobs.check.steps;
+    const runs = steps.map((step) => step.run ?? "");
+    const door = runs.findIndex((run) => run.includes("docker logs installation-door-1"));
+    expect(door).toBeGreaterThan(runs.findIndex((run) => run.includes("/box/setup")));
+    for (const error of [
+      "EntryPoint doesn't exist",
+      "No valid entryPoint",
+      "nonexistent certificate resolver",
+      "empty args for matcher Host",
+    ]) {
+      expect(runs[door]).toContain(error);
+    }
+  });
+
   it("lays out the box files where the repository has no directory of its own", () => {
     const download = workflow.jobs.files.steps.find(
       (step: Node) => step.with?.pattern === "*-box-files",

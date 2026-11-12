@@ -276,6 +276,18 @@ jobs:
             [[ $status == running && $restarts == 0 ]] || failed=1
           done
           exit "$failed"
+      # The box has no certificate, so a router naming 443, a resolver or the
+      # box name is one the door drops with an error at every start, and each
+      # stack's `compose.https.yaml` is what keeps those off it (#92).
+      - name: No router in the door's log that needs a box name
+        run: |
+          if docker logs installation-door-1 2>&1 | grep -F \
+            -e "EntryPoint doesn't exist" \
+            -e "No valid entryPoint" \
+            -e "nonexistent certificate resolver" \
+            -e "empty args for matcher Host"; then
+            exit 1
+          fi
       - name: The probe
         run: |
           address=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
