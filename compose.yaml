@@ -184,10 +184,10 @@ services:
   # turned off from here and turning it off, which a UI asks and the
   # installation answers (ADR-0005); the status page at `/box/` with what
   # it shows and offers (#65 decisions 5 to 7); and starting an update or
-  # going back, which `rails49-update` does from this image outside this
-  # project (decision 8). Stock node with `box/`,
-  # `look/` and the Docker CLI in it (`box/Dockerfile`), named by its commit
-  # as the page is.
+  # going back, which `rails49-update` does outside this project from the
+  # target release's image of this service (ADR-0006). Stock node with
+  # `box/`, `look/` and the Docker CLI in it (`box/Dockerfile`), named by its
+  # commit as the page is.
   #
   # Privileged and in the box's PID namespace, because turning off is
   # `nsenter` into PID 1 and `systemctl poweroff` there, and the box's address
