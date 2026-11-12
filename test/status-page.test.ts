@@ -107,6 +107,14 @@ describe("the status page", () => {
     expect(plain).toContain('<look-about name="box">');
   });
 
+  it("links look's stylesheet in its head, ahead of the bundle", () => {
+    // So a phone draws the page styled the first time (#95).
+    const head = page.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? "";
+    const link = head.indexOf('<link rel="stylesheet" href="/box/look/look.css">');
+    expect(link).toBeGreaterThanOrEqual(0);
+    expect(link).toBeLessThan(head.indexOf('<script type="module" src="/box/look/look.bundle.js">'));
+  });
+
   it("is styled by its own stylesheet and nothing inline", () => {
     expect(page).toContain('<link rel="stylesheet" href="/box/page.css">');
     expect(page).not.toContain("<style");

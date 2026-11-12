@@ -233,12 +233,15 @@ describe("GET /box/", () => {
     expect(String(answer.body)).toContain("example.org");
   });
 
-  it("serves the page's stylesheet and look's bundle under /box", async () => {
+  it("serves the page's stylesheet and look's stylesheet and bundle under /box", async () => {
     const css = await ask(box("systemd"), "GET", "/box/page.css");
     expect(css).toMatchObject({ status: 200, type: "text/css; charset=utf-8" });
     const look = await ask(box("systemd"), "GET", "/box/look/look.bundle.js");
     expect(look).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
     expect(String(look.body)).toContain("LookBand");
+    const lookCss = await ask(box("systemd"), "GET", "/box/look/look.css");
+    expect(lookCss).toMatchObject({ status: 200, type: "text/css; charset=utf-8" });
+    expect(String(lookCss.body)).toContain("look-band:not(:defined)");
   });
 });
 
