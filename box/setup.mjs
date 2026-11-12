@@ -16,13 +16,14 @@ import { BUSY, NO_RELEASE, updater } from "./update.mjs";
  *   write: (path: string, text: string) => Promise<void>,
  *   list: (dir: string) => Promise<string[]>,
  *   docker: (args: string[]) => Promise<string>,
- *   start: (uis: string) => Promise<string | null>,
+ *   start: (uis: string, domain: string) => Promise<string | null>,
  * }} Io
  *
  * `read` is a file's text, or null where there is none. `list` is the names
  * in a directory of the box's `/dev`, and none where there is none. `start`
  * starts `rails49-update` at the current release for the stacks `uis`
- * declares, and answers null, or why not in a sentence.
+ * declares and the box name `domain`, and answers null, or why not in a
+ * sentence.
  */
 
 const BOX = "/etc/rails49/box.env";
@@ -116,7 +117,9 @@ export async function apply(posted, io) {
 
   await rewrite(BOX, "BOX_UIS", `"${uis}"`, io);
   for (const [{ key, path }, value] of chosen) await rewrite(path, key, value, io);
-  return await io.start(uis);
+  // The box name as `box.env` declares it now, which a person may have
+  // written there since `box` started (README's "A box name").
+  return await io.start(uis, setting((await io.read(BOX)) ?? "", "BOX_DOMAIN") ?? "");
 }
 
 /**

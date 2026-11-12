@@ -220,8 +220,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     // The box's `/dev`, mounted under `/host`.
     list: async (/** @type {string} */ dir) => await readdir(`/host${dir}`).catch(() => []),
     docker,
-    start: async (/** @type {string} */ uis) =>
-      start("apply", { ...env, BOX_UIS: uis, address: await address() }, startIo),
+    start: async (/** @type {string} */ uis, /** @type {string} */ domain) =>
+      start("apply", { ...env, BOX_DOMAIN: domain, BOX_UIS: uis, address: await address() }, startIo),
   };
   const bundleIo = {
     docker,

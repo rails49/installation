@@ -206,7 +206,7 @@ The status page also chooses the stacks the box runs and their devices
 `DCCEX_STATION_DEVICE` into `dccex.env` and `OCCUPANCY_CAMERA` into
 `occupancy.env`, in place, so each file keeps its owner and mode. Every other
 line stays as it is, and a file that is not there is made. It then starts `rails49-update` at the release the
-box runs, as below, which first stops and removes the containers of each
+box runs and the box name `box.env` declares, as below, which first stops and removes the containers of each
 stack no longer ticked, keeping its data. The page says first that applying
 stops the railroad for about a minute. It answers 409 with a sentence while
 an update, going back or applying runs, on a box that runs no release yet, and
@@ -320,11 +320,11 @@ release on GitHub. In order, the script:
    store, `VIDEO_GID` and `RENDER_GID` from the box's groups, and
    `OCCUPANCY_ARCHIVES`. Last it writes `box.env` with `BOX_DOMAIN=` and
    `BOX_UIS=`: a box with no certificate that serves nothing yet.
-8. Starts `rails49-update` from the release's `installation-box` image, which
-   updates the box from nothing, as an
-   [update](#updating-the-box-and-going-back) does: it brings up the door, the
-   page and `box`, waits 60 seconds and runs the probe. This takes a few
-   minutes.
+8. Starts `rails49-update` from the release's `installation-box` image, as an
+   [update](#updating-the-box-and-going-back) from no release: it brings up
+   the door, the page and `box`, waits 60 seconds and runs the probe. This
+   takes a few minutes. When that fails, the script says why, removes
+   `box.env`, and can be run again.
 9. Prints the status page's addresses, `http://<hostname>.local/box/` and
    `http://<address>/box/`.
 
@@ -343,8 +343,8 @@ to a command station, set `COMPOSE_PROFILES=layout,steel` in
 ## A box name
 
 A box with a box name is reached at `https://<label>.<box name>`, with a
-certificate. The status page does not set one up, so no DNS token crosses
-plain HTTP. Install the box as above, then do these steps by hand.
+certificate. The status page does not set one up. Install the box as above,
+then do these steps by hand.
 
 You need a name of your own in a zone you control, and an API token for that
 zone's DNS provider. No port is forwarded — the certificate is proved by
@@ -376,8 +376,8 @@ How that file is populated is not this repository's business. A machine with
 file, because `op` unlocks through a desktop app that a headless box does not
 have and the certificate has to renew months from now with nobody present.
 
-**4. Apply the setup on the status page.** It starts every stack again against
-the new declaration. Port 80 now redirects the box name to 443, and the first
+**4. Apply the setup on the status page.** It starts every stack again at the
+box name `box.env` now declares. Port 80 now redirects the box name to 443, and the first
 request for the name is what makes the door ask for a certificate. Give it a
 few seconds and open `https://<box name>`. Renewal is the door's, at about a
 third of the certificate's remaining life, and needs only outbound HTTPS.
@@ -602,7 +602,8 @@ op read "op://rails49/rails49-release/credential" |
 Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
 `--release <number>`. Each has to reach `/box/` at both printed addresses,
 have every stack ticked and applied, and pass `scripts/probe.sh`
-([#69](https://github.com/rails49/installation/issues/69) decision 18). Add `gleis49`'s Docker Engine version (`docker version --format
+([#69](https://github.com/rails49/installation/issues/69) decision 18). Add
+`gleis49`'s Docker Engine version (`docker version --format
 '{{.Server.Version}}'`) to the release notes.
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
