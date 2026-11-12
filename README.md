@@ -531,7 +531,7 @@ TC49_UID=$(id -u) TC49_GID=$(id -g) docker compose \
 
 JMRI's profile — the connection to the command station, the roster and every
 loco's CV file — lives in `control`'s store, at `jmri/` under the `TC49_STORE`
-that `control` writes to `/etc/rails49/control.env`, and is backed up, restored
+that the install script writes to `/etc/rails49/control.env`, and is backed up, restored
 and moved to a new box with it
 ([rails49/.github ADR-0013](https://github.com/rails49/.github/blob/main/docs/adr/0013-jmris-profile-lives-in-the-store.md)).
 The image is the stock one with its user renumbered to yours, so the files it
