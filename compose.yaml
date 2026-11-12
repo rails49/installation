@@ -182,8 +182,10 @@ services:
 
   # The box's own requests: `GET /box` and `POST /box/off`, whether it can be
   # turned off from here and turning it off, which a UI asks and the
-  # installation answers (ADR-0005); and the status page at `/box/` with what
-  # it shows and offers (#65 decisions 5 to 7). Stock node with `box/`,
+  # installation answers (ADR-0005); the status page at `/box/` with what
+  # it shows and offers (#65 decisions 5 to 7); and starting an update or
+  # going back, which `rails49-update` does from this image outside this
+  # project (decision 8). Stock node with `box/`,
   # `look/` and the Docker CLI in it (`box/Dockerfile`), named by its commit
   # as the page is.
   #
@@ -204,10 +206,11 @@ services:
     environment:
       BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
       BOX_UIS: ${BOX_UIS}
-    # The socket, through which the status page reads the stacks. The box's
-    # settings, read only: the log bundle takes `box.env` and each stack's
-    # file by name, and never `acme.env`. `/var/lib/rails49`, which holds the
-    # releases, the record and the last check for a new release. The
+    # The socket, through which the status page reads the stacks and the
+    # update container is started. The box's settings, read only: the log
+    # bundle takes `box.env` and each stack's file by name, and never
+    # `acme.env`. `/var/lib/rails49`, which holds the releases, the record,
+    # the progress of an update and the last check for a new release. The
     # hostname names a box with no certificate, as on the page.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

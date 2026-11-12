@@ -21,6 +21,17 @@ ul {
 
 .failures { color: var(--sl-color-danger-700); }
 
+.update {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.update p { flex-basis: 100%; margin: 0; }
+
+.updating { font-weight: var(--sl-font-weight-semibold); }
+
 table {
   border-collapse: collapse;
   margin-bottom: 1.5rem;

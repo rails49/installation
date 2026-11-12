@@ -22,20 +22,28 @@ const STATUS = {
   docker: { version: "29.1.3", tested: [], log_driver: "local" },
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
+  updating: null,
+  back: null,
   failures: [],
   notes: [],
 };
 
 /** A box whose PID 1 has this name, counting the times it is turned off and
- *  the times it is asked to check for a release. */
-function box(pid1: string) {
+ *  the times it is asked to check for a release, and recording each update
+ *  or going back it is asked to start. `refusal` is why it refuses to. */
+function box(pid1: string, refusal: string | null = null) {
   const counted = {
     pid1,
     turnedOff: 0,
     checked: 0,
+    started: [] as string[],
     turnOff: () => void counted.turnedOff++,
     status: async () => STATUS,
     check: async () => void counted.checked++,
+    start: async (action: "update" | "back") => {
+      counted.started.push(action);
+      return refusal;
+    },
     bundle: async () => ({ name: "gleis49.org-20261112T1000.tar.gz", body: Buffer.from("tar") }),
   };
   return counted;
@@ -86,6 +94,7 @@ describe("POST /box/off", () => {
     });
     expect(on.turnedOff).toBe(0);
     expect(on.checked).toBe(0);
+    expect(on.started).toEqual([]);
   });
 });
 
@@ -227,6 +236,31 @@ describe("POST /box/check", () => {
   });
 });
 
+describe("POST /box/update and POST /box/back", () => {
+  it("start one and send the browser back to the page", async () => {
+    const on = box("systemd");
+    expect(await ask(on, "POST", "/box/update")).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(await ask(on, "POST", "/box/back")).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(on.started).toEqual(["update", "back"]);
+  });
+
+  it("answer 409 with the sentence that says why the box refused", async () => {
+    const on = box("systemd", "An update or going back is running.");
+    expect(await ask(on, "POST", "/box/update")).toMatchObject({
+      status: 409,
+      body: "An update or going back is running.",
+    });
+  });
+
+  it("are refused from a page on another origin, and start nothing", async () => {
+    const on = box("systemd");
+    const headers = { host: HOST, origin: "https://evil.example" };
+    expect((await ask(on, "POST", "/box/update", headers)).status).toBe(403);
+    expect((await ask(on, "POST", "/box/back", headers)).status).toBe(403);
+    expect(on.started).toEqual([]);
+  });
+});
+
 describe("anything else", () => {
   it("answers 404 and runs nothing", async () => {
     const on = box("systemd");
@@ -239,6 +273,8 @@ describe("anything else", () => {
       ["POST", "/box/off/now"],
       ["GET", "/"],
       ["GET", "/box/check"],
+      ["GET", "/box/update"],
+      ["GET", "/box/back"],
       ["POST", "/box/status"],
       ["POST", "/box/"],
       ["GET", "/box/server.mjs"],
@@ -248,5 +284,6 @@ describe("anything else", () => {
     }
     expect(on.turnedOff).toBe(0);
     expect(on.checked).toBe(0);
+    expect(on.started).toEqual([]);
   });
 });

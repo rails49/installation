@@ -4,4 +4,5 @@
 !page
 !look
 !box
+!scripts/probe.sh
 **/Dockerfile

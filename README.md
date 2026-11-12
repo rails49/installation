@@ -184,6 +184,52 @@ For this, `box` has the Docker socket, `/etc/rails49` read-only,
 `/var/lib/rails49` and the Docker CLI with compose. With the socket it can do
 anything on the box that root can.
 
+### Updating the box and going back
+
+When a newer release is out, the status page offers "Update to <release>".
+Once the record names a release the box ran before the last update, it offers
+"Go back to <release>". Above both it says that updating or going back stops
+the railroad for about a minute. Anyone on the LAN may press either, as anyone
+may turn the box off, and a page on another origin is refused. Nothing is
+installed without a press, and a failed update is not gone back from by
+itself.
+
+`POST /box/update` updates to the latest release the last check found, and
+`POST /box/back` goes back. Each answers 409 with a sentence while one runs,
+when there is no newer release, or when there is nothing to go back to. Each
+starts the container `rails49-update` from the target release's
+`installation-box` image, with the Docker socket, `/etc/rails49` read-only and
+`/var/lib/rails49`, in no compose project. That container:
+
+1. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
+   into `/var/lib/rails49/releases/<release>/`, unless they are there already.
+2. Pulls every image of every declared stack, and builds JMRI. A failure here
+   changes nothing on the box.
+3. Brings the declared stacks up in order: the installation, control, dccex,
+   JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and
+   its own `--env-file /etc/rails49/<stack>.env`: `control.env` for control
+   and JMRI, `dccex.env`, `occupancy.env`. The installation has none.
+4. Waits 60 seconds. The update passes when every container of the declared
+   stacks is still running, none has restarted, and `scripts/probe.sh` passes
+   from the container.
+5. Appends one line to `/var/lib/rails49/deploys/installation`.
+6. After a pass, removes every `ghcr.io/rails49` image and pinned stock image
+   that neither the release it runs nor the one it left uses, except the
+   images the stacks ran just before, which are one step back. Only those two
+   releases' files are kept under `/var/lib/rails49/releases`.
+
+What it is doing is in `/var/lib/rails49/update.json`, which the status page
+shows and reloads every 5 seconds while it runs. A failure is said in a
+sentence that names the stack, and "Go back to <release>" is offered. The
+container stays until the next press, so its log is in the log bundle.
+
+The update container runs as root and has no shell's environment, so each
+`<stack>.env` holds what that stack's `deploy.sh` would otherwise add.
+`control.env` names control's profiles, `COMPOSE_PROFILES=layout,steel` on a
+box wired to a command station and `COMPOSE_PROFILES=layout,sim` on one with
+nothing attached, and `TC49_STORE`, `TC49_UID` and `TC49_GID` where they are
+not control's defaults.
+
 ## A page on another origin
 
 A request is checked against the origin it arrived at. It is admitted if it

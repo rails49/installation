@@ -1,7 +1,8 @@
 // The box's own requests, served on every name the door serves: whether this
 // box can be turned off from here, and turning it off (ADR-0005); the status
 // page at `/box/`, the status it shows at `/box/status`, a check for a new
-// release, and the log bundle (#65 decisions 5 to 7).
+// release, the log bundle (#65 decisions 5 to 7), and starting an update or
+// going back (decisions 8 to 10, `update.mjs`).
 //
 // Node's standard library and nothing else, run by `node:22-slim` with the
 // Docker CLI added. The container shares the box's PID namespace and is
@@ -27,6 +28,7 @@ import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
 import { render } from "./page.mjs";
 import { CHECK, message, status } from "./status.mjs";
+import { docker, read, start } from "./update.mjs";
 
 const PORT = 8080;
 
@@ -52,9 +54,10 @@ const ASSETS = {
  * `box.turnOff` is called once a `POST /box/off` has been accepted.
  * `box.status` gathers what the status page shows, `box.check` asks GitHub
  * for the latest release, and `box.bundle` packs the log bundle.
+ * `box.start` starts an update or going back, or says why it will not.
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, "x-forwarded-host"?: string } }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -84,6 +87,11 @@ export async function handle(request, box) {
   }
   if (route === "POST /box/check") {
     await box.check();
+    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+  }
+  if (route === "POST /box/update" || route === "POST /box/back") {
+    const refusal = await box.start(route === "POST /box/update" ? "update" : "back");
+    if (refusal !== null) return text(409, refusal);
     return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
   }
   if (route === "GET /box/bundle") {
@@ -131,22 +139,6 @@ const run = promisify(execFile);
 
 /** The most a command may print: a container's last 1000 lines fit. */
 const MAX_OUTPUT = 64 * 1024 * 1024;
-
-/** @param {string[]} args */
-async function docker(args) {
-  return (await run("docker", args, { maxBuffer: MAX_OUTPUT })).stdout;
-}
-
-/** A file's text, or null where there is none.
- *  @param {string} path */
-async function read(path) {
-  try {
-    return await readFile(path, "utf8");
-  } catch (error) {
-    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return null;
-    throw error;
-  }
-}
 
 /** The box's address on its LAN: the source of the route to the internet in
  *  the box's own network namespace, as `ip route get` says it. No packet is
@@ -250,6 +242,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         const { name, entries } = await bundle(env, bundleIo);
         return { name, body: await pack(name, entries) };
       },
+      start: async (action) => start(action, { ...env, address: await address() }, { docker, read, fetch }),
     }).catch((error) => {
       console.error(`${req.method} ${req.url}: ${error.stack}`);
       return text(500, `${error.message}`);

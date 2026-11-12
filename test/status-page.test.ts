@@ -27,8 +27,26 @@ const STATUS = {
   docker: { version: "29.1.3", tested: ["29.1.3", "29.0.4"], log_driver: "local" },
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
+  updating: null,
+  back: "2026.10.2",
   failures: ["control is restarting.", "A <script> & more."],
   notes: ["control runs a local build of `1c3f69b`, not release 2026.11.0."],
+};
+
+/** STATUS while an update to 2026.11.1 runs. */
+const UPDATING = {
+  ...STATUS,
+  updating: {
+    action: "update" as const,
+    from: "2026.11.0",
+    to: "2026.11.1",
+    started: "2026-11-12T09:58:00.000Z",
+    step: "Starting control.",
+    finished: null,
+    passed: null,
+    failure: null,
+    running: true,
+  },
 };
 
 const PLAIN = {
@@ -39,6 +57,7 @@ const PLAIN = {
   docker: { ...STATUS.docker, tested: [] },
   certificate: null,
   resolves: null,
+  back: null,
   failures: [],
   notes: [],
 };
@@ -121,9 +140,39 @@ describe("the status page", () => {
     );
   });
 
-  it("checks now by a POST to /box/check, and offers no update or going back", () => {
+  it("checks now by a POST to /box/check", () => {
     expect(page).toContain('<form method="post" action="/box/check"><button>Check now</button></form>');
-    expect(page.match(/<form/g)).toHaveLength(1);
+  });
+
+  it("offers updating to the newer release and going back, after saying that it stops the railroad", () => {
+    const stops = page.indexOf("<p>Updating or going back stops the railroad for about a minute.</p>");
+    const update = page.indexOf('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
+    const back = page.indexOf('<form method="post" action="/box/back"><button>Go back to 2026.10.2</button></form>');
+    expect(stops).toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(stops);
+    expect(back).toBeGreaterThan(update);
+  });
+
+  it("offers neither on a box with no newer release and nothing to go back to", () => {
+    expect(plain.match(/<form/g)).toHaveLength(1);
+    expect(plain).not.toContain("stops the railroad");
+  });
+
+  it("offers going back alone when there is no newer release", () => {
+    const latest = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.0", available: false } });
+    expect(latest).not.toContain('action="/box/update"');
+    expect(latest).toContain('<form method="post" action="/box/back"><button>Go back to 2026.10.2</button></form>');
+  });
+
+  it("while one runs says what it is doing, offers neither, and reloads itself", () => {
+    const html = render(UPDATING);
+    expect(html).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
+    expect(html).not.toContain('action="/box/update"');
+    expect(html).not.toContain('action="/box/back"');
+    expect(html).toContain('<meta http-equiv="refresh" content="5">');
+    expect(page).not.toContain('http-equiv="refresh"');
+    const back = render({ ...UPDATING, updating: { ...UPDATING.updating, action: "back" as const, to: "2026.10.2" } });
+    expect(back).toContain('<p class="updating">Going back to 2026.10.2: Starting control.</p>');
   });
 
   it("shows the disk, the address and Docker", () => {
