@@ -7,7 +7,7 @@
 #   compose files  parsed with `docker compose config`
 #   workflows      checked with actionlint
 #   the box        its script asked once in the stock image it is built on
-#   the page       look-check over it
+#   the pages      look-check over the page and the status page
 #   the tests      tsc over them, then vitest
 #
 # The gate is green when it finds nothing to check. Each check grows a section
@@ -107,9 +107,9 @@ if [ -f page/render.sh ]; then
     '.local:8081" data-ui-port="8081">control</a>' \
     '<li>turntable</li>'
 
-  # Fails when the page styles look's band. At the tag of the committed
-  # `look/look.bundle.js`, which a release of look moves with it.
-  run look-check pnpm --package=github:rails49/look#v0.10.0 dlx look-check page
+  # Fails when the page or the status page styles look's band. At the tag of
+  # the committed `look/look.bundle.js`, which a release of look moves with it.
+  run look-check pnpm --package=github:rails49/look#v0.10.0 dlx look-check page box
 fi
 
 # The box's script in the stock image it is built on, whose node is older than a
@@ -124,7 +124,7 @@ if [ -f box/server.mjs ]; then
         import { handle } from \"/box/server.mjs\";
         const request = { method: \"GET\", url: \"/box\", headers: { origin: \"null\" } };
         const box = { pid1: \"\", turnOff() {} };
-        if (handle(request, box).status !== 403) process.exit(1);
+        if ((await handle(request, box)).status !== 403) process.exit(1);
       "'
 fi
 
