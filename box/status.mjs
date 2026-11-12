@@ -101,7 +101,7 @@ export async function backTo(read) {
 
 /** Whether release `a` is older than release `b`, by year, month and count.
  *  @param {string} a @param {string} b */
-function older(a, b) {
+export function older(a, b) {
   const [x, y] = [a, b].map((release) => release.split(".").map(Number));
   const i = x.findIndex((part, j) => part !== y[j]);
   return i !== -1 && x[i] < y[i];
@@ -149,9 +149,13 @@ export async function status(env, io) {
   const check = parse(await io.read(CHECK)) ?? {};
   const succeeded = check.succeeded ?? null;
   const could_not_check = Boolean(check.checked) && check.checked !== succeeded;
+  const latest = check.latest ?? null;
+  // A box on no release yet is offered the latest; a box on a pre-release
+  // newer than the latest full release is offered nothing (#88).
   const update = {
-    latest: check.latest ?? null,
-    available: Boolean(check.latest) && check.latest !== release,
+    latest,
+    available: latest !== null && (release === null || older(release, latest)),
+    newer: latest !== null && release !== null && older(latest, release),
     checked: check.checked ?? null,
     succeeded,
     could_not_check,

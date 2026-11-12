@@ -31,7 +31,15 @@ export function render(status) {
     ? `Could not check. ${update.succeeded ? `The last check that succeeded was at ${when(update.succeeded)}.` : "No check has succeeded yet."}`
     : update.checked === null
       ? "Not checked yet."
-      : `${update.available ? `Release ${escape(update.latest ?? "")} is out.` : update.latest ? "This box runs the latest release." : "No release yet."} Checked at ${when(update.checked)}.`;
+      : `${
+          update.available
+            ? `Release ${escape(update.latest ?? "")} is out.`
+            : update.newer
+              ? `This box runs ${escape(status.release ?? "")}, newer than the latest release, ${escape(update.latest ?? "")}.`
+              : update.latest
+                ? "This box runs the latest release."
+                : "No release yet."
+        } Checked at ${when(update.checked)}.`;
 
   // While one runs the page says what it is doing and reloads itself; the
   // door and `box` are recreated on the way, so a reload may find neither.

@@ -179,6 +179,7 @@ describe("the check for a new release", () => {
     expect(update).toEqual({
       latest: "2026.11.1",
       available: true,
+      newer: false,
       checked: "2026-11-12T08:00:00Z",
       succeeded: "2026-11-12T08:00:00Z",
       could_not_check: false,
@@ -194,7 +195,43 @@ describe("the check for a new release", () => {
 
   it("offers the latest release to a box never updated", async () => {
     const { update } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
-    expect(update.available).toBe(true);
+    expect(update).toMatchObject({ available: true, newer: false });
+  });
+
+  /** A box on release `runs` that last checked and found `latest`. */
+  const on = (runs: string, latest: string) =>
+    io({
+      files: {
+        "/var/lib/rails49/deploys/installation": `2026-11-11T09:00:00Z  -  ->  ${runs}  passed\n`,
+        [`/var/lib/rails49/releases/${runs}/manifest.json`]: JSON.stringify({ ...MANIFEST, release: runs }),
+        "/var/lib/rails49/check.json": JSON.stringify({
+          checked: "2026-11-12T08:00:00Z",
+          succeeded: "2026-11-12T08:00:00Z",
+          latest,
+        }),
+      },
+    });
+
+  it("offers nothing to a box on a release newer than the latest, and says so", async () => {
+    expect((await status(NAMED, on("2026.11.5", "2026.11.3"))).update).toMatchObject({
+      latest: "2026.11.3",
+      available: false,
+      newer: true,
+    });
+  });
+
+  it("offers the latest to a box on an older release", async () => {
+    expect((await status(NAMED, on("2026.11.3", "2026.11.5"))).update).toMatchObject({
+      latest: "2026.11.5",
+      available: true,
+      newer: false,
+    });
+  });
+
+  it("compares counts as numbers, not strings", async () => {
+    expect((await status(NAMED, on("2026.11.10", "2026.11.9"))).update).toMatchObject({ available: false, newer: true });
+    expect((await status(NAMED, on("2026.11.9", "2026.11.10"))).update).toMatchObject({ available: true, newer: false });
+    expect((await status(NAMED, on("2026.12.0", "2026.11.9"))).update).toMatchObject({ available: false, newer: true });
   });
 
   it("says it could not check, and when the last check succeeded", async () => {
@@ -210,13 +247,13 @@ describe("the check for a new release", () => {
 
   it("says it could not check when none has ever succeeded", async () => {
     const { update, failures } = await status(NAMED, checked({ checked: "2026-11-12T09:00:00Z", succeeded: null, latest: null }));
-    expect(update).toMatchObject({ could_not_check: true, available: false });
+    expect(update).toMatchObject({ could_not_check: true, available: false, newer: false });
     expect(failures).toEqual(["Could not check for a new release. No check has succeeded yet."]);
   });
 
   it("says nothing before the first check", async () => {
     const { update, failures } = await status(NAMED, io({ files: { "/var/lib/rails49/check.json": "" } }));
-    expect(update).toEqual({ latest: null, available: false, checked: null, succeeded: null, could_not_check: false });
+    expect(update).toEqual({ latest: null, available: false, newer: false, checked: null, succeeded: null, could_not_check: false });
     expect(failures).toEqual([]);
   });
 });
