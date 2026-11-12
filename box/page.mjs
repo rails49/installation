@@ -9,6 +9,12 @@ import { gb, when } from "./status.mjs";
 
 /** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>> & { setup: Awaited<ReturnType<typeof import("./setup.mjs").form>> }} Status */
 
+/** What the page says before a press that brings the stacks up, while a
+ *  declared stack runs: the images are pulled first, with the railroad
+ *  running (#96). The installation is left out, since it runs whenever the
+ *  page is served and is no railroad. */
+const KEEPS = "<p>The railroad keeps running while images download. It stops for about a minute while the stacks start.</p>";
+
 
 /**
  * @param {Status} status
@@ -16,6 +22,7 @@ import { gb, when } from "./status.mjs";
  */
 export function render(status) {
   const { update, docker, certificate, resolves } = status;
+  const railroad = status.stacks.some(({ stack, state }) => stack !== "installation" && state !== "stopped");
   const failures = status.failures.length
     ? `<ul class="failures">\n${status.failures.map(sentence).join("\n")}\n</ul>`
     : "<p>Nothing is wrong.</p>";
@@ -55,10 +62,19 @@ export function render(status) {
   /** @param {NonNullable<typeof running>} running */
   const doing = ({ action, to }) =>
     action === "apply" ? "Applying the setup" : `${action === "update" ? "Updating" : "Going back"} to ${escape(to)}`;
+  /** The step, and while an image is pulled, which, of how many, and its
+   *  bytes as far as they are known.
+   *  @param {NonNullable<typeof running>} running */
+  const step = ({ step, pull }) => {
+    if (!pull) return escape(step);
+    const bytes = pull.total ? `, ${size(pull.current)} of ${size(pull.total)}` : "";
+    const image = pull.image.replace(/@.*$/, "").replace(/:[^/:]*$/, "");
+    return `${escape(step.replace(/\.$/, ""))}: ${escape(image)}, image ${pull.index} of ${pull.count}${bytes}.`;
+  };
   const press = running
-    ? `<p class="updating">${doing(running)}: ${escape(running.step)}</p>`
+    ? `<p class="updating">${doing(running)}: ${step(running)}</p>`
     : offers.length
-      ? `<section class="update">\n<p>Updating or going back stops the railroad for about a minute.</p>\n${offers.join("\n")}\n</section>`
+      ? `<section class="update">\n${railroad ? `${KEEPS}\n` : ""}${offers.join("\n")}\n</section>`
       : "";
 
   const tested = docker.tested.length ? `, release tested on ${docker.tested.map(escape).join(" and ")}` : "";
@@ -96,7 +112,7 @@ ${press}
 ${stacks}
 </tbody>
 </table>
-${running ? "" : setup(status.setup)}
+${running ? "" : setup(status.setup, railroad)}
 <dl>
 <dt>Release</dt>
 <dd>${escape(status.release ?? "none")}</dd>
@@ -123,8 +139,9 @@ ${running ? "" : setup(status.setup)}
  * The form that chooses the stacks and their devices, and applies them.
  *
  * @param {Status["setup"]} setup
+ * @param {boolean} railroad whether a declared stack runs
  */
-function setup({ uis, devices }) {
+function setup({ uis, devices }, railroad) {
   const checkboxes = LABELS.map(
     (label) =>
       `<label><input type="checkbox" name="ui" value="${label}"${uis.includes(label) ? " checked" : ""}> ${label}</label>`,
@@ -154,10 +171,16 @@ function setup({ uis, devices }) {
 ${checkboxes.join("\n")}
 <p>Ticking dccex or occupancy ticks control too: each dials its broker.</p>
 </fieldset>
-${selects.join("\n")}
-<p>Applying stops the railroad for about a minute.</p>
+${selects.join("\n")}${railroad ? `\n${KEEPS}` : ""}
 <button>Apply</button>
 </form>`;
+}
+
+/** Bytes as the page says them while an image is pulled: in gigabytes from
+ *  one, and in megabytes under it.
+ *  @param {number} bytes */
+function size(bytes) {
+  return bytes >= 1e9 ? gb(bytes) : `${Math.round(bytes / 1e6)} MB`;
 }
 
 /** A sentence as a list item, with a commit in backticks set as code.

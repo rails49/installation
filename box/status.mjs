@@ -190,7 +190,9 @@ export async function status(env, io) {
 
   // The update, going back or applying that ran last, from its progress
   // file, and whether its container runs.
-  /** @type {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, finished: string | null, passed: boolean | null, failure: string | null } | null} */
+  // `pull` is null outside a pull, and missing from a file an older
+  // release's `rails49-update` wrote.
+  /** @type {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, pull?: import("./update.mjs").Pull | null, finished: string | null, passed: boolean | null, failure: string | null } | null} */
   const progress = parse(await io.read(PROGRESS));
   const updater = containers.find((c) => c.Name === "/rails49-update");
   const updating = progress && { ...progress, running: updater?.State.Status === "running" };

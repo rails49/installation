@@ -445,6 +445,13 @@ describe("updating and going back", () => {
     expect(box.failures).toEqual([]);
   });
 
+  it("carries the image it pulls, and how far it has got", async () => {
+    const pull = { image: "ghcr.io/rails49/control:x@sha256:1", index: 4, count: 10, current: 1.2e9, total: 2.3e9 };
+    const pulling = progress({ step: "Pulling control's images.", pull });
+    const box = await status(NAMED, io({ files: { [PROGRESS]: pulling }, containers: [...CONTAINERS, UPDATER] }));
+    expect(box.updating).toMatchObject({ step: "Pulling control's images.", pull, running: true });
+  });
+
   it("says in a sentence why the last one failed", async () => {
     const failure = "Could not pull control's images for release 2026.11.1: manifest unknown.";
     const finished = progress({ finished: "2026-11-12T09:59:00.000Z", passed: false, failure, step: "Failed." });
