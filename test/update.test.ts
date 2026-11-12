@@ -463,6 +463,9 @@ describe("starting one", () => {
   it("is refused with no newer release, and going back with no release to go back to", async () => {
     expect(await start("update", ENV, starting({ latest: OLD }).io)).toBe("This box runs the latest release.");
     expect(await start("update", ENV, starting({ latest: null }).io)).toBe("This box runs the latest release.");
+    expect(await start("update", ENV, starting({ latest: "2026.10.9" }).io)).toBe(
+      "This box runs 2026.11.0, newer than the latest release, 2026.10.9.",
+    );
     expect(await start("back", ENV, starting().io)).toBe("There is no release to go back to.");
     expect(await start("apply", ENV, starting({ record: "" }).io)).toBe(
       "This box runs no release yet, so there is none to apply the setup at.",
