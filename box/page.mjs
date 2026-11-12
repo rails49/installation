@@ -4,11 +4,11 @@
 // devices (#69 decisions 9 to 15). It loads look's bundle, its stylesheet and
 // the script that ticks control from under `/box`.
 
-import { gb, STACKS, when } from "./status.mjs";
+import { LABELS } from "./setup.mjs";
+import { gb, when } from "./status.mjs";
 
 /** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>> & { setup: Awaited<ReturnType<typeof import("./setup.mjs").form>> }} Status */
 
-const ACTIONS = { update: "Updating to", back: "Going back to" };
 
 /**
  * @param {Status} status
@@ -44,9 +44,11 @@ export function render(status) {
       ? `<form method="post" action="/box/back"><button>Go back to ${escape(status.back)}</button></form>`
       : "",
   ].filter(Boolean);
-  const doing = running?.action === "apply" ? "Applying the setup" : `${ACTIONS[running?.action ?? "update"]} ${escape(running?.to ?? "")}`;
+  /** @param {NonNullable<typeof running>} running */
+  const doing = ({ action, to }) =>
+    action === "apply" ? "Applying the setup" : `${action === "update" ? "Updating" : "Going back"} to ${escape(to)}`;
   const press = running
-    ? `<p class="updating">${doing}: ${escape(running.step)}</p>`
+    ? `<p class="updating">${doing(running)}: ${escape(running.step)}</p>`
     : offers.length
       ? `<section class="update">\n<p>Updating or going back stops the railroad for about a minute.</p>\n${offers.join("\n")}\n</section>`
       : "";
@@ -114,10 +116,9 @@ ${running ? "" : setup(status.setup)}
  * @param {Status["setup"]} setup
  */
 function setup({ uis, devices }) {
-  const boxes = STACKS.flatMap(({ label }) =>
-    label
-      ? [`<label><input type="checkbox" name="ui" value="${label}"${uis.includes(label) ? " checked" : ""}> ${label}</label>`]
-      : [],
+  const checkboxes = LABELS.map(
+    (label) =>
+      `<label><input type="checkbox" name="ui" value="${label}"${uis.includes(label) ? " checked" : ""}> ${label}</label>`,
   );
   const selects = devices.map(({ field, what, none, current, found }) => {
     const chosen = current ?? none;
@@ -141,7 +142,7 @@ function setup({ uis, devices }) {
   return `<form method="post" action="/box/setup" class="setup">
 <fieldset>
 <legend>Stacks</legend>
-${boxes.join("\n")}
+${checkboxes.join("\n")}
 <p>Ticking dccex, jmri or occupancy ticks control too: dccex and occupancy dial its broker, and JMRI reads <code>TC49_STORE</code> from <code>control.env</code>.</p>
 </fieldset>
 ${selects.join("\n")}

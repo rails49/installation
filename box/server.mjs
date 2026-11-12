@@ -20,7 +20,7 @@
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
-import { readdir, readFile, rename, statfs, writeFile } from "node:fs/promises";
+import { readdir, readFile, statfs, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { connect } from "node:tls";
 import { promisify } from "node:util";
@@ -215,11 +215,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const startIo = { docker, read, write: writeFile, now, fetch };
   const setupIo = {
     read,
-    // Beside the file and renamed over it, so a stack never reads half of one.
-    write: async (/** @type {string} */ path, /** @type {string} */ text) => {
-      await writeFile(`${path}.part`, text);
-      await rename(`${path}.part`, path);
-    },
+    // In place, so each file keeps its owner and mode.
+    write: writeFile,
     // The box's `/dev`, mounted under `/host`.
     list: async (/** @type {string} */ dir) => await readdir(`/host${dir}`).catch(() => []),
     docker,
