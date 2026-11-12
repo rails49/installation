@@ -63,6 +63,19 @@ describe("applying", () => {
     expect(started).toEqual(["control dccex"]);
   });
 
+  it("ticks control for occupancy", async () => {
+    const { io, files } = box();
+    expect(await apply(post(["occupancy"]), io)).toBeNull();
+    expect(files[BOX]).toContain('BOX_UIS="control occupancy"');
+  });
+
+  it("does not tick control for jmri, which reads control.env whether control runs or not", async () => {
+    const { io, files, started } = box();
+    expect(await apply(post(["jmri"]), io)).toBeNull();
+    expect(files[BOX]).toBe('BOX_DOMAIN=\nBOX_UIS="jmri"\n');
+    expect(started).toEqual(["jmri"]);
+  });
+
   it("starts the stacks at the box name box.env declares, not the one box was started with", async () => {
     // README's "A box name": the name is written by hand, then applied.
     const { io, domains } = box({ files: { [BOX]: "BOX_DOMAIN=shed.example.org\nBOX_UIS=control\n" } });
