@@ -224,6 +224,22 @@ describe("the release workflow", () => {
     }
   });
 
+  it("records the Docker Engine a fresh install gets, from the install script's source and packages", () => {
+    // The runners' own Docker Engine lags Docker's apt repository by a major
+    // version, so every box showed a Docker Engine failure (#82).
+    const steps: Node[] = workflow.jobs.check.steps;
+    const runs = steps.map((step) => step.run ?? "");
+    const packagesOf = (text: string) =>
+      text.match(/apt-get install -y -q (docker-ce .*)/)?.[1].trim().split(/\s+/);
+    const install = readFileSync(new URL("install.sh", root), "utf8");
+    const upgrade = runs.findIndex((run) => packagesOf(run) !== undefined);
+    expect(upgrade).toBeGreaterThanOrEqual(0);
+    expect(packagesOf(runs[upgrade])).toEqual(packagesOf(install));
+    expect(runs[upgrade]).toContain("https://download.docker.com/linux/");
+    const recorded = runs.findIndex((run) => run.includes("{{.Server.Version}}"));
+    expect(recorded).toBeGreaterThan(upgrade);
+  });
+
   it("lays out the box files where the repository has no directory of its own", () => {
     const download = workflow.jobs.files.steps.find(
       (step: Node) => step.with?.pattern === "*-box-files",
