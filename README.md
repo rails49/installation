@@ -602,7 +602,9 @@ files where an update leaves them, runs `install.sh --release <number>`,
 which downloads nothing and finds Docker Engine installed, and applies the
 setup on the status page: `control` with the simulator, `dccex` with no
 station, occupancy with no camera and no archive. The update that applying starts has to pass. After
-another 60 seconds every container has to be running with no restart, and
+another 60 seconds every container has to be running with no restart, the
+door's log has to hold no error about a router that needs a box name
+([#92](https://github.com/rails49/installation/issues/92)), and
 `scripts/probe.sh` has to pass. A failure stops the workflow before any tag
 is made.
 
