@@ -84,6 +84,33 @@ describe("GET /box", () => {
       expect(JSON.parse(String(answer.body)), pid1).toEqual({ can_turn_off: false });
     }
   });
+
+  it("sends a browser that left the slash off to the status page", async () => {
+    // What a browser asks for when a person types the address (#86).
+    const accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+    for (const url of ["/box", "/box?t=1"]) {
+      const answer = await ask(box("systemd"), "GET", url, { host: HOST, accept });
+      expect(answer.status, url).toBe(303);
+      expect(answer.headers, url).toEqual({ location: "/box/", vary: "accept" });
+    }
+  });
+
+  it("answers the JSON to a request that does not ask for HTML", async () => {
+    // control's `fetch` sends `*/*`.
+    for (const accept of [undefined, "*/*", "application/json"]) {
+      const headers: Record<string, string> = { host: HOST };
+      if (accept !== undefined) headers.accept = accept;
+      const answer = await ask(box("systemd"), "GET", "/box", headers);
+      expect(answer.status, accept).toBe(200);
+      expect(JSON.parse(String(answer.body)), accept).toEqual({ can_turn_off: true });
+      expect(answer.headers, accept).toEqual({ vary: "accept" });
+    }
+  });
+
+  it("refuses a page on another origin before sending it anywhere", async () => {
+    const headers = { host: HOST, origin: "https://evil.example", accept: "text/html" };
+    expect((await ask(box("systemd"), "GET", "/box", headers)).status).toBe(403);
+  });
 });
 
 describe("POST /box/off", () => {
