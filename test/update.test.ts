@@ -6,9 +6,14 @@
  * command the code runs is recorded and asserted in order.
  */
 
+import { createServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { run, start, type Io } from "../box/update.mjs";
+import { pullImage, run, start, type Io, type PullMessage } from "../box/update.mjs";
 
 const OLD = "2026.11.0";
 const NEW = "2026.11.1";
@@ -46,14 +51,45 @@ type Box = {
   files: Record<string, string>;
   asked: string[];
   progress: () => Record<string, unknown>;
+  /** Every text written to the progress file, in order, with the time. */
+  writes: { at: number; progress: Record<string, unknown> }[];
 };
+
+/** Two layers of 600 and 400 bytes, downloaded in steps of 200, as the
+ *  Engine API streams them. */
+function* layers(): Generator<PullMessage> {
+  yield { status: "Pulling from rails49/x", id: "x" };
+  yield { status: "Pulling fs layer", id: "a", progressDetail: {} };
+  yield { status: "Pulling fs layer", id: "b", progressDetail: {} };
+  yield { status: "Already exists", id: "c", progressDetail: {} };
+  for (const current of [200, 400, 600]) yield { status: "Downloading", id: "a", progressDetail: { current, total: 600 } };
+  yield { status: "Download complete", id: "a", progressDetail: {} };
+  for (const current of [200, 400]) yield { status: "Downloading", id: "b", progressDetail: { current, total: 400 } };
+  yield { status: "Download complete", id: "b", progressDetail: {} };
+  yield { status: "Extracting", id: "a", progressDetail: { current: 600, total: 600 } };
+  yield { status: "Pull complete", id: "a", progressDetail: {} };
+  yield { status: "Pull complete", id: "b", progressDetail: {} };
+  yield { status: "Digest: sha256:0" };
+  yield { status: "Status: Downloaded newer image" };
+}
 
 /**
  * A box on `OLD` declaring control and jmri, whose docker CLI answers as a
  * box's would. `fail` names a command, by a piece of its text, that fails.
  * `later` is the containers `docker inspect` answers after the 60 seconds.
  */
-function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; output: string }; files?: Record<string, string> } = {}): Box {
+function box(
+  options: {
+    fail?: string;
+    later?: object[];
+    probe?: { ok: boolean; output: string };
+    files?: Record<string, string>;
+    /** What the Engine API streams for a pull, `layers()` where not given. */
+    stream?: (image: string) => Iterable<PullMessage>;
+    /** Milliseconds the clock moves on with each message of a pull. */
+    tick?: number;
+  } = {},
+): Box {
   const files: Record<string, string> = {
     [RECORD]: `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n`,
     [`${RELEASES}/${OLD}/manifest.json`]: JSON.stringify(manifest(OLD, 1)),
@@ -68,6 +104,8 @@ function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; 
     container("dccex-mirror-1", "dccex", "sha256:undeclared"),
   ];
   let waited = false;
+  let clock = Date.parse("2026-11-12T10:00:00Z");
+  const writes: Box["writes"] = [];
   const io: Io = {
     docker: async (args) => {
       const line = args.join(" ");
@@ -95,6 +133,14 @@ function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; 
       }
       return "";
     },
+    pull: async function* (image) {
+      asked.push(`pull ${image}`);
+      if (options.fail && `pull ${image}`.includes(options.fail)) throw new Error(`${options.fail} failed`);
+      for (const message of (options.stream ?? layers)(image)) {
+        clock += options.tick ?? 0;
+        yield message;
+      }
+    },
     download: async (url, path) => {
       asked.push(`download ${url} ${path}`);
       if (options.fail && url.includes(options.fail)) throw new Error("GitHub answered 404");
@@ -114,7 +160,10 @@ function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; 
     },
     list: async (dir) => (dir === RELEASES ? [...dirs].map((d) => d.slice(dir.length + 1)) : []),
     read: async (path) => files[path] ?? null,
-    write: async (path, text) => void (files[path] = text),
+    write: async (path, text) => {
+      files[path] = text;
+      if (path === PROGRESS) writes.push({ at: clock, progress: JSON.parse(text) });
+    },
     append: async (path, text) => void (files[path] = (files[path] ?? "") + text),
     probe: async (args) => {
       asked.push(`probe ${args.join(" ")}`);
@@ -124,9 +173,9 @@ function box(options: { fail?: string; later?: object[]; probe?: { ok: boolean; 
       asked.push(`sleep ${ms}`);
       waited = true;
     },
-    now: () => new Date("2026-11-12T10:00:00Z"),
+    now: () => new Date(clock),
   };
-  return { io, files, asked, progress: () => JSON.parse(files[PROGRESS]!) };
+  return { io, files, asked, writes, progress: () => JSON.parse(files[PROGRESS]!) };
 }
 
 const ENV = { BOX_DOMAIN: "example.org", BOX_UIS: "control jmri", hostname: "box", address: "192.168.1.20" };
@@ -159,11 +208,11 @@ describe("an update that passes", () => {
       // What ran before, for pruning.
       "ps -aq",
       "inspect a b c d",
-      // Every image, before any container is recreated.
+      // Every image, before any container is recreated, counted first.
       `${INSTALLATION(NEW)} config --images`,
+      `${CONTROL(NEW)} config --images`,
       `pull ghcr.io/rails49/installation:x@${DIGEST(7)}`,
       `pull traefik:v3.7@${DIGEST(8)}`,
-      `${CONTROL(NEW)} config --images`,
       `pull ghcr.io/rails49/control:x@${DIGEST(7)}`,
       `pull traefik:v3.7@${DIGEST(8)}`,
       // JMRI is built on the box from a stock image.
@@ -199,6 +248,7 @@ describe("an update that passes", () => {
       to: NEW,
       started: "2026-11-12T10:00:00.000Z",
       step: "Done.",
+      pull: null,
       finished: "2026-11-12T10:00:00.000Z",
       passed: true,
       failure: null,
@@ -222,6 +272,133 @@ describe("an update that passes", () => {
       "image rm ghcr.io/rails49/control:0a1b2c3",
       `image rm traefik@${DIGEST(1)}`,
     ]);
+  });
+});
+
+describe("pulling the images", () => {
+  /** The pulls the progress file showed, as `[image, index, count, current, total]`. */
+  const pulls = (writes: Box["writes"]) =>
+    writes.flatMap(({ progress: { pull } }) => {
+      if (!pull) return [];
+      const { image, index, count, current, total } = pull as Record<string, unknown>;
+      return [[image, index, count, current, total]];
+    });
+
+  it("shows the image, its place among every image of every declared stack, and its bytes rising to its total", async () => {
+    const { io, writes } = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const control = pulls(writes).filter(([image]) => image === `ghcr.io/rails49/control:x@${DIGEST(7)}`);
+    expect(control.map(([, index, count]) => [index, count])).toContainEqual([3, 4]);
+    expect(control.map(([, , , current, total]) => [current, total])).toEqual([
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [200, 600],
+      [400, 600],
+      [600, 600],
+      [600, 600],
+      [800, 1000],
+      [1000, 1000],
+      [1000, 1000],
+      [1000, 1000],
+      [1000, 1000],
+      [1000, 1000],
+      [1000, 1000],
+      [1000, 1000],
+    ]);
+    expect(pulls(writes).map(([image, index]) => `${index} ${image}`)).toContain(`4 traefik:v3.7@${DIGEST(8)}`);
+  });
+
+  it("says each stack's step beside it, and nothing of a pull once the pulls are done", async () => {
+    const { io, writes } = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const shown = writes.find(({ progress }) => (progress.pull as { index?: number } | null)?.index === 3);
+    expect(shown?.progress.step).toBe("Pulling control's images.");
+    const building = writes.find(({ progress }) => progress.step === "Pulling jmri's images.");
+    expect(building?.progress.pull).toBeNull();
+    expect(writes.filter(({ progress }) => String(progress.step).startsWith("Starting ")).map(({ progress }) => progress.pull)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("writes the progress file at most once a second while it pulls", async () => {
+    const { io, writes } = box({ tick: 300 });
+    await run("update", OLD, NEW, ENV, io);
+    const during = writes.filter(({ progress }) => progress.pull);
+    expect(during.length).toBeGreaterThan(4);
+    const gaps = during.slice(1).map(({ at }, i) => at - writes[writes.indexOf(during[i + 1]!) - 1]!.at);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1000);
+  });
+
+  it("whose stream says an error fails with the sentence a failed pull gives", async () => {
+    const { io, asked, progress } = box({
+      stream: (image) =>
+        image.startsWith("ghcr.io/rails49/control")
+          ? [{ status: "Pulling from rails49/control", id: "x" }, { error: "manifest unknown", errorDetail: { message: "manifest unknown" } }]
+          : layers(),
+    });
+    await run("update", OLD, NEW, ENV, io);
+    expect(asked.some((line) => line.includes(" up -d"))).toBe(false);
+    expect(progress()).toMatchObject({
+      passed: false,
+      failure: `Could not pull control's images for release ${NEW}: manifest unknown.`,
+    });
+  });
+});
+
+describe("the Engine API's pull", () => {
+  /** Runs `pullImage` against an Engine on a socket of its own that answers
+   *  `status` and `body`, and answers what it was asked and what it yielded. */
+  async function engine(image: string, status: number, body: string) {
+    const dir = await mkdtemp(join(tmpdir(), "engine-"));
+    const socket = join(dir, "docker.sock");
+    const asked: string[] = [];
+    const server = createServer((request, response) => {
+      asked.push(`${request.method} ${request.url}`);
+      response.writeHead(status, { "Content-Type": "application/json" });
+      response.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(socket, resolve));
+    try {
+      const messages: PullMessage[] = [];
+      let error: string | null = null;
+      try {
+        for await (const message of pullImage(image, socket)) messages.push(message);
+      } catch (thrown) {
+        error = (thrown as Error).message;
+      }
+      return { asked, messages, error };
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("asks for the image by its digest, and yields each line the Engine streams", async () => {
+    const lines = [
+      { status: "Pulling fs layer", id: "a", progressDetail: {} },
+      { status: "Downloading", id: "a", progressDetail: { current: 5, total: 10 } },
+    ];
+    const pulled = await engine(
+      `ghcr.io/rails49/control:1c3f69b@${DIGEST(7)}`,
+      200,
+      lines.map((line) => `${JSON.stringify(line)}\r\n`).join(""),
+    );
+    expect(pulled.asked).toEqual([`POST /images/create?fromImage=ghcr.io%2Frails49%2Fcontrol&tag=${DIGEST(7).replace(":", "%3A")}`]);
+    expect(pulled.messages).toEqual(lines);
+    expect(pulled.error).toBeNull();
+  });
+
+  it("asks for a tag where there is no digest", async () => {
+    expect((await engine("traefik:v3.7", 200, "")).asked).toEqual(["POST /images/create?fromImage=traefik&tag=v3.7"]);
+  });
+
+  it("throws with what the Engine says when it refuses", async () => {
+    const refused = await engine("ghcr.io/rails49/nothing:x", 404, JSON.stringify({ message: "manifest unknown" }));
+    expect(refused.error).toBe("manifest unknown");
   });
 });
 
@@ -444,6 +621,7 @@ describe("starting one", () => {
       to: NEW,
       started: "2026-11-12T10:00:00.000Z",
       step: "Starting.",
+      pull: null,
       finished: null,
       passed: null,
       failure: null,

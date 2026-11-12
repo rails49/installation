@@ -8,18 +8,21 @@
 //     node /box/update.mjs <update|back|apply> <from> <to>
 //
 // It brings the release's box files to `/var/lib/rails49/releases/<to>/`,
-// pulls every image of every declared stack, and only then brings the stacks
-// up in order. It passes when every container is still running after 60
+// pulls every image of every declared stack through the Engine API, and only
+// then brings the stacks up in order. It passes when every container is still running after 60
 // seconds and the probe passes. It appends one line to the record, and after
 // a pass prunes what neither release uses. Applying the setup first stops and
 // removes the containers of each stack no longer declared, keeping their
 // data, and neither appends to the record nor prunes. What it is doing is in
-// `PROGRESS`, which the status page reads.
+// `PROGRESS`, which the status page reads: the step, and while an image is
+// pulled, which one of how many and its bytes (#96).
 //
-// The docker CLI, the box's files, GitHub, the probe and the clock are handed
-// in as `io`, so this reads nothing itself.
+// The docker CLI, the Engine API's pull, the box's files, GitHub, the probe
+// and the clock are handed in as `io`, so this reads nothing itself.
 
 import { execFile } from "node:child_process";
+import { request } from "node:http";
+import { createInterface } from "node:readline";
 import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
@@ -42,10 +45,32 @@ import {
 const DOWNLOAD = "https://github.com/rails49/installation/releases/download";
 const CONTAINER = "rails49-update";
 const WAIT = 60_000;
+/** The least time between two writes of the progress file while it pulls. */
+const EVERY = 1000;
+
+/**
+ * One message of the Engine API's `POST /images/create` stream: a layer's
+ * `status`, with `progressDetail` while it downloads, or an `error`.
+ *
+ * @typedef {{
+ *   status?: string,
+ *   id?: string,
+ *   progressDetail?: { current?: number, total?: number },
+ *   error?: string,
+ *   errorDetail?: { message?: string },
+ * }} PullMessage
+ *
+ * The image being pulled, its place among every image the run pulls, and
+ * the bytes downloaded of its total, summed over the layers whose size the
+ * stream has said.
+ *
+ * @typedef {{ image: string, index: number, count: number, current: number, total: number }} Pull
+ */
 
 /**
  * @typedef {{
  *   docker: (args: string[]) => Promise<string>,
+ *   pull: (image: string) => AsyncIterable<PullMessage>,
  *   download: (url: string, path: string) => Promise<void>,
  *   unpack: (archive: string, dir: string) => Promise<void>,
  *   rename: (from: string, to: string) => Promise<void>,
@@ -60,7 +85,8 @@ const WAIT = 60_000;
  * }} Io
  *
  * `docker` is the CLI's stdout, and throws with what it said on stderr.
- * `download` writes what a URL answers to a file. `unpack` unpacks a
+ * `pull` pulls one image and streams what the Engine API says while it does,
+ * and throws where the Engine refuses the pull. `download` writes what a URL answers to a file. `unpack` unpacks a
  * `.tar.gz` into a directory. `remove` removes a file or a directory and what
  * is in it, and nothing where there is none. `list` is the names in a
  * directory. `append` makes the file's directory where there is none.
@@ -75,10 +101,10 @@ const WAIT = 60_000;
 class Failure extends Error {}
 
 /**
- * The progress file's text: what runs, the step it is at, and once it has
- * finished, when, whether it passed, and why not.
+ * The progress file's text: what runs, the step it is at, the image it pulls
+ * or null, and once it has finished, when, whether it passed, and why not.
  *
- * @param {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string }} run
+ * @param {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, pull: Pull | null }} run
  * @param {{ finished: Date, passed: boolean, failure: string | null } | null} result
  */
 function progressText(run, result) {
@@ -95,9 +121,12 @@ function progressText(run, result) {
  */
 export async function run(action, from, to, env, io) {
   const started = io.now().toISOString();
-  /** @param {string} step @param {{ passed: boolean, failure: string | null } | null} [result] */
-  const progress = (step, result = null) =>
-    io.write(PROGRESS, progressText({ action, from, to, started, step }, result && { ...result, finished: io.now() }));
+  let written = -Infinity;
+  /** @param {string} step @param {{ passed: boolean, failure: string | null } | null} [result] @param {Pull | null} [pull] */
+  const progress = (step, result = null, pull = null) => {
+    written = io.now().getTime();
+    return io.write(PROGRESS, progressText({ action, from, to, started, step, pull }, result && { ...result, finished: io.now() }));
+  };
 
   const stacks = declared(env.BOX_UIS);
   const dir = `${RELEASES}/${to}`;
@@ -129,17 +158,37 @@ export async function run(action, from, to, env, io) {
 
     ran = new Set((await containers(stacks, io)).map((c) => c.Image));
 
+    /** @param {(typeof stacks)[number]} stack @param {unknown} error */
+    const unpulled = (stack, error) =>
+      new Failure(`Could not pull ${stack.stack}'s images for release ${to}: ${sentence(error)}`);
+    // Every image is counted before the first is pulled, so the page can say
+    // how many there are. JMRI is built on the box and counts none.
+    /** @type {Map<(typeof stacks)[number], string[]>} */
+    const images = new Map();
+    for (const stack of stacks.filter(({ stack }) => stack !== "jmri")) {
+      const listed = await compose(stack, ["config", "--images"]).catch((error) => {
+        throw unpulled(stack, error);
+      });
+      images.set(stack, listed.split("\n").filter(Boolean));
+    }
+    const count = [...images.values()].flat().length;
+    let index = 0;
     for (const stack of stacks) {
-      await progress(`Pulling ${stack.stack}'s images.`);
+      const step = `Pulling ${stack.stack}'s images.`;
+      await progress(step);
       try {
         if (stack.stack === "jmri") {
           await compose(stack, ["build", "--pull"]);
-        } else {
-          const images = (await compose(stack, ["config", "--images"])).split("\n").filter(Boolean);
-          for (const image of images) await io.docker(["pull", image]);
+          continue;
+        }
+        for (const image of images.get(stack) ?? []) {
+          index += 1;
+          await pull(image, index, count, io, async (pulled) => {
+            if (io.now().getTime() - written >= EVERY) await progress(step, null, pulled);
+          });
         }
       } catch (error) {
-        throw new Failure(`Could not pull ${stack.stack}'s images for release ${to}: ${sentence(error)}`);
+        throw unpulled(stack, error);
       }
     }
 
@@ -200,6 +249,40 @@ export async function run(action, from, to, env, io) {
     await prune([to, from].filter((release) => release !== "-"), ran, io);
   }
   await progress(passed ? "Done." : "Failed.", { passed, failure });
+}
+
+/**
+ * Pulls one image, and hands `report` how far it has got at its start and at
+ * each message of the stream. A layer's bytes count once the stream has said
+ * its size, and all of them once it says the layer is downloaded. A layer the
+ * box already has counts none.
+ *
+ * @param {string} image @param {number} index @param {number} count @param {Io} io
+ * @param {(pull: Pull) => Promise<void>} report
+ */
+async function pull(image, index, count, io, report) {
+  /** @type {Map<string, { current: number, total: number }>} */
+  const layers = new Map();
+  const sum = () => {
+    let current = 0;
+    let total = 0;
+    for (const layer of layers.values()) {
+      current += layer.current;
+      total += layer.total;
+    }
+    return { image, index, count, current, total };
+  };
+  await report(sum());
+  for await (const message of io.pull(image)) {
+    if (message.error !== undefined) throw new Error(message.errorDetail?.message || message.error);
+    const { id, status, progressDetail } = message;
+    if (id !== undefined && status === "Downloading" && progressDetail?.total) {
+      layers.set(id, { current: progressDetail.current ?? 0, total: progressDetail.total });
+    }
+    const layer = id === undefined ? undefined : layers.get(id);
+    if (layer && status === "Download complete") layer.current = layer.total;
+    await report(sum());
+  }
 }
 
 /**
@@ -335,7 +418,10 @@ export async function start(action, env, io) {
   if (state) await io.docker(["rm", CONTAINER]);
   // The page reads this file while the container runs, so the last run's
   // progress is replaced before it starts.
-  await io.write(PROGRESS, progressText({ action, from, to, started: io.now().toISOString(), step: "Starting." }, null));
+  await io.write(
+    PROGRESS,
+    progressText({ action, from, to, started: io.now().toISOString(), step: "Starting.", pull: null }, null),
+  );
   // The probe asks for `<hostname>.local`, which nothing in a container
   // resolves, so it is named here.
   const host = env.address ? ["--add-host", `${env.hostname}.local:${env.address}`] : [];
@@ -388,6 +474,44 @@ export async function docker(args) {
   }
 }
 
+const SOCKET = "/var/run/docker.sock";
+
+/**
+ * Pulls an image through the Engine API on the socket, as `POST
+ * /images/create`, and yields each message it streams. `docker pull` says
+ * the same only on a terminal. An image named by a digest is pulled by it.
+ *
+ * @param {string} image
+ * @param {string} [socket] the Engine's socket
+ * @returns {AsyncIterable<PullMessage>}
+ */
+export async function* pullImage(image, socket = SOCKET) {
+  const [ref = "", digest] = image.split("@");
+  const tag = ref.match(/:([^/:]+)$/)?.[1];
+  const name = tag === undefined ? ref : ref.slice(0, -tag.length - 1);
+  const query = new URLSearchParams({ fromImage: name, tag: digest ?? tag ?? "latest" });
+  /** @type {import("node:http").IncomingMessage} */
+  const answer = await new Promise((resolve, reject) => {
+    const asked = request({ socketPath: socket, method: "POST", path: `/images/create?${query}` }, resolve);
+    asked.on("error", reject);
+    asked.end();
+  });
+  answer.setEncoding("utf8");
+  if (answer.statusCode !== 200) {
+    let body = "";
+    for await (const chunk of answer) body += chunk;
+    /** @type {{ message?: string }} */
+    let said = {};
+    try {
+      said = JSON.parse(body);
+    } catch {}
+    throw new Error(said.message || `the Engine answered ${answer.statusCode}`);
+  }
+  for await (const line of createInterface({ input: answer, crlfDelay: Infinity })) {
+    if (line.trim()) yield /** @type {PullMessage} */ (JSON.parse(line));
+  }
+}
+
 /** A file's text, or null where there is none.
  *  @param {string} path */
 export async function read(path) {
@@ -414,6 +538,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   };
   await run(/** @type {"update" | "back" | "apply"} */ (action), from, to, env, {
     docker,
+    pull: pullImage,
     download: async (url, path) => {
       const answer = await fetch(url, { signal: AbortSignal.timeout(10 * 60_000) });
       if (!answer.ok) throw new Error(`GitHub answered ${answer.status} for ${url}`);
