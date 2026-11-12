@@ -32,14 +32,16 @@ const BOX = "/etc/rails49/box.env";
 export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
 
 /** The devices the page offers: the form's field, the directory of the box's
- *  `/dev` it lists, and the line it writes into which stack's file. `none` is
- *  a path in that directory that names no device, with which the stack still
- *  runs and reports the device missing. */
+ *  `/dev` it lists, which of the names there it offers, and the line it
+ *  writes into which stack's file. `none` is a path in that directory that
+ *  names no device, with which the stack still runs and reports the device
+ *  missing. */
 const DEVICES = [
   {
     field: "station",
     what: "command station",
     dir: "/dev/serial/by-id",
+    offers: () => true,
     key: "DCCEX_STATION_DEVICE",
     path: "/etc/rails49/dccex.env",
   },
@@ -47,6 +49,11 @@ const DEVICES = [
     field: "camera",
     what: "camera",
     dir: "/dev/v4l/by-id",
+    // udev ends the name with the device's sysfs `index`, which is 0 on the
+    // one that captures video; a UVC camera's `index1` is its metadata
+    // device, which gives no picture (#87).
+    /** @param {string} name */
+    offers: (name) => name.endsWith("-video-index0"),
     key: "OCCUPANCY_CAMERA",
     path: "/etc/rails49/occupancy.env",
   },
@@ -75,10 +82,10 @@ export async function form(io) {
  *
  * @param {(typeof DEVICES)[number]} device @param {Io} io
  */
-async function offered({ dir, key, path }, io) {
+async function offered({ dir, offers, key, path }, io) {
   return {
     current: setting((await io.read(path)) ?? "", key),
-    found: (await io.list(dir)).filter((name) => NAME.test(name)).map((name) => `${dir}/${name}`),
+    found: (await io.list(dir)).filter((name) => NAME.test(name) && offers(name)).map((name) => `${dir}/${name}`),
   };
 }
 

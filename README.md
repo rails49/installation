@@ -196,8 +196,11 @@ The status page also chooses the stacks the box runs and their devices
   `control`: dccex and occupancy dial its broker, and JMRI reads `TC49_STORE`
   from `control.env`. `box` ticks it again when the form is applied, for a
   browser that runs no script.
-- The command station, from `/dev/serial/by-id/`, and the camera, from
-  `/dev/v4l/by-id/`, or none. With none plugged in, a sentence says so. A
+- The command station, from `/dev/serial/by-id/`, and the camera, from the
+  names in `/dev/v4l/by-id/` that end in `-video-index0`, or none. A UVC
+  camera's `-video-index1` is its metadata device, which gives no picture
+  ([#87](https://github.com/rails49/installation/issues/87)). With none
+  plugged in, a sentence says so. A
   device the stack's file names that is not plugged in stays offered. None is
   written as `/dev/serial/by-id/none` and `/dev/v4l/by-id/none`, a path that
   names no device, with which the stack runs and reports the device missing.
