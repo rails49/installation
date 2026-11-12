@@ -605,7 +605,7 @@ describe("JMRI", () => {
 });
 
 describe("JMRI's start command", () => {
-  it("reads the store root from where control writes it", () => {
+  it("reads the store root from control.env, where the install script writes it", () => {
     // Started against the declaration alone, the profile mount fell back to
     // a directory `control` never uses, and DecoderPro wrote a roster nobody
     // backs up.
