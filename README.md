@@ -423,6 +423,14 @@ out. With a box name, write the door's file and the records as in
 docker compose --env-file /etc/rails49/box.env up -d --build
 ```
 
+With a box name, add the routers on 443 from `compose.https.yaml`, as every
+other stack's own `compose.https.yaml` is added to its compose
+([#92](https://github.com/rails49/installation/issues/92)):
+
+```bash
+docker compose --env-file /etc/rails49/box.env -f compose.yaml -f compose.https.yaml up -d --build
+```
+
 `--build` builds the page and the box from this clone. Each other stack is its
 own repository with its own compose, started against the same declaration,
 joining the network this one created. A stack started before the installation
@@ -481,7 +489,8 @@ knowing before you wonder why 443 is behaving strangely.
 ### Deploying
 
 `./deploy.sh` is a maintainer's convenience for pushing this checkout to a box
-from a dev machine. Over ssh it runs `git pull`, then `up -d --build`, which
+from a dev machine. Over ssh it runs `git pull`, then `up -d --build`, with
+`compose.https.yaml` when the box's declaration names a box name, which
 builds the page and the box on the box under the commit it pulled
 (`installation-page:<commit>`, `installation-box:<commit>`). It refuses a clone
 on the box that is not clean, since its images would be named after a commit

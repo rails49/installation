@@ -49,12 +49,20 @@ commit=$(git rev-parse HEAD)
 # clone: a value that lives in one clone makes that clone a prerequisite of
 # every other stack.
 #
+# The routers that need a box name only on a box with one: a box with no
+# certificate has no 443 and no resolver, and its door would log an error for
+# each at every start (#92). Quotes are compose's and not part of the name.
+files=(-f compose.yaml)
+domain=$(sed -n 's/^BOX_DOMAIN=//p' /etc/rails49/box.env | tr -d "\"'")
+if [ -n "$domain" ]; then
+  files+=(-f compose.https.yaml)
+fi
 # `--build` builds the page and the box here, under the commit. `up -d` then
 # recreates each whose image changed. `--remove-orphans` because this stack
 # holds 443: a service renamed between two versions of the file leaves a
 # container bound to that port, and the one replacing it cannot start.
 INSTALLATION_COMMIT=$commit \
-  docker compose --env-file /etc/rails49/box.env up -d --build --remove-orphans
+  docker compose --env-file /etc/rails49/box.env "${files[@]}" up -d --build --remove-orphans
 REMOTE
 
 "$(dirname "$0")/scripts/probe.sh" "$box" || echo "probe: some answers were not the ones wanted, above" >&2
