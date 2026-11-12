@@ -36,16 +36,22 @@ const git = (cwd: string, ...args: string[]) =>
     stdio: "pipe",
   });
 
+/** The declaration's path, which the run below points at a scratch file. */
+const DECLARATION = "/etc/rails49/box.env";
+
 /** Runs the deploy in a scratch home whose clone's upstream has gained a
- *  commit, after `before` has done what it likes to the clone. Returns the
+ *  commit, after `before` has done what it likes to the clone, against a
+ *  declaration holding `declaration`. Returns the
  *  upstream's head, what docker was asked (one call per line, each prefixed
  *  with the `INSTALLATION_COMMIT` it saw), the exit status and stderr. */
-function deployed(before: (clone: string) => void = () => {}) {
+function deployed(before: (clone: string) => void = () => {}, declaration = "BOX_DOMAIN=example.org\nBOX_UIS=\n") {
   const scratch = mkdtempSync(join(tmpdir(), "deploy-"));
   const upstream = join(scratch, "upstream");
   const clone = join(scratch, "home", "installation");
   const bin = join(scratch, "bin");
   const log = join(scratch, "docker.log");
+  const env = join(scratch, "box.env");
+  writeFileSync(env, declaration);
 
   mkdirSync(join(upstream, "page"), { recursive: true });
   writeFileSync(join(upstream, "page", "render.sh"), "before\n");
@@ -70,11 +76,13 @@ function deployed(before: (clone: string) => void = () => {}) {
 
   try {
     const run = spawnSync("bash", ["-s"], {
-      input: remote,
+      input: remote.replaceAll(DECLARATION, env),
       encoding: "utf8",
       env: { ...process.env, HOME: join(scratch, "home"), PATH: `${bin}:${process.env.PATH}` },
     });
-    const calls = existsSync(log) ? readFileSync(log, "utf8").trimEnd().split("\n") : [];
+    const calls = existsSync(log)
+      ? readFileSync(log, "utf8").trimEnd().replaceAll(env, DECLARATION).split("\n")
+      : [];
     return { head, calls, status: run.status, stderr: run.stderr };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -86,8 +94,23 @@ describe("a deploy", () => {
     const { head, calls, status } = deployed();
     expect(status).toBe(0);
     expect(calls).toEqual([
-      `INSTALLATION_COMMIT=${head} compose --env-file /etc/rails49/box.env up -d --build --remove-orphans`,
+      `INSTALLATION_COMMIT=${head} compose --env-file /etc/rails49/box.env ` +
+        "-f compose.yaml -f compose.https.yaml up -d --build --remove-orphans",
     ]);
+  });
+
+  it("leaves out the routers that need a box name on a box with no certificate", () => {
+    // The door there would log an error for each at every start (#92).
+    const { head, calls, status } = deployed(undefined, "BOX_DOMAIN=\nBOX_UIS=\"control jmri\"\n");
+    expect(status).toBe(0);
+    expect(calls).toEqual([
+      `INSTALLATION_COMMIT=${head} compose --env-file /etc/rails49/box.env -f compose.yaml up -d --build --remove-orphans`,
+    ]);
+  });
+
+  it("reads a quoted box name as the box name", () => {
+    const { calls } = deployed(undefined, 'BOX_DOMAIN="example.org"\n');
+    expect(calls[0]).toContain("-f compose.https.yaml");
   });
 
   it("refuses a clone with a changed file, and builds nothing", () => {
