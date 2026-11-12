@@ -32,6 +32,7 @@ import {
   CHECK,
   currentRelease,
   declared,
+  inspected,
   manifestPath,
   message,
   named,
@@ -94,7 +95,7 @@ const EVERY = 1000;
  *
  * @typedef {{ BOX_DOMAIN: string, BOX_UIS: string, hostname: string, address: string }} Env
  *
- * @typedef {{ Name: string, Image: string, State: { Status: string, StartedAt: string }, Config: { Labels: Record<string, string> | null } }} Container
+ * @typedef {import("./status.mjs").Container} Container
  */
 
 /** A step that failed, said in a sentence. */
@@ -310,9 +311,8 @@ async function download(release, io) {
  * @returns {Promise<Container[]>}
  */
 async function containers(stacks, io) {
-  const ids = (await io.docker(["ps", "-aq"])).split("\n").filter(Boolean);
   /** @type {Container[]} */
-  const all = ids.length ? JSON.parse(await io.docker(["inspect", ...ids])) : [];
+  const all = await inspected(io.docker);
   const projects = stacks.map((s) => s.project);
   return all.filter((c) => projects.includes(c.Config.Labels?.["com.docker.compose.project"] ?? ""));
 }

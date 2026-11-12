@@ -25,6 +25,13 @@
  * @typedef {{ BOX_DOMAIN: string, BOX_UIS: string, hostname: string }} Env
  */
 
+/**
+ * One container as `docker inspect` writes it, the fields read here and in
+ * the update.
+ *
+ * @typedef {{ Name: string, Image: string, State: { Status: string, StartedAt: string }, Config: { Labels: Record<string, string> | null } }} Container
+ */
+
 /** Each stack the box can run: the label in `BOX_UIS` that declares it, its
  *  name in a release's manifest, its compose project, its compose files in
  *  the release's box files, the one more it is started with on a box with a
@@ -130,6 +137,32 @@ export function older(a, b) {
 }
 
 /**
+ * Every container on the box, as `docker inspect` writes it. One that goes
+ * between `docker ps` and `docker inspect`, as when an update recreates the
+ * stacks, is left out: the CLI then says "no such object" for it, writes
+ * nothing for the rest and exits 1, so the ones still there are inspected
+ * again. Any other failure throws (#97).
+ *
+ * @param {(args: string[]) => Promise<string>} docker
+ * @returns {Promise<Container[]>}
+ */
+export async function inspected(docker) {
+  let ids = (await docker(["ps", "-aq"])).split("\n").filter(Boolean);
+  while (ids.length) {
+    try {
+      return JSON.parse(await docker(["inspect", ...ids]));
+    } catch (error) {
+      const lines = message(error).split("\n").filter((line) => line.trim());
+      const gone = lines.map((line) => line.match(/no such object:\s*(\S+)/i)?.[1]);
+      const left = ids.filter((id) => !gone.includes(id));
+      if (!lines.length || gone.some((id) => id === undefined) || left.length === ids.length) throw error;
+      ids = left;
+    }
+  }
+  return [];
+}
+
+/**
  * @param {Env} env
  * @param {Io} io
  */
@@ -142,9 +175,7 @@ export async function status(env, io) {
   const release = await currentRelease(io.read);
   const manifest = release === null ? null : parse(await io.read(manifestPath(release)));
 
-  const ids = (await io.docker(["ps", "-aq"])).split("\n").filter(Boolean);
-  /** @type {{ Name: string, State: { Status: string }, Config: { Labels: Record<string, string> | null } }[]} */
-  const containers = ids.length ? JSON.parse(await io.docker(["inspect", ...ids])) : [];
+  const containers = await inspected(io.docker);
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
 
   const stacks = declared(env.BOX_UIS).map(({ stack, project }) => {
