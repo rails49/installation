@@ -192,10 +192,11 @@ The status page also chooses the stacks the box runs and their devices
 ([#69](https://github.com/rails49/installation/issues/69)):
 
 - A checkbox for each of `control`, `dccex`, `jmri` and `occupancy`, ticked as
-  `BOX_UIS` in `box.env` declares them. Ticking any of the last three ticks
-  `control`: dccex and occupancy dial its broker, and JMRI reads `TC49_STORE`
-  from `control.env`. `box` ticks it again when the form is applied, for a
-  browser that runs no script.
+  `BOX_UIS` in `box.env` declares them. Ticking dccex or occupancy ticks
+  `control`, whose broker each dials; `box` ticks it again when the form is
+  applied, for a browser that runs no script. Ticking jmri does not: it reads
+  `TC49_STORE` from `control.env`, which the install script writes whether or
+  not `control` runs.
 - The command station, from `/dev/serial/by-id/`, and the camera, from the
   names in `/dev/v4l/by-id/` that end in `-video-index0`, or none. A UVC
   camera's `-video-index1` is its metadata device, which gives no picture

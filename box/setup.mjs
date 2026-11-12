@@ -31,6 +31,10 @@ const BOX = "/etc/rails49/box.env";
 /** The labels the page offers, in the order `BOX_UIS` lists them. */
 export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
 
+/** The labels that dial control's broker, so that ticking one ticks control.
+ *  `tick.js` holds the same list for the page. */
+const NEEDS_CONTROL = ["dccex", "occupancy"];
+
 /** The devices the page offers: the form's field, the directory of the box's
  *  `/dev` it lists, which of the names there it offers, and the line it
  *  writes into which stack's file. `none` is a path in that directory that
@@ -101,9 +105,11 @@ export async function apply(posted, io) {
   const ticked = posted.getAll("ui");
   const unknown = ticked.find((label) => !LABELS.includes(label));
   if (unknown !== undefined) return `${unknown} is not a stack this box can run.`;
-  // Each of the others dials control's broker or reads `control.env`, so
-  // ticking any of them ticks control (decision 10).
-  const uis = LABELS.filter((label) => (label === "control" ? ticked.length > 0 : ticked.includes(label))).join(" ");
+  // dccex and occupancy dial control's broker, so ticking either ticks
+  // control (decision 10). jmri does not: it reads `control.env`, which the
+  // install script writes whether control runs or not (#89 decision 2).
+  const needs = ticked.some((label) => NEEDS_CONTROL.includes(label));
+  const uis = LABELS.filter((label) => ticked.includes(label) || (label === "control" && needs)).join(" ");
 
   // A device the page did not offer is refused; one left out of the form is
   // left as it is.

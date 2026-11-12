@@ -151,7 +151,7 @@ function setup({ uis, devices }) {
 <fieldset>
 <legend>Stacks</legend>
 ${checkboxes.join("\n")}
-<p>Ticking dccex, jmri or occupancy ticks control too: dccex and occupancy dial its broker, and JMRI reads <code>TC49_STORE</code> from <code>control.env</code>.</p>
+<p>Ticking dccex or occupancy ticks control too: each dials its broker.</p>
 </fieldset>
 ${selects.join("\n")}
 <p>Applying stops the railroad for about a minute.</p>

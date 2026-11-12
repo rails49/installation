@@ -1,6 +1,6 @@
 /**
- * The status page's script that ticks control when dccex, jmri or occupancy
- * is ticked (#69 decision 10), run against a stand-in for the page's form:
+ * The status page's script that ticks control when dccex or occupancy is
+ * ticked (#69 decision 10, #89 decision 2), run against a stand-in for the page's form:
  * four checkboxes and the form's `change` listener.
  */
 
@@ -53,12 +53,18 @@ describe("ticking a stack on the status page", () => {
     expect(boxes.map((input) => input.checked)).toEqual([false, false, false, false]);
   });
 
-  it("ticks control with jmri and with occupancy", () => {
-    tick("jmri");
-    expect(boxes[0]!.checked).toBe(true);
-    tick("jmri", false);
-    tick("control", false);
+  it("ticks control with occupancy", () => {
     tick("occupancy");
-    expect(boxes[0]!.checked).toBe(true);
+    expect(boxes.map((input) => input.checked)).toEqual([true, false, false, true]);
+    tick("occupancy", false);
+    tick("control", false);
+  });
+
+  it("leaves control unticked with jmri, and lets it be unticked beside jmri", () => {
+    tick("jmri");
+    expect(boxes.map((input) => input.checked)).toEqual([false, false, true, false]);
+    tick("control");
+    tick("control", false);
+    expect(boxes[0]!.checked).toBe(false);
   });
 });

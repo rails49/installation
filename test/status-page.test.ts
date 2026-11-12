@@ -262,9 +262,9 @@ describe("the setup on the status page", () => {
     expect(setup(plain)).not.toContain("checked");
   });
 
-  it("says why ticking any of the others ticks control, and loads the script that ticks it", () => {
+  it("says why ticking dccex or occupancy ticks control, and loads the script that ticks it", () => {
     expect(setup(page)).toContain(
-      "<p>Ticking dccex, jmri or occupancy ticks control too: dccex and occupancy dial its broker, and JMRI reads <code>TC49_STORE</code> from <code>control.env</code>.</p>",
+      "<p>Ticking dccex or occupancy ticks control too: each dials its broker.</p>",
     );
     expect(page).toContain('<script type="module" src="/box/tick.js"></script>');
   });
