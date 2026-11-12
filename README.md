@@ -165,7 +165,8 @@ the top. It shows:
   check, and when the last check succeeded. What it found is kept in
   `/var/lib/rails49/check.json`.
 - Disk free, on the file system Docker keeps its images on.
-- The box's address on its LAN.
+- The box's address on its LAN, and that it should be reserved for the box
+  in the router, so it does not change.
 - Docker Engine's version, against the versions the release was tested on,
   and the daemon's log driver, with a sentence when it is not `local`. Set it
   in `/etc/docker/daemon.json`, `{"log-driver": "local"}`, and restart
@@ -180,9 +181,37 @@ current manifest, `docker version` and `docker info`, `box.env` and every
 `<stack>.env`, `docker compose ps -a` for each stack, and the last 1000 lines
 of each container's log. It holds neither `acme.env` nor `acme.json`.
 
-For this, `box` has the Docker socket, `/etc/rails49` read-only,
-`/var/lib/rails49` and the Docker CLI with compose. With the socket it can do
-anything on the box that root can.
+For this, `box` has the Docker socket, `/etc/rails49` to write,
+`/var/lib/rails49`, the box's `/dev` read-only at `/host/dev`, and the Docker
+CLI with compose. With the socket it can do anything on the box that root can.
+
+### Setup
+
+The status page also chooses the stacks the box runs and their devices
+([#69](https://github.com/rails49/installation/issues/69)):
+
+- A box for each of `control`, `dccex`, `jmri` and `occupancy`, ticked as
+  `BOX_UIS` in `box.env` declares them. Ticking any of the last three ticks
+  `control`: dccex and occupancy dial its broker, and JMRI reads `TC49_STORE`
+  from `control.env`. The box ticks it again when the form is applied.
+- The command station, from `/dev/serial/by-id/`, and the camera, from
+  `/dev/v4l/by-id/`, or none. With none plugged in, a sentence says so. A
+  device the stack's file names that is not plugged in stays offered. None is
+  written as `/dev/serial/by-id/none` and `/dev/v4l/by-id/none`, a path that
+  names no device, with which the stack runs and reports the device missing.
+  Occupancy needs no archive to be ticked.
+
+"Apply" (`POST /box/setup`) writes `BOX_UIS` into `box.env`,
+`DCCEX_STATION_DEVICE` into `dccex.env` and `OCCUPANCY_CAMERA` into
+`occupancy.env`. Every other line of each file stays as it is, and a file
+that is not there is made. It then starts `rails49-update` at the release the
+box runs, as below, which first stops and removes the containers of each
+stack no longer ticked, keeping its data. The page says first that applying
+stops the railroad for about a minute. It answers 409 with a sentence while
+an update, going back or applying runs, on a box that runs no release yet, and
+for a stack or device the page did not offer, and then writes nothing. A page
+on another origin is refused. Applying adds no line to the record and removes
+nothing, so going back is offered as before.
 
 ### Updating the box and going back
 
@@ -195,7 +224,8 @@ installed without a press, and a failed update is not gone back from by
 itself.
 
 `POST /box/update` updates to the latest release the last check found, and
-`POST /box/back` goes back. Each answers 409 with a sentence while one runs,
+`POST /box/back` goes back. Each answers 409 with a sentence while one of
+them or applying the setup runs,
 when there is no newer release, or when there is nothing to go back to. Each
 starts the container `rails49-update` from the target release's
 `installation-box` image, with the Docker socket, `/etc/rails49` read-only and

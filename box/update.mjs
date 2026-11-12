@@ -1,16 +1,20 @@
-// Updating the box and going back (#65 decisions 8 to 12). `start()` is what
-// `box` does on a press: it starts the one-shot container `rails49-update`
-// from the target release's `installation-box` image, with the socket, in no
-// compose project. `run()` is what that container does, run as
+// Updating the box and going back (#65 decisions 8 to 12), and applying the
+// setup at the release the box runs (#69 decisions 14 and 15). `start()` is
+// what `box` does on a press: it starts the one-shot container
+// `rails49-update` from the target release's `installation-box` image, with
+// the socket, in no compose project. `run()` is what that container does, run
+// as
 //
-//     node /box/update.mjs <update|back> <from> <to>
+//     node /box/update.mjs <update|back|apply> <from> <to>
 //
 // It brings the release's box files to `/var/lib/rails49/releases/<to>/`,
 // pulls every image of every declared stack, and only then brings the stacks
 // up in order. It passes when every container is still running after 60
 // seconds and the probe passes. It appends one line to the record, and after
-// a pass prunes what neither release uses. What it is doing is in `PROGRESS`,
-// which the status page reads.
+// a pass prunes what neither release uses. Applying the setup first stops and
+// removes the containers of each stack no longer declared, keeping their
+// data, and neither appends to the record nor prunes. What it is doing is in
+// `PROGRESS`, which the status page reads.
 //
 // The docker CLI, the box's files, GitHub, the probe and the clock are handed
 // in as `io`, so this reads nothing itself.
@@ -20,7 +24,19 @@ import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "nod
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 
-import { backTo, CHECK, currentRelease, declared, manifestPath, message, PROGRESS, RECORD, RELEASES } from "./status.mjs";
+import {
+  backTo,
+  CHECK,
+  currentRelease,
+  declared,
+  manifestPath,
+  message,
+  named,
+  PROGRESS,
+  RECORD,
+  RELEASES,
+  STACKS,
+} from "./status.mjs";
 
 const DOWNLOAD = "https://github.com/rails49/installation/releases/download";
 const CONTAINER = "rails49-update";
@@ -61,7 +77,7 @@ class Failure extends Error {}
  * The progress file's text: what runs, the step it is at, and once it has
  * finished, when, whether it passed, and why not.
  *
- * @param {{ action: "update" | "back", from: string, to: string, started: string, step: string }} run
+ * @param {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string }} run
  * @param {{ finished: Date, passed: boolean, failure: string | null } | null} result
  */
 function progressText(run, result) {
@@ -70,7 +86,7 @@ function progressText(run, result) {
 }
 
 /**
- * @param {"update" | "back"} action
+ * @param {"update" | "back" | "apply"} action
  * @param {string} from the release the box runs, or `-`
  * @param {string} to
  * @param {Env} env
@@ -123,6 +139,15 @@ export async function run(action, from, to, env, io) {
       }
     }
 
+    if (action === "apply") {
+      const undeclared = STACKS.filter((stack) => !stacks.includes(stack));
+      const running = new Set((await containers(undeclared, io)).map((c) => c.Config.Labels?.["com.docker.compose.project"]));
+      for (const stack of undeclared.filter(({ project }) => running.has(project))) {
+        await progress(`Stopping ${stack.stack}.`);
+        await io.docker(["compose", "-p", stack.project, "down"]);
+      }
+    }
+
     for (const stack of stacks) {
       await progress(`Starting ${stack.stack}.`);
       await compose(stack, ["up", "-d", "--no-build", "--pull", "never", "--remove-orphans"]).catch((error) => {
@@ -144,8 +169,7 @@ export async function run(action, from, to, env, io) {
           return was && was.State.StartedAt !== c.State.StartedAt ? [`${name} restarted`] : [];
         });
       if (problems.length) {
-        const after = action === "update" ? "the update" : "going back";
-        throw new Failure(`${stack.stack} is not running 60 seconds after ${after}: ${problems.join(", ")}.`);
+        throw new Failure(`${stack.stack} is not running 60 seconds after ${named(action, to).after}: ${problems.join(", ")}.`);
       }
     }
 
@@ -157,12 +181,14 @@ export async function run(action, from, to, env, io) {
       throw new Failure(`The probe got answers it did not want: ${wrong.join("; ")}`);
     }
   } catch (error) {
-    const what = action === "update" ? "update to" : "going back to";
-    failure = error instanceof Failure ? error.message : `The ${what} ${to} stopped: ${sentence(error)}`;
+    failure = error instanceof Failure ? error.message : `${named(action, to).stopped} stopped: ${sentence(error)}`;
   }
 
   const passed = failure === null;
-  await io.append(RECORD, `${started.slice(0, 19)}Z  ${from}  ->  ${to}  ${passed ? "passed" : "failed"}\n`);
+  // Applying the setup moves the box to no other release.
+  if (action !== "apply") {
+    await io.append(RECORD, `${started.slice(0, 19)}Z  ${from}  ->  ${to}  ${passed ? "passed" : "failed"}\n`);
+  }
   // Only after an update: going back after a failed one would otherwise
   // leave the release before it with no files and no images.
   if (passed && action === "update") {
@@ -249,20 +275,34 @@ async function prune(keep, ran, io) {
   }
 }
 
+/** Why the setup is not applied on a box never updated. */
+export const NO_RELEASE = "This box runs no release yet, so there is none to apply the setup at.";
+
+/** Why nothing else starts while `rails49-update` runs. */
+export const BUSY = "The box is already updating, going back or applying the setup.";
+
+/** The state of `rails49-update`'s container, `running` while one runs, and
+ *  empty where there is none.
+ *  @param {Io["docker"]} docker */
+export async function updater(docker) {
+  return (await docker(["ps", "-a", "--filter", `name=^${CONTAINER}$`, "--format", "{{.State}}"])).trim();
+}
+
 /**
- * Starts `rails49-update` for an update to the latest release or for going
- * back, and answers null; or answers in a sentence why not. Nothing it runs
- * takes anything from the request: the release is the latest the last check
- * found, or the one the record says the box ran before.
+ * Starts `rails49-update` for an update to the latest release, for going
+ * back, or for applying the setup, and answers null; or answers in a sentence
+ * why not. Nothing it runs takes anything from the request: the release is
+ * the latest the last check found, the one the record says the box ran
+ * before, or the one it runs. `env.BOX_UIS` is what the container brings up.
  *
- * @param {"update" | "back"} action
+ * @param {"update" | "back" | "apply"} action
  * @param {Omit<Env, "address"> & { address: string | null }} env
  * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
  * @returns {Promise<string | null>}
  */
 export async function start(action, env, io) {
-  const state = (await io.docker(["ps", "-a", "--filter", `name=^${CONTAINER}$`, "--format", "{{.State}}"])).trim();
-  if (state === "running") return "An update or going back is running.";
+  const state = await updater(io.docker);
+  if (state === "running") return BUSY;
 
   const from = (await currentRelease(io.read)) ?? "-";
   /** @type {string | null} */
@@ -279,8 +319,8 @@ export async function start(action, env, io) {
     if (!answer.ok) return `Could not read release ${to}'s manifest: GitHub answered ${answer.status}.`;
     manifest = /** @type {typeof manifest} */ (await answer.json());
   } else {
-    to = await backTo(io.read);
-    if (to === null) return "There is no release to go back to.";
+    to = action === "back" ? await backTo(io.read) : await currentRelease(io.read);
+    if (to === null) return action === "back" ? "There is no release to go back to." : NO_RELEASE;
     manifest = JSON.parse((await io.read(manifestPath(to))) ?? "null");
     if (manifest === null) return `Release ${to}'s files are not on this box.`;
   }
@@ -357,8 +397,8 @@ export async function read(path) {
 // Running, only when run rather than imported.
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   const [action, from, to] = process.argv.slice(2);
-  if ((action !== "update" && action !== "back") || !from || !to) {
-    console.error("usage: node /box/update.mjs <update|back> <from> <to>");
+  if (!["update", "back", "apply"].includes(action ?? "") || !from || !to) {
+    console.error("usage: node /box/update.mjs <update|back|apply> <from> <to>");
     process.exit(2);
   }
   const env = {
@@ -367,7 +407,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     hostname: process.env.BOX_HOSTNAME ?? "",
     address: process.env.BOX_ADDRESS ?? "",
   };
-  await run(action, from, to, env, {
+  await run(/** @type {"update" | "back" | "apply"} */ (action), from, to, env, {
     docker,
     download: async (url, path) => {
       const answer = await fetch(url, { signal: AbortSignal.timeout(10 * 60_000) });

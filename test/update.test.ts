@@ -238,6 +238,39 @@ describe("going back", () => {
   });
 });
 
+describe("applying the setup", () => {
+  it("brings the declared stacks up at the release the box runs, after stopping the ones no longer declared", async () => {
+    const { io, asked } = box();
+    await run("apply", OLD, OLD, ENV, io);
+    expect(asked.some((line) => line.startsWith("download"))).toBe(false);
+    const down = asked.indexOf("compose -p dccex down");
+    expect(down).toBeGreaterThan(asked.indexOf(`${JMRI(OLD)} build --pull`));
+    expect(down).toBeLessThan(asked.indexOf(`${INSTALLATION(OLD)} up -d --no-build --pull never --remove-orphans`));
+    expect(asked).toContain(`${CONTROL(OLD)} up -d --no-build --pull never --remove-orphans`);
+    expect(asked.filter((line) => line.endsWith(" down"))).toEqual(["compose -p dccex down"]);
+    expect(asked).toContain("probe 192.168.1.20 gleis49 gleis49.org control jmri");
+  });
+
+  it("appends nothing to the record and prunes nothing, so going back stays", async () => {
+    const { io, asked, files, progress } = box();
+    const record = files[RECORD];
+    await run("apply", OLD, OLD, ENV, io);
+    expect(files[RECORD]).toBe(record);
+    expect(asked.some((line) => line.startsWith("image rm") || line.startsWith(`remove ${RELEASES}/`))).toBe(false);
+    expect(progress()).toMatchObject({ action: "apply", step: "Done.", passed: true });
+  });
+
+  it("that fails says applying the setup", async () => {
+    const later = [container("tc49-store-1", "tc49", "sha256:local-control", "exited")];
+    const { io, progress } = box({ later });
+    await run("apply", OLD, OLD, ENV, io);
+    expect(progress().failure).toBe("control is not running 60 seconds after applying the setup: tc49-store-1 is exited.");
+    const stopped = box({ fail: "dccex down" });
+    await run("apply", OLD, OLD, ENV, stopped.io);
+    expect(stopped.progress().failure).toBe(`Applying the setup at ${OLD} stopped: dccex down failed.`);
+  });
+});
+
 describe("going back after an update that failed", () => {
   it("prunes nothing, so the release before stays", async () => {
     const { io, asked } = box({
@@ -390,6 +423,15 @@ describe("starting one", () => {
     );
   });
 
+  it("applies the setup with the box image of the release the box runs, for the stacks it is handed", async () => {
+    const { io, asked } = starting();
+    expect(await start("apply", { ...ENV, BOX_UIS: "control dccex" }, io)).toBeNull();
+    expect(asked.some((line) => line.startsWith("fetch"))).toBe(false);
+    expect(asked.at(-1)).toBe(
+      `${RUN.replace("BOX_UIS=control jmri", "BOX_UIS=control dccex")} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs apply ${OLD} ${OLD}`,
+    );
+  });
+
   it("says the new one is starting before its container runs, so the page shows no earlier one", async () => {
     const { io, asked, files } = starting({ state: "exited\n" });
     expect(await start("update", ENV, io)).toBeNull();
@@ -414,7 +456,7 @@ describe("starting one", () => {
 
   it("is refused while one runs", async () => {
     const { io, asked } = starting({ state: "running\n" });
-    expect(await start("update", ENV, io)).toBe("An update or going back is running.");
+    expect(await start("update", ENV, io)).toBe("The box is already updating, going back or applying the setup.");
     expect(asked).toHaveLength(1);
   });
 
@@ -422,5 +464,8 @@ describe("starting one", () => {
     expect(await start("update", ENV, starting({ latest: OLD }).io)).toBe("This box runs the latest release.");
     expect(await start("update", ENV, starting({ latest: null }).io)).toBe("This box runs the latest release.");
     expect(await start("back", ENV, starting().io)).toBe("There is no release to go back to.");
+    expect(await start("apply", ENV, starting({ record: "" }).io)).toBe(
+      "This box runs no release yet, so there is none to apply the setup at.",
+    );
   });
 });

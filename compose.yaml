@@ -183,9 +183,10 @@ services:
   # The box's own requests: `GET /box` and `POST /box/off`, whether it can be
   # turned off from here and turning it off, which a UI asks and the
   # installation answers (ADR-0005); the status page at `/box/` with what
-  # it shows and offers (#65 decisions 5 to 7); and starting an update or
-  # going back, which `rails49-update` does outside this project from the
-  # target release's image of this service (ADR-0006). Stock node with
+  # it shows and offers (#65 decisions 5 to 7); and starting an update,
+  # going back or applying the setup of stacks and devices (#69), which
+  # `rails49-update` does outside this project from the target release's
+  # image of this service (ADR-0006). Stock node with
   # `box/`, `look/` and the Docker CLI in it (`box/Dockerfile`), named by its
   # commit as the page is.
   #
@@ -207,16 +208,21 @@ services:
       BOX_DOMAIN: ${BOX_DOMAIN?start this with --env-file /etc/rails49/box.env}
       BOX_UIS: ${BOX_UIS}
     # The socket, through which the status page reads the stacks and the
-    # update container is started. The box's settings, read only: the log
-    # bundle takes `box.env` and each stack's file by name, and never
-    # `acme.env`. `/var/lib/rails49`, which holds the releases, the record,
-    # the progress of an update and the last check for a new release. The
-    # hostname names a box with no certificate, as on the page.
+    # update container is started. The box's settings, which the setup on the
+    # status page writes: `BOX_UIS` in `box.env` and the device lines in
+    # `dccex.env` and `occupancy.env`. The log bundle takes `box.env` and each
+    # stack's file by name, and never `acme.env`. `/var/lib/rails49`, which
+    # holds the releases, the record, the progress of an update and the last
+    # check for a new release. The hostname names a box with no certificate,
+    # as on the page. The box's `/dev`, read only, where the setup lists the
+    # stations under `serial/by-id` and the cameras under `v4l/by-id`; under
+    # `/host` because the container's own `/dev` is Docker's.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/rails49:/etc/rails49:ro
+      - /etc/rails49:/etc/rails49
       - /var/lib/rails49:/var/lib/rails49
       - /etc/hostname:/host/hostname:ro
+      - /dev:/host/dev:ro
     command:
       - node
       - /box/server.mjs

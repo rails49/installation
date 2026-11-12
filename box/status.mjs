@@ -162,17 +162,16 @@ export async function status(env, io) {
     );
   }
 
-  // The update or going back that ran last, from its progress file, and
+  // The update, going back or applying that ran last, from its progress file, and
   // whether its container runs.
-  /** @type {{ action: "update" | "back", from: string, to: string, started: string, step: string, finished: string | null, passed: boolean | null, failure: string | null } | null} */
+  /** @type {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, finished: string | null, passed: boolean | null, failure: string | null } | null} */
   const progress = parse(await io.read(PROGRESS));
   const updater = containers.find((c) => c.Name === "/rails49-update");
   const updating = progress && { ...progress, running: updater?.State.Status === "running" };
   if (updating && !updating.running) {
     if (updating.finished === null) {
-      const what = updating.action === "update" ? "update to" : "going back to";
       failures.push(
-        `The ${what} ${updating.to} stopped before it finished, at: ${updating.step} Its log is in the log bundle.`,
+        `${named(updating.action, updating.to).stopped} stopped before it finished, at: ${updating.step} Its log is in the log bundle.`,
       );
     } else if (updating.failure) {
       failures.push(updating.failure);
@@ -251,6 +250,16 @@ export async function status(env, io) {
     failures,
     notes,
   };
+}
+
+/** How a sentence names each action, and its end.
+ *  @param {"update" | "back" | "apply"} action @param {string} to */
+export function named(action, to) {
+  return {
+    update: { stopped: `The update to ${to}`, after: "the update" },
+    back: { stopped: `The going back to ${to}`, after: "going back" },
+    apply: { stopped: `Applying the setup at ${to}`, after: "applying the setup" },
+  }[action];
 }
 
 /** @param {unknown} error */

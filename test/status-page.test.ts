@@ -31,6 +31,25 @@ const STATUS = {
   back: "2026.10.2",
   failures: ["control is restarting.", "A <script> & more."],
   notes: ["control runs a local build of `1c3f69b`, not release 2026.11.0."],
+  setup: {
+    uis: ["control", "jmri"],
+    devices: [
+      {
+        field: "station",
+        what: "command station",
+        none: "/dev/serial/by-id/none",
+        current: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",
+        found: ["/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", "/dev/serial/by-id/usb-2341_Mega-if00"],
+      },
+      {
+        field: "camera",
+        what: "camera",
+        none: "/dev/v4l/by-id/none",
+        current: "/dev/v4l/by-id/usb-away-video-index0",
+        found: [],
+      },
+    ],
+  },
 };
 
 /** STATUS while an update to 2026.11.1 runs. */
@@ -60,6 +79,10 @@ const PLAIN = {
   back: null,
   failures: [],
   notes: [],
+  setup: {
+    uis: [],
+    devices: STATUS.setup.devices.map((device) => ({ ...device, current: null, found: [] })),
+  },
 };
 
 const page = render(STATUS);
@@ -154,8 +177,8 @@ describe("the status page", () => {
   });
 
   it("offers neither on a box with no newer release and nothing to go back to", () => {
-    expect(plain.match(/<form/g)).toHaveLength(1);
-    expect(plain).not.toContain("stops the railroad");
+    expect(plain).not.toMatch(/action="\/box\/(update|back)"/);
+    expect(plain).not.toContain("Updating or going back stops the railroad");
   });
 
   it("offers going back alone when there is no newer release", () => {
@@ -178,7 +201,7 @@ describe("the status page", () => {
   it("shows the disk, the address and Docker", () => {
     expect(items(page)).toMatchObject({
       "Disk free": "20.0 GB of 64.0 GB",
-      Address: "192.168.1.20",
+      Address: "192.168.1.20. Reserve this address for the box in your router.",
       "Docker Engine": "29.1.3, release tested on 29.1.3 and 29.0.4",
       "Log driver": "local",
     });
@@ -207,4 +230,73 @@ describe("the status page", () => {
   it("offers the log bundle as a download", () => {
     expect(page).toContain('<a href="/box/bundle" download>Download the log bundle</a>');
   });
+
+  it("says to reserve the box's address in the router", () => {
+    expect(items(page).Address).toBe("192.168.1.20. Reserve this address for the box in your router.");
+    expect(items(render({ ...STATUS, address: null })).Address).toBe("none");
+  });
 });
+
+describe("the setup on the status page", () => {
+  /** The form, from its tag to its end. */
+  const setup = (html: string) => html.match(/<form method="post" action="\/box\/setup"[\s\S]*?<\/form>/)?.[0] ?? "";
+
+  it("offers control, dccex, jmri and occupancy in that order, the declared ones ticked", () => {
+    const boxes = [...setup(page).matchAll(/<input type="checkbox" name="ui" value="(\w+)"( checked)?>/g)].map(
+      ([, value, checked]) => `${value}${checked ? " ticked" : ""}`,
+    );
+    expect(boxes).toEqual(["control ticked", "dccex", "jmri ticked", "occupancy"]);
+    expect(setup(plain)).not.toContain("checked");
+  });
+
+  it("says why ticking any of the others ticks control, and loads the script that ticks it", () => {
+    expect(setup(page)).toContain(
+      "<p>Ticking dccex, jmri or occupancy ticks control too: dccex and occupancy dial its broker, and JMRI reads <code>TC49_STORE</code> from <code>control.env</code>.</p>",
+    );
+    expect(page).toContain('<script type="module" src="/box/tick.js"></script>');
+  });
+
+  it("offers each station plugged in, or none, with the one dccex.env names chosen", () => {
+    expect(setup(page)).toContain(
+      [
+        '<select name="station">',
+        '<option value="/dev/serial/by-id/none">none</option>',
+        '<option value="/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0" selected>usb-1a86_USB_Serial-if00-port0</option>',
+        '<option value="/dev/serial/by-id/usb-2341_Mega-if00">usb-2341_Mega-if00</option>',
+        "</select>",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps a device named by hand that is not plugged in, and says when none is", () => {
+    expect(setup(page)).toContain(
+      [
+        '<select name="camera">',
+        '<option value="/dev/v4l/by-id/none">none</option>',
+        '<option value="/dev/v4l/by-id/usb-away-video-index0" selected>usb-away-video-index0, not plugged in</option>',
+        "</select>",
+      ].join("\n"),
+    );
+    expect(setup(page)).toContain("<p>No camera is plugged in.</p>");
+    expect(setup(page)).not.toContain("No command station is plugged in.");
+    expect(setup(plain)).toContain('<option value="/dev/serial/by-id/none" selected>none</option>');
+    expect(setup(plain)).toContain("<p>No command station is plugged in.</p>");
+  });
+
+  it("says that applying stops the railroad before the button", () => {
+    const form = setup(page);
+    const stops = form.indexOf("<p>Applying stops the railroad for about a minute.</p>");
+    expect(stops).toBeGreaterThan(-1);
+    expect(form.indexOf("<button>Apply</button>")).toBeGreaterThan(stops);
+  });
+
+  it("is not offered while an update, going back or applying runs, which the page says", () => {
+    expect(setup(render(UPDATING))).toBe("");
+    const applying = render({
+      ...UPDATING,
+      updating: { ...UPDATING.updating, action: "apply" as const, to: "2026.11.0", step: "Stopping dccex." },
+    });
+    expect(applying).toContain('<p class="updating">Applying the setup: Stopping dccex.</p>');
+  });
+});
+
