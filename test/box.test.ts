@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { handle } from "../box/server.mjs";
+import { offerPrereleases } from "../box/setup.mjs";
 
 const HOST = "control.example.org";
 
@@ -17,7 +18,16 @@ const STATUS = {
   address: "192.168.1.20",
   release: null,
   stacks: [{ stack: "installation", state: "running", commit: null, local_build: true }],
-  update: { latest: null, available: false, newer: false, checked: null, succeeded: null, could_not_check: false },
+  update: {
+    latest: null,
+    prerelease: false,
+    prereleases: false,
+    available: false,
+    newer: false,
+    checked: null,
+    succeeded: null,
+    could_not_check: false,
+  },
   disk: { free: 20e9, total: 64e9 },
   docker: { version: "29.1.3", tested: [], log_driver: "local" },
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
@@ -31,17 +41,28 @@ const STATUS = {
 
 /** A box whose PID 1 has this name, counting the times it is turned off and
  *  the times it is asked to check for a release, and recording each update
- *  or going back it is asked to start. `refusal` is why it refuses to. */
+ *  or going back it is asked to start. `refusal` is why it refuses to.
+ *  `env` is its `box.env`, and `checkedWith` what that held at each check. */
 function box(pid1: string, refusal: string | null = null) {
   const counted = {
     pid1,
     turnedOff: 0,
     checked: 0,
+    env: "# the box\nBOX_DOMAIN=example.org\nBOX_UIS=\"control\"\n",
+    checkedWith: [] as string[],
     started: [] as string[],
     applied: [] as string[],
     turnOff: () => void counted.turnedOff++,
     status: async () => STATUS,
-    check: async () => void counted.checked++,
+    check: async () => {
+      counted.checked++;
+      counted.checkedWith.push(counted.env);
+    },
+    prereleases: (on: boolean) =>
+      offerPrereleases(on, {
+        read: async () => counted.env,
+        write: async (_path: string, text: string) => void (counted.env = text),
+      }),
     start: async (action: "update" | "back") => {
       counted.started.push(action);
       return refusal;
@@ -273,6 +294,31 @@ describe("POST /box/check", () => {
   });
 });
 
+describe("POST /box/prereleases", () => {
+  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
+
+  it("writes BOX_PRERELEASES into box.env, keeping every other line, checks, and sends the browser back", async () => {
+    const on = box("systemd");
+    const answer = await ask(on, "POST", "/box/prereleases", form, "prereleases=yes");
+    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    const yes = '# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_PRERELEASES=yes\n';
+    expect(on.checkedWith).toEqual([yes]);
+
+    await ask(on, "POST", "/box/prereleases", form, "prereleases=no");
+    expect(on.env).toBe('# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_PRERELEASES=no\n');
+    expect(on.checked).toBe(2);
+  });
+
+  it("is refused from a page on another origin, and writes and checks nothing", async () => {
+    const on = box("systemd");
+    const before = on.env;
+    const headers = { ...form, origin: "https://evil.example" };
+    expect((await ask(on, "POST", "/box/prereleases", headers, "prereleases=yes")).status).toBe(403);
+    expect(on.env).toBe(before);
+    expect(on.checked).toBe(0);
+  });
+});
+
 describe("POST /box/update and POST /box/back", () => {
   it("start one and send the browser back to the page", async () => {
     const on = box("systemd");
@@ -346,6 +392,7 @@ describe("anything else", () => {
       ["GET", "/box/update"],
       ["GET", "/box/back"],
       ["GET", "/box/setup"],
+      ["GET", "/box/prereleases"],
       ["POST", "/box/status"],
       ["POST", "/box/"],
       ["GET", "/box/server.mjs"],

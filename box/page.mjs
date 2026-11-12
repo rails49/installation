@@ -2,7 +2,8 @@
 // answers (#65 decision 16), with updating and going back on a press
 // (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
 // devices (#69 decisions 9 to 15). It loads look's stylesheet and bundle, its
-// own stylesheet and the script that ticks control from under `/box`.
+// own stylesheet and the script that ticks control from under `/box`. A
+// toggle beside "Check now" has the check take pre-releases (#105).
 
 import { LABELS } from "./setup.mjs";
 import { gb, when } from "./status.mjs";
@@ -40,7 +41,7 @@ export function render(status) {
       ? "Not checked yet."
       : `${
           update.available
-            ? `Release ${escape(update.latest ?? "")} is out.`
+            ? `${update.prerelease ? "Pre-release" : "Release"} ${escape(update.latest ?? "")} is out.`
             : update.newer
               ? `This box runs ${escape(status.release ?? "")}, newer than the latest release, ${escape(update.latest ?? "")}.`
               : update.latest
@@ -53,7 +54,7 @@ export function render(status) {
   const running = status.updating?.running ? status.updating : null;
   const offers = [
     update.available && update.latest
-      ? `<form method="post" action="/box/update"><button>Update to ${escape(update.latest)}</button></form>`
+      ? `<form method="post" action="/box/update"><button>Update to ${update.prerelease ? "pre-release " : ""}${escape(update.latest)}</button></form>`
       : "",
     status.back
       ? `<form method="post" action="/box/back"><button>Go back to ${escape(status.back)}</button></form>`
@@ -117,7 +118,7 @@ ${running ? "" : setup(status.setup, railroad)}
 <dt>Release</dt>
 <dd>${escape(status.release ?? "none")}</dd>
 <dt>Update</dt>
-<dd>${latest} <form method="post" action="/box/check"><button>Check now</button></form></dd>
+<dd>${latest} <form method="post" action="/box/check"><button>Check now</button></form> ${prereleases(update.prereleases)}</dd>
 <dt>Disk free</dt>
 <dd>${gb(status.disk.free)} of ${gb(status.disk.total)}</dd>
 <dt>Address</dt>
@@ -174,6 +175,12 @@ ${checkboxes.join("\n")}
 ${selects.join("\n")}${railroad ? `\n${KEEPS}` : ""}
 <button>Apply</button>
 </form>`;
+}
+
+/** The toggle that has the check take pre-releases or not, showing which.
+ *  @param {boolean} on */
+function prereleases(on) {
+  return `<form method="post" action="/box/prereleases"><button name="prereleases" value="${on ? "no" : "yes"}" aria-pressed="${on}">Pre-releases: ${on ? "on" : "off"}</button></form>`;
 }
 
 /** Bytes as the page says them while an image is pulled: in gigabytes from

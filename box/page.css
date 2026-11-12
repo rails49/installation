@@ -94,4 +94,9 @@ select {
 
 button:hover { background: var(--sl-color-neutral-100); }
 
+button[aria-pressed="true"] {
+  background: var(--sl-color-primary-100);
+  border-color: var(--sl-color-primary-600);
+}
+
 a { color: inherit; }
