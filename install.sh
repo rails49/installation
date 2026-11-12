@@ -5,7 +5,7 @@
 # running (#69 decisions 4 to 8 and 11). Setup is on the status page.
 #
 #     curl -fsSL https://rails49.org/install | sudo sh
-#     curl -fsSL https://rails49.org/install | sudo sh -s -- --release 2026.11.4
+#     curl -fsSL https://github.com/rails49/installation/releases/download/2026.11.5/install.sh | sudo sh -s -- --release 2026.11.5
 #
 # The latest full release, or the one `--release` names, a pre-release
 # included. It refuses on a box that has `/etc/rails49/box.env`, and leaves
