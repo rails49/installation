@@ -52,29 +52,38 @@ if [ -n "$(git ls-files '.github/workflows/*.yml')" ]; then
 fi
 
 # Each compose file three ways. Against the example declaration, which is what
-# a box with a box name writes to `/etc/rails49/box.env`. With `BOX_DOMAIN`
-# empty and no provider, which is a box with no certificate. And with
-# `BOX_DOMAIN` unset, which every file refuses (`${BOX_DOMAIN?...}`) so that a
-# stack started without the declaration stops rather than coming up half
-# named.
+# a box with a box name writes to `/etc/rails49/box.env`, with the
+# `compose.https.yaml` beside it over it, as a box with a box name starts it.
+# With `BOX_DOMAIN` empty and no provider, which is a box with no certificate,
+# and without that file (#92). And with `BOX_DOMAIN` unset, which every file
+# refuses (`${BOX_DOMAIN?...}`) so that a stack started without the
+# declaration stops rather than coming up half named. A `compose.https.yaml`
+# is labels over another file and is not read on its own.
 # shellcheck disable=SC2329  # called through `run`
 refuses_unset_domain() {
   local out
-  if out=$(env -u BOX_DOMAIN docker compose -f "$1" config -q 2>&1); then
+  if out=$(env -u BOX_DOMAIN docker compose "$@" config -q 2>&1); then
     echo "accepted with BOX_DOMAIN unset"
     return 1
   fi
   grep -q BOX_DOMAIN <<<"$out" || { printf '%s\n' "$out"; return 1; }
 }
 
-compose_files=$(git ls-files '*compose*.yml' '*compose*.yaml')
+compose_files=$(git ls-files '*compose*.yml' '*compose*.yaml' | grep -Ev '(^|/)compose\.https\.yaml$')
 for f in $compose_files; do
-  run "compose $f with a box name" \
-    docker compose --env-file box.env.example -f "$f" config -q
+  named=(-f "$f")
+  what=$f
+  https=${f%"${f##*/}"}compose.https.yaml
+  if [ -f "$https" ]; then
+    named+=(-f "$https")
+    what="$f + $https"
+  fi
+  run "compose $what with a box name" \
+    docker compose --env-file box.env.example "${named[@]}" config -q
   run "compose $f with no certificate" \
     env -u BOX_ACME_PROVIDER BOX_DOMAIN= BOX_UIS="control jmri" \
     docker compose -f "$f" config -q
-  run "compose $f refuses no declaration" refuses_unset_domain "$f"
+  run "compose $what refuses no declaration" refuses_unset_domain "${named[@]}"
 done
 
 # The page rendered by the awk that will render it. Everything above reads the

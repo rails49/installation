@@ -50,6 +50,9 @@ function compose(path: string): Node {
 }
 
 const installation: Node = compose("compose.yaml");
+/** The routers that need a box name, started over `compose.yaml` only on a
+ *  box with one (#92). */
+const https: Node = compose("compose.https.yaml");
 const jmri: Node = compose("jmri/compose.yaml");
 
 /** A service's labels, as a map. Both files declare them as a list, which is
@@ -62,6 +65,12 @@ function labels(service: Node): Record<string, string> {
       return [label.slice(0, at), label.slice(at + 1)];
     }),
   );
+}
+
+/** A service's labels on a box with a box name: `compose.yaml`'s with
+ *  `compose.https.yaml`'s over them, as compose merges them. */
+function named(service: string): Record<string, string> {
+  return { ...labels(installation.services[service]), ...labels(https.services?.[service] ?? {}) };
 }
 
 /** The door's script, as compose hands it to `sh`. `$$` is compose's spelling
@@ -279,7 +288,7 @@ describe("the door", () => {
   it("redirects 80 to HTTPS for the box name and the names under it, and no other", () => {
     // An address or a `.local` name gets the page over plain HTTP. `/box`
     // under the box's names redirects too, so this is above `box-http`.
-    const door = labels(installation.services.door);
+    const door = named("door");
     expect(door["traefik.enable"]).toBe("true");
     expect(door["traefik.http.routers.to-https.rule"]).toBe(
       "Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\\.\\Q${BOX_DOMAIN}\\E$$`)",
@@ -297,7 +306,12 @@ describe("the door", () => {
     // A router naming a middleware that is not there is dropped, and the
     // request falls to the next router that matches: for `/websockify`, the
     // one with no check (#58).
-    const others = [installation.services.page, installation.services.box, jmri.services.jmri];
+    const others = [
+      installation.services.page,
+      installation.services.box,
+      ...Object.values<Node>(https.services),
+      jmri.services.jmri,
+    ].filter((service) => service !== https.services.door);
     for (const service of others) {
       const declared = Object.keys(labels(service)).filter((label) =>
         label.startsWith("traefik.http.middlewares."),
@@ -307,14 +321,59 @@ describe("the door", () => {
   });
 });
 
+describe("a box with no certificate", () => {
+  /** Each router a set of labels declares, with its own labels. */
+  function routers(labels: Record<string, string>): Record<string, Record<string, string>> {
+    const by: Record<string, Record<string, string>> = {};
+    for (const [label, value] of Object.entries(labels)) {
+      const match = /^traefik\.http\.routers\.([^.]+)\.(.+)$/.exec(label);
+      if (match) (by[match[1]!] ??= {})[match[2]!] = value;
+    }
+    return by;
+  }
+
+  /** What makes a router one the door drops, with an error, where there is
+   *  no box name: no `websecure`, no `le`, and `Host(``)` for a rule. */
+  const needsName = (router: Record<string, string>) =>
+    (router.entrypoints ?? "").split(",").includes("websecure") ||
+    "tls" in router ||
+    "tls.certresolver" in router ||
+    (router.rule ?? "").includes("BOX_DOMAIN");
+
+  it("is started with no router that needs a box name", () => {
+    // The door would log an error for each at every start (#92).
+    for (const [name, service] of Object.entries<Node>(installation.services)) {
+      for (const [router, declared] of Object.entries(routers(labels(service)))) {
+        expect(needsName(declared), `${name}: ${router}`).toBe(false);
+      }
+    }
+  });
+
+  it("is not handed compose.https.yaml, which holds only routers that need one", () => {
+    // Labels on the services `compose.yaml` declares, and nothing else, so a
+    // box with a box name runs the same containers.
+    for (const [name, service] of Object.entries<Node>(https.services)) {
+      expect(installation.services[name], name).toBeDefined();
+      expect(Object.keys(service), name).toEqual(["labels"]);
+      const declared = routers(labels(service));
+      for (const [router, own] of Object.entries(declared)) {
+        if (own.rule !== undefined || own.entrypoints !== undefined) {
+          expect(needsName(own), `${name}: ${router}`).toBe(true);
+        }
+      }
+    }
+    expect(Object.keys(https)).toEqual(["services"]);
+  });
+});
+
 describe("the page", () => {
   it("is served at the apex of the name in the declaration", () => {
-    expect(labels(installation.services.page)["traefik.http.routers.page.rule"])
+    expect(named("page")["traefik.http.routers.page.rule"])
       .toBe("Host(`${BOX_DOMAIN}`)");
   });
 
   it("is served over TLS with a certificate the door fetches", () => {
-    const page = labels(installation.services.page);
+    const page = named("page");
     expect(page["traefik.http.routers.page.entrypoints"]).toBe("websecure");
     expect(page["traefik.http.routers.page.tls.certresolver"]).toBe("le");
   });
@@ -355,7 +414,7 @@ describe("the page", () => {
 
 describe("the box", () => {
   const box = installation.services.box;
-  const router = labels(box);
+  const router = named("box");
 
   it("runs node:22-slim in the box's own PID namespace", () => {
     // `nsenter` into PID 1 is how it reaches the box's systemd.
@@ -427,12 +486,12 @@ describe("the box", () => {
     // A router with no priority of its own has its rule's length, so a label's
     // `Host` rule would otherwise take `/box` for itself.
     const priority = Number(router["traefik.http.routers.box.priority"]);
-    const others = [installation.services.page, jmri.services.jmri].flatMap((service) =>
-      Object.entries(labels(service))
+    const others = [named("page"), labels(jmri.services.jmri)].flatMap((service) =>
+      Object.entries(service)
         .filter(([label]) => /^traefik\.http\.routers\.[^.]+\.rule$/.test(label))
         .filter(([label]) => label !== "traefik.http.routers.to-https.rule")
         .map(([label, rule]) => {
-          const set = labels(service)[label.replace(/rule$/, "priority")];
+          const set = service[label.replace(/rule$/, "priority")];
           return set === undefined ? rule.length : Number(set);
         }),
     );
