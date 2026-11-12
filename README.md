@@ -295,14 +295,16 @@ Ubuntu Server or Raspberry Pi OS, on the network the box will serve:
 curl -fsSL https://rails49.org/install | sudo sh
 ```
 
-That installs the latest release. Another, a pre-release included, is named:
+That installs the latest release. Another, a pre-release included, is
+installed by its own `install.sh`, named with its number:
 
 ```bash
-curl -fsSL https://rails49.org/install | sudo sh -s -- --release 2026.11.4
+curl -fsSL https://github.com/rails49/installation/releases/download/2026.11.5/install.sh | sudo sh -s -- --release 2026.11.5
 ```
 
 `https://rails49.org/install` redirects to the `install.sh` of the latest
-release on GitHub. In order, the script:
+release on GitHub, so it would install a pre-release with an older script. In
+order, the script:
 
 1. Stops unless it runs as root on a computer with apt. On a box already
    installed, one with `/etc/rails49/box.env`, it stops and prints the status
@@ -610,8 +612,14 @@ Ubuntu 26.04 and a Raspberry Pi 4 and run trains on it for as long as it takes
 ([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
 8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
 Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
-`--release <number>`. Each has to reach `/box/` at both printed addresses,
-have every stack ticked and applied, and pass `scripts/probe.sh`
+the pre-release's own script:
+
+```bash
+curl -fsSL https://github.com/rails49/installation/releases/download/<number>/install.sh | sudo sh -s -- --release <number>
+```
+
+Each has to reach `/box/` at both printed addresses, have every stack ticked
+and applied, and pass `scripts/probe.sh`
 ([#69](https://github.com/rails49/installation/issues/69) decision 18).
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
