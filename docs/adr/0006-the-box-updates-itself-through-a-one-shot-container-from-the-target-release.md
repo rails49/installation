@@ -3,6 +3,10 @@
 *Amends [ADR-0005](0005-the-installation-turns-the-box-off.md): `box` has the
 Docker socket.*
 
+*Extended by [#70](https://github.com/rails49/installation/issues/70) (#69
+decision 20): `box` also mounts `/etc/rails49` read-write and the box's `/dev`
+read-only, at `/host/dev`.*
+
 Resolves [#65](https://github.com/rails49/installation/issues/65) decision 22.
 First run on `gleis49` and `pi49` in
 [#67](https://github.com/rails49/installation/issues/67)'s acceptance, on
