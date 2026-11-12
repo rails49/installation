@@ -10,8 +10,9 @@
 #       -f jmri/compose.yaml up -d --build
 #
 # The installation runs first: this file joins the network that one creates,
-# and compose says so plainly if it is not there. `control` runs first too: it
-# writes `TC49_STORE`, the root of its store, to `/etc/rails49/control.env`.
+# and compose says so plainly if it is not there. `control` need not run: the
+# install script writes `TC49_STORE`, the root of `control`'s store, to
+# `/etc/rails49/control.env` and makes `jmri/` in it (#89).
 
 name: jmri
 
