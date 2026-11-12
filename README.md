@@ -644,7 +644,7 @@ op read "op://rails49/rails49-release/credential" |
 ```
 
 **2. Check it by hand.** On a 2018 Mac mini with Ubuntu 26.04 and a Raspberry
-Pi 4, which are installed already, turn "Pre-releases" on on the status page
+Pi 4, which are installed already, turn on "Pre-releases" on the status page
 and press "Update to pre-release <number>". Run trains on it for as long as it
 takes ([rails49/.github#70](https://github.com/rails49/.github/issues/70)
 decision 8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
