@@ -45,7 +45,9 @@ _Avoid_: subdomain, route, service, app name
 The box's statement of what it is called and what it serves, at the fixed path
 `/etc/rails49/box.env`. Every stack on the box is started against it, so two
 stacks cannot come to different answers about the box's name. It holds no
-secret; see [the box declaration](README.md#the-box-declaration).
+secret. Written by the install script, then by the status page; see
+[the box declaration](README.md#the-box-declaration) and
+[#69](https://github.com/rails49/installation/issues/69).
 _Avoid_: config, env file, settings, environment
 
 **Installation**:
@@ -88,8 +90,16 @@ As in [`.github`'s glossary](https://github.com/rails49/.github/blob/main/GLOSSA
 The page at `/box/`, on every name and port the door serves, that says what
 the box runs and whether it is well: each stack's state and commit, the
 release, whether a newer one is out, and the box's disk, address and
-certificate. Not the page, which lists the labels and says nothing about state; see [#65](https://github.com/rails49/installation/issues/65).
-_Avoid_: dashboard, admin page, box page
+certificate. It also lets anyone on the LAN choose the stacks the box runs
+and their devices. Not the page, which lists the labels and says nothing about state; see [#65](https://github.com/rails49/installation/issues/65)
+and [#69](https://github.com/rails49/installation/issues/69).
+_Avoid_: dashboard, admin page, box page, setup page
+
+**Install script**:
+The one command that makes a Debian-family Linux computer a box with no
+certificate that serves nothing yet. Run again on a box, it refuses; see
+[#69](https://github.com/rails49/installation/issues/69).
+_Avoid_: installer, bootstrap, setup script
 
 **Turning the box off**:
 The box stopping every stack on it and powering down, so its plug can be
