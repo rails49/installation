@@ -393,6 +393,12 @@ describe("updating and going back", () => {
     expect(box.back).toBe("2026.11.0");
   });
 
+  it("offers no going back after going back, which would move the box forward", async () => {
+    const back = `${RECORD}2026-11-12T09:00:00Z  2026.11.0  ->  2026.10.2  passed\n`;
+    const box = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": back } }));
+    expect(box.back).toBeNull();
+  });
+
   it("is the step one that runs is at, while its container runs", async () => {
     const box = await status(
       NAMED,

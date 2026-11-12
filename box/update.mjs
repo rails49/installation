@@ -144,7 +144,8 @@ export async function run(action, from, to, env, io) {
           return was && was.State.StartedAt !== c.State.StartedAt ? [`${name} restarted`] : [];
         });
       if (problems.length) {
-        throw new Failure(`${stack.stack} is not running 60 seconds after the update: ${problems.join(", ")}.`);
+        const after = action === "update" ? "the update" : "going back";
+        throw new Failure(`${stack.stack} is not running 60 seconds after ${after}: ${problems.join(", ")}.`);
       }
     }
 
@@ -156,13 +157,15 @@ export async function run(action, from, to, env, io) {
       throw new Failure(`The probe got answers it did not want: ${wrong.join("; ")}`);
     }
   } catch (error) {
-    if (!(error instanceof Failure)) throw error;
-    failure = error.message;
+    const what = action === "update" ? "update to" : "going back to";
+    failure = error instanceof Failure ? error.message : `The ${what} ${to} stopped: ${sentence(error)}`;
   }
 
   const passed = failure === null;
   await io.append(RECORD, `${started.slice(0, 19)}Z  ${from}  ->  ${to}  ${passed ? "passed" : "failed"}\n`);
-  if (passed) {
+  // Only after an update: going back after a failed one would otherwise
+  // leave the release before it with no files and no images.
+  if (passed && action === "update") {
     await progress("Removing what neither release uses.");
     await prune([to, from].filter((release) => release !== "-"), ran, io);
   }

@@ -84,8 +84,9 @@ export async function currentRelease(read) {
 
 /**
  * The release going back returns to: the one the box ran before the last
- * line of the record. Null on a box never updated, and after going back to
- * the release the box already ran.
+ * line of the record. Null on a box never updated, and after a line that
+ * passed and moved the box to the same release or an older one, which was
+ * going back: there is one step back.
  *
  * @param {(path: string) => Promise<string | null>} read
  */
@@ -93,9 +94,17 @@ export async function backTo(read) {
   const record = (await read(RECORD)) ?? "";
   const last = [...record.matchAll(/^\S+\s+(\S+)\s+->\s+(\S+)\s+(passed|failed)\s*$/gm)].at(-1);
   if (!last) return null;
-  const [, from, to, result] = last;
-  if (from === "-" || (result === "passed" && from === to)) return null;
-  return from ?? null;
+  const [, from = "-", to = "-", result] = last;
+  if (from === "-" || (result === "passed" && !older(from, to))) return null;
+  return from;
+}
+
+/** Whether release `a` is older than release `b`, by year, month and count.
+ *  @param {string} a @param {string} b */
+function older(a, b) {
+  const [x, y] = [a, b].map((release) => release.split(".").map(Number));
+  const i = x.findIndex((part, j) => part !== y[j]);
+  return i !== -1 && x[i] < y[i];
 }
 
 /**
