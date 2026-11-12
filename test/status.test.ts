@@ -360,3 +360,61 @@ describe("the box", () => {
     expect((await status(PLAIN, io())).name).toBe("pi49");
   });
 });
+
+describe("updating and going back", () => {
+  const PROGRESS = "/var/lib/rails49/update.json";
+  const progress = (fields: object) =>
+    JSON.stringify({
+      action: "update",
+      from: "2026.11.0",
+      to: "2026.11.1",
+      started: "2026-11-12T09:58:00.000Z",
+      step: "Starting control.",
+      finished: null,
+      passed: null,
+      failure: null,
+      ...fields,
+    });
+  const UPDATER = { ...container("rails49-update", ""), Config: { Labels: {} } };
+
+  it("is nothing on a box never updated", async () => {
+    const box = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
+    expect(box.updating).toBeNull();
+    expect(box.back).toBeNull();
+  });
+
+  it("offers going back to the release the box ran before the last update", async () => {
+    expect((await status(NAMED, io())).back).toBe("2026.10.2");
+  });
+
+  it("offers going back after an update that failed, to the release it left", async () => {
+    const failed = `${RECORD}2026-11-12T09:00:00Z  2026.11.0  ->  2026.11.1  failed\n`;
+    const box = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": failed } }));
+    expect(box.back).toBe("2026.11.0");
+  });
+
+  it("is the step one that runs is at, while its container runs", async () => {
+    const box = await status(
+      NAMED,
+      io({ files: { [PROGRESS]: progress({}) }, containers: [...CONTAINERS, UPDATER] }),
+    );
+    expect(box.updating).toMatchObject({ action: "update", to: "2026.11.1", step: "Starting control.", running: true });
+    expect(box.failures).toEqual([]);
+  });
+
+  it("says in a sentence why the last one failed", async () => {
+    const failure = "Could not pull control's images for release 2026.11.1: manifest unknown.";
+    const finished = progress({ finished: "2026-11-12T09:59:00.000Z", passed: false, failure, step: "Failed." });
+    const box = await status(NAMED, io({ files: { [PROGRESS]: finished } }));
+    expect(box.updating).toMatchObject({ passed: false, running: false });
+    expect(box.failures).toEqual([failure]);
+  });
+
+  it("says when one stopped before it finished", async () => {
+    const stopped = { ...UPDATER, State: { Status: "exited" } };
+    const box = await status(NAMED, io({ files: { [PROGRESS]: progress({}) }, containers: [...CONTAINERS, stopped] }));
+    expect(box.failures).toEqual([
+      "The update to 2026.11.1 stopped before it finished, at: Starting control. Its log is in the log bundle.",
+    ]);
+  });
+});

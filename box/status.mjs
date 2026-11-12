@@ -26,22 +26,41 @@
  */
 
 /** Each stack the box can run: the label in `BOX_UIS` that declares it, its
- *  name in a release's manifest, and its compose project. The installation
- *  always runs. In the order the stacks are brought up (decision 8). */
+ *  name in a release's manifest, its compose project, its compose files in
+ *  the release's box files, and its settings beside `box.env` (decision 14).
+ *  The installation always runs. In the order the stacks are brought up
+ *  (decision 8). JMRI is the installation's, and reads control's settings.
+ *
+ *  @type {{ label: string | null, stack: string, project: string, files: string[], env: string | null }[]} */
 export const STACKS = [
-  { label: null, stack: "installation", project: "installation" },
-  { label: "control", stack: "control", project: "tc49" },
-  { label: "dccex", stack: "dccex", project: "dccex" },
-  { label: "jmri", stack: "jmri", project: "jmri" },
-  { label: "occupancy", stack: "occupancy-service", project: "occupancy" },
+  { label: null, stack: "installation", project: "installation", files: ["installation/compose.yaml"], env: null },
+  { label: "control", stack: "control", project: "tc49", files: ["control/compose.yaml"], env: "control.env" },
+  {
+    label: "dccex",
+    stack: "dccex",
+    project: "dccex",
+    files: ["dccex/compose.yaml", "dccex/compose.box.yaml"],
+    env: "dccex.env",
+  },
+  { label: "jmri", stack: "jmri", project: "jmri", files: ["installation/jmri/compose.yaml"], env: "control.env" },
+  {
+    label: "occupancy",
+    stack: "occupancy-service",
+    project: "occupancy",
+    files: ["occupancy-service/compose.yaml"],
+    env: "occupancy.env",
+  },
 ];
 
 export const DEPLOYS = "/var/lib/rails49/deploys";
 export const RECORD = `${DEPLOYS}/installation`;
 export const CHECK = "/var/lib/rails49/check.json";
+export const RELEASES = "/var/lib/rails49/releases";
+/** What the update or going back that ran last is doing, or did. */
+export const PROGRESS = "/var/lib/rails49/update.json";
 
 /** @param {string} release */
-export const manifestPath = (release) => `/var/lib/rails49/releases/${release}/manifest.json`;
+export const manifestPath = (release) => `${RELEASES}/${release}/manifest.json`;
 
 /** The stacks `BOX_UIS` declares, the installation first.
  *  @param {string} uis */
@@ -61,6 +80,22 @@ export async function currentRelease(read) {
   const record = (await read(RECORD)) ?? "";
   const passed = [...record.matchAll(/->\s+(\S+)\s+passed\s*$/gm)];
   return passed.at(-1)?.[1] ?? null;
+}
+
+/**
+ * The release going back returns to: the one the box ran before the last
+ * line of the record. Null on a box never updated, and after going back to
+ * the release the box already ran.
+ *
+ * @param {(path: string) => Promise<string | null>} read
+ */
+export async function backTo(read) {
+  const record = (await read(RECORD)) ?? "";
+  const last = [...record.matchAll(/^\S+\s+(\S+)\s+->\s+(\S+)\s+(passed|failed)\s*$/gm)].at(-1);
+  if (!last) return null;
+  const [, from, to, result] = last;
+  if (from === "-" || (result === "passed" && from === to)) return null;
+  return from ?? null;
 }
 
 /**
@@ -117,6 +152,24 @@ export async function status(env, io) {
       `Could not check for a new release. ${succeeded ? `The last check that succeeded was at ${when(succeeded)}.` : "No check has succeeded yet."}`,
     );
   }
+
+  // The update or going back that ran last, from its progress file, and
+  // whether its container runs.
+  /** @type {{ action: "update" | "back", from: string, to: string, started: string, step: string, finished: string | null, passed: boolean | null, failure: string | null } | null} */
+  const progress = parse(await io.read(PROGRESS));
+  const updater = containers.find((c) => c.Name === "/rails49-update");
+  const updating = progress && { ...progress, running: updater?.State.Status === "running" };
+  if (updating && !updating.running) {
+    if (updating.finished === null) {
+      const what = updating.action === "update" ? "update to" : "going back to";
+      failures.push(
+        `The ${what} ${updating.to} stopped before it finished, at: ${updating.step} Its log is in the log bundle.`,
+      );
+    } else if (updating.failure) {
+      failures.push(updating.failure);
+    }
+  }
+  const back = await backTo(io.read);
 
   const disk = await io.disk();
   if (disk.free < disk.total / 10) failures.push(`The disk has ${gb(disk.free)} free of ${gb(disk.total)}.`);
@@ -180,6 +233,8 @@ export async function status(env, io) {
     release,
     stacks,
     update,
+    updating,
+    back,
     disk,
     docker,
     certificate,

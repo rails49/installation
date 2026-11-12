@@ -1,5 +1,6 @@
 // The status page at `/box/`, rendered from the status `GET /box/status`
-// answers (#65 decision 16). It loads look's bundle and its stylesheet from
+// answers (#65 decision 16), with updating and going back on a press
+// (decisions 2, 10 and 13). It loads look's bundle and its stylesheet from
 // under `/box`.
 
 import { gb, when } from "./status.mjs";
@@ -29,6 +30,23 @@ export function render(status) {
       ? "Not checked yet."
       : `${update.available ? `Release ${escape(update.latest ?? "")} is out.` : update.latest ? "This box runs the latest release." : "No release yet."} Checked at ${when(update.checked)}.`;
 
+  // While one runs the page says what it is doing and reloads itself; the
+  // door and `box` are recreated on the way, so a reload may find neither.
+  const running = status.updating?.running ? status.updating : null;
+  const offers = [
+    update.available && update.latest
+      ? `<form method="post" action="/box/update"><button>Update to ${escape(update.latest)}</button></form>`
+      : "",
+    status.back
+      ? `<form method="post" action="/box/back"><button>Go back to ${escape(status.back)}</button></form>`
+      : "",
+  ].filter(Boolean);
+  const press = running
+    ? `<p class="updating">${running.action === "update" ? "Updating" : "Going back"} to ${escape(running.to)}: ${escape(running.step)}</p>`
+    : offers.length
+      ? `<section class="update">\n<p>Updating or going back stops the railroad for about a minute.</p>\n${offers.join("\n")}\n</section>`
+      : "";
+
   const tested = docker.tested.length ? `, release tested on ${docker.tested.map(escape).join(" and ")}` : "";
 
   // Only a box with a box name has a certificate and a name to resolve.
@@ -44,7 +62,7 @@ export function render(status) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">${running ? '\n<meta http-equiv="refresh" content="5">' : ""}
 <title>Box status: ${escape(status.name)}</title>
 <script type="module" src="/box/look/look.bundle.js"></script>
 <link rel="stylesheet" href="/box/page.css">
@@ -55,6 +73,7 @@ export function render(status) {
 <main>
 ${failures}
 ${notes}
+${press}
 <table>
 <thead><tr><th>Stack</th><th>State</th><th>Commit</th></tr></thead>
 <tbody>
