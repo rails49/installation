@@ -9,11 +9,11 @@ import { describe, expect, it } from "vitest";
 
 import { handle } from "../box/server.mjs";
 
-const HOST = "control.gleis49.org";
+const HOST = "control.example.org";
 
 /** The status a box answers with, as `status()` would gather it. */
 const STATUS = {
-  name: "gleis49.org",
+  name: "example.org",
   address: "192.168.1.20",
   release: null,
   stacks: [{ stack: "installation", state: "running", commit: null, local_build: true }],
@@ -50,7 +50,7 @@ function box(pid1: string, refusal: string | null = null) {
       counted.applied.push(body);
       return refusal;
     },
-    bundle: async () => ({ name: "gleis49.org-20261112T1000.tar.gz", body: Buffer.from("tar") }),
+    bundle: async () => ({ name: "example.org-20261112T1000.tar.gz", body: Buffer.from("tar") }),
   };
   return counted;
 }
@@ -110,7 +110,7 @@ describe("a request from a page", () => {
     for (const origin of [
       "https://evil.example",
       `https://${HOST}:8443`,
-      `https://jmri.gleis49.org`,
+      `https://jmri.example.org`,
       "null",
     ]) {
       const on = box("systemd");
@@ -166,13 +166,13 @@ describe("the door's origin check, GET /origin", () => {
 
   it("admits a page on the origin the request arrived at, on 443 and on a UI port", async () => {
     expect((await check(HOST, `https://${HOST}`)).status).toBe(200);
-    expect((await check("gleis49.org:8082", "http://gleis49.org:8082")).status).toBe(200);
+    expect((await check("example.org:8082", "http://example.org:8082")).status).toBe(200);
     expect((await check("192.168.1.20:8081", "http://192.168.1.20:8081")).status).toBe(200);
     expect((await check("shed.local:8083", "http://shed.local:8083")).status).toBe(200);
   });
 
   it("refuses a page on another host", async () => {
-    for (const origin of ["https://evil.example", "https://gleis49.org", "http://192.168.1.21:8081", "null"]) {
+    for (const origin of ["https://evil.example", "https://example.org", "http://192.168.1.21:8081", "null"]) {
       expect(await check(HOST, origin), origin).toMatchObject({
         status: 403,
         body: "refused: a page on another origin",
@@ -181,8 +181,8 @@ describe("the door's origin check, GET /origin", () => {
   });
 
   it("refuses a page on the same host and another port", async () => {
-    expect((await check("gleis49.org:8082", "http://gleis49.org:8081")).status).toBe(403);
-    expect((await check("gleis49.org:8082", "https://gleis49.org")).status).toBe(403);
+    expect((await check("example.org:8082", "http://example.org:8081")).status).toBe(403);
+    expect((await check("example.org:8082", "https://example.org")).status).toBe(403);
     expect((await check(HOST, `http://${HOST}:8081`)).status).toBe(403);
   });
 
@@ -203,7 +203,7 @@ describe("GET /box/", () => {
   it("answers the status page as HTML", async () => {
     const answer = await ask(box("systemd"), "GET", "/box/");
     expect(answer).toMatchObject({ status: 200, type: "text/html; charset=utf-8" });
-    expect(String(answer.body)).toContain("gleis49.org");
+    expect(String(answer.body)).toContain("example.org");
   });
 
   it("serves the page's stylesheet and look's bundle under /box", async () => {
@@ -221,7 +221,7 @@ describe("GET /box/bundle", () => {
     expect(answer).toMatchObject({
       status: 200,
       type: "application/gzip",
-      headers: { "content-disposition": 'attachment; filename="gleis49.org-20261112T1000.tar.gz"' },
+      headers: { "content-disposition": 'attachment; filename="example.org-20261112T1000.tar.gz"' },
     });
     expect(String(answer.body)).toBe("tar");
   });

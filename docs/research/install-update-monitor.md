@@ -152,7 +152,7 @@ The name also gives one origin per UI under one readable name, and the same name
 
 #### A label under a zone the project runs
 
-The shape `dev.rails49.org` already is (org ADR-0011). It needs:
+One development box is named this way today (org ADR-0011). It needs:
 
 1. DNS records for the label and its UIs, holding the box's LAN address, written when the box registers.
 2. A way for the box to answer the DNS-01 challenge without a credential for the whole zone. The project runs an acme-dns server, which answers ACME DNS challenges through a small API so that no zone credential leaves the project [S54]. Each box name gets a CNAME of `_acme-challenge` to its acme-dns account, and Traefik's ACME client supports it as provider `acmedns` [S55]. A small function that writes the TXT record for a box that proves it is that box does the same.

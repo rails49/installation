@@ -87,8 +87,8 @@ function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: 
   };
 }
 
-const NAMED = { BOX_DOMAIN: "gleis49.org", BOX_UIS: "control", hostname: "gleis49" };
-const PLAIN = { BOX_DOMAIN: "", BOX_UIS: "control", hostname: "pi49" };
+const NAMED = { BOX_DOMAIN: "example.org", BOX_UIS: "control", hostname: "box" };
+const PLAIN = { BOX_DOMAIN: "", BOX_UIS: "control", hostname: "box" };
 
 describe("the stacks", () => {
   it("are the installation and one per declared label, each with its state and commit", async () => {
@@ -302,7 +302,7 @@ describe("the certificate", () => {
     const status_ = await status(NAMED, io({ certificate }));
     expect(status_.certificate).toEqual({ expires: "2027-11-01T00:00:00.000Z", valid: false });
     expect(status_.failures).toEqual([
-      "The certificate the door presents for gleis49.org is not valid: Hostname/IP does not match certificate's altnames.",
+      "The certificate the door presents for example.org is not valid: Hostname/IP does not match certificate's altnames.",
     ]);
   });
 
@@ -314,7 +314,7 @@ describe("the certificate", () => {
       error: null,
     });
     const { failures } = await status(NAMED, io({ certificate }));
-    expect(failures).toEqual(["The certificate for gleis49.org expires on 2026-12-02 and has not been renewed."]);
+    expect(failures).toEqual(["The certificate for example.org expires on 2026-12-02 and has not been renewed."]);
   });
 
   it("is a failure when the door cannot be reached", async () => {
@@ -324,7 +324,7 @@ describe("the certificate", () => {
     const status_ = await status(NAMED, io({ certificate }));
     expect(status_.certificate).toBeNull();
     expect(status_.failures).toEqual([
-      "Could not read the certificate the door presents for gleis49.org: connect ECONNREFUSED 172.18.0.2:443.",
+      "Could not read the certificate the door presents for example.org: connect ECONNREFUSED 172.18.0.2:443.",
     ]);
   });
 });
@@ -341,23 +341,23 @@ describe("the box name", () => {
   it("is a failure when it resolves to another address", async () => {
     const { resolves, failures } = await status(NAMED, io({ resolve: async () => ["192.168.1.30"] }));
     expect(resolves).toEqual({ addresses: ["192.168.1.30"], to_this_box: false });
-    expect(failures).toEqual(["gleis49.org resolves to 192.168.1.30, not to this box at 192.168.1.20."]);
+    expect(failures).toEqual(["example.org resolves to 192.168.1.30, not to this box at 192.168.1.20."]);
   });
 
   it("is a failure when it does not resolve", async () => {
     const resolve = async () => {
-      throw Object.assign(new Error("getaddrinfo ENOTFOUND gleis49.org"), { code: "ENOTFOUND" });
+      throw Object.assign(new Error("getaddrinfo ENOTFOUND example.org"), { code: "ENOTFOUND" });
     };
     const { resolves, failures } = await status(NAMED, io({ resolve }));
     expect(resolves).toEqual({ addresses: [], to_this_box: false });
-    expect(failures).toEqual(["gleis49.org does not resolve: getaddrinfo ENOTFOUND gleis49.org."]);
+    expect(failures).toEqual(["example.org does not resolve: getaddrinfo ENOTFOUND example.org."]);
   });
 });
 
 describe("the box", () => {
   it("is named by its box name, or its hostname on a box with no certificate", async () => {
-    expect((await status(NAMED, io())).name).toBe("gleis49.org");
-    expect((await status(PLAIN, io())).name).toBe("pi49");
+    expect((await status(NAMED, io())).name).toBe("example.org");
+    expect((await status(PLAIN, io())).name).toBe("box");
   });
 });
 

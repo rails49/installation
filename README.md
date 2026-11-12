@@ -425,8 +425,8 @@ What is different from a box is below.
 ports, and they are alternatives rather than neighbours.
 
 **The name may be a label.** `BOX_DOMAIN` holds the name the box is reached at.
-On one of our boxes that is a domain bought for it; on the other it is
-`dev.rails49.org`, a label in a zone we already run. Both shapes are supported,
+On one of our boxes that is a domain bought for it; on the other it is a label
+in a zone we already run. Both shapes are supported,
 and both are exercised here rather than only described.
 
 **The records hold `127.0.0.1`.** A development machine moves between networks,
@@ -474,19 +474,22 @@ from a dev machine. Over ssh it runs `git pull`, then `up -d --build`, which
 builds the page and the box on the box under the commit it pulled
 (`installation-page:<commit>`, `installation-box:<commit>`). It refuses a clone
 on the box that is not clean, since its images would be named after a commit
-that is not what was built. It is not the install path, and it names no box:
+that is not what was built. It is not the install path. The box is the
+argument, else `RAILS49_BOX`, else the ssh alias `rails49`, which each
+developer maps to their own box in `~/.ssh/config`:
 
 ```bash
-./deploy.sh ttmetro@gleis49.org
-RAILS49_BOX=ttmetro@gleis49.org ./deploy.sh
+./deploy.sh
+./deploy.sh user@host
+RAILS49_BOX=user@host ./deploy.sh
 ```
 
 Last, it runs the probe from the machine it was started on, which has to be
 on the box's LAN:
 
 ```bash
-scripts/probe.sh ttmetro@gleis49.org
-scripts/probe.sh 192.168.1.20 shed gleis49.org control dccex
+scripts/probe.sh rails49
+scripts/probe.sh 192.0.2.20 box example.org control dccex
 ```
 
 For each label in `BOX_UIS` with a UI port, on every way in —
@@ -595,15 +598,15 @@ op read "op://rails49/rails49-release/credential" |
   gh secret set RELEASE_APP_PRIVATE_KEY --repo rails49/installation
 ```
 
-**2. Check it by hand.** Install the pre-release on `gleis49` and
-`pi49` and run trains on it for as long as it takes
+**2. Check it by hand.** Install the pre-release on a 2018 Mac mini with
+Ubuntu 26.04 and a Raspberry Pi 4 and run trains on it for as long as it takes
 ([rails49/.github#70](https://github.com/rails49/.github/issues/70) decision
 8). Install it as well on a fresh Ubuntu Server on amd64 and a fresh
 Raspberry Pi OS 64-bit, following only [Install](#install) from a phone with
 `--release <number>`. Each has to reach `/box/` at both printed addresses,
 have every stack ticked and applied, and pass `scripts/probe.sh`
 ([#69](https://github.com/rails49/installation/issues/69) decision 18). Add
-`gleis49`'s Docker Engine version (`docker version --format
+the Mac mini's Docker Engine version (`docker version --format
 '{{.Server.Version}}'`) to the release notes.
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as

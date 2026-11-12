@@ -19,7 +19,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
 
-const DOMAIN = "gleis49.org";
+const DOMAIN = "example.org";
 const UIS = ["control", "occupancy", "jmri"];
 /** Declared out of alphabetical order on purpose: the operator wrote this
  *  order and a sort would silently override it. */

@@ -7,14 +7,12 @@
 # On the box it pulls, refuses a clone that is not clean, and builds the page
 # and the box there under the commit it pulled. Nothing is pulled from GHCR.
 #
-#     ./deploy.sh ttmetro@gleis49.org
-#     RAILS49_BOX=ttmetro@gleis49.org ./deploy.sh
+#     ./deploy.sh
+#     ./deploy.sh user@host
+#     RAILS49_BOX=user@host ./deploy.sh
 #
-# The box is an argument or an environment variable and has no default: a
-# repository other operators install must not name the box this project happens
-# to run. `~/.ssh/config` can name it too — `./deploy.sh rails49` works — but
-# nothing here depends on that file, which is personal, is in no repository,
-# and has taken a deploy down by losing a stanza (control#488, control#496).
+# The box is the argument, else `RAILS49_BOX`, else the ssh alias `rails49`,
+# which each developer maps to their own box in `~/.ssh/config`.
 #
 # Last, scripts/probe.sh asks every way into every UI on the box whether it
 # admits the UI's own page and refuses a foreign one, from this machine, which
@@ -25,11 +23,7 @@
 # its own (ADR-0002), and a box that wants it says so once by hand.
 set -euo pipefail
 
-box=${1:-${RAILS49_BOX:-}}
-if [ -z "$box" ]; then
-  echo "usage: ./deploy.sh [user@host]   (or set RAILS49_BOX)" >&2
-  exit 2
-fi
+box=${1:-${RAILS49_BOX:-rails49}}
 
 # An ssh command on a line of its own opens a session, and what came after it
 # would run on this machine instead, so the whole sequence is fed to a shell

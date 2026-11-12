@@ -3,7 +3,7 @@
 # The installation page, rendered to stdout from the template beside this
 # script and the box's declaration in the environment.
 #
-#     BOX_DOMAIN=gleis49.org BOX_UIS="control jmri" ./page/render.sh
+#     BOX_DOMAIN=example.org BOX_UIS="control jmri" ./page/render.sh
 #
 # One item per declared label, in the order the operator declared them; the
 # text is the label. The apex is not a label and is never listed — the page is
