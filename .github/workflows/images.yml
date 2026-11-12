@@ -154,5 +154,6 @@ jobs:
           name: installation-box-files
           path: |
             compose.yaml
+            compose.https.yaml
             jmri/
           if-no-files-found: error

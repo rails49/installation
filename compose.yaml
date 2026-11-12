@@ -6,6 +6,16 @@
 #
 #     docker compose --env-file /etc/rails49/box.env up -d --build
 #
+# and on a box with a box name, `compose.https.yaml` over it:
+#
+#     docker compose --env-file /etc/rails49/box.env \
+#       -f compose.yaml -f compose.https.yaml up -d --build
+#
+# That file holds every router here that needs a box name: on `websecure`,
+# with the `le` resolver, or with the box name in its rule. A box with no
+# certificate has none of those, and the door would log an error for each
+# such router at every start (#92).
+#
 # `--env-file` is how the box's declaration reaches this file. Compose reads it
 # for the labels and for the door's and the page's environment; the door reads
 # `acme.env` beside it for the credential, which no other stack is handed.
@@ -109,24 +119,12 @@ services:
       # Read-only: the provider watches containers and starts none.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - acme:/acme
-    # The redirect on 80 and the origin check are on the door's own labels, so
-    # they hold while `page` or `box` is down. With `box` down the check
-    # answers 500, and every path behind it is refused.
+    # The origin check is on the door's own labels, as is the redirect on 80
+    # in `compose.https.yaml`, so they hold while `page` or `box` is down.
+    # With `box` down the check answers 500, and every path behind it is
+    # refused.
     labels:
       - traefik.enable=true
-      # On 80, the box name and every name under it redirect to HTTPS, `/box`
-      # included, so the priority is above `box-http`'s. An address or a
-      # `.local` name is not matched and gets the page and `/box` over plain
-      # HTTP. `\Q…\E` makes the box name's dots match only dots. On a box with
-      # no certificate the rule is `Host(``)`, which the door refuses: it logs
-      # an error and drops this router.
-      - traefik.http.routers.to-https.rule=Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\.\Q${BOX_DOMAIN}\E$$`)
-      - traefik.http.routers.to-https.priority=200
-      - traefik.http.routers.to-https.entrypoints=web
-      - traefik.http.routers.to-https.service=noop@internal
-      - traefik.http.routers.to-https.middlewares=to-https
-      - traefik.http.middlewares.to-https.redirectscheme.scheme=https
-      - traefik.http.middlewares.to-https.redirectscheme.permanent=true
       # The origin check every UI puts on its websocket and write paths, on
       # HTTPS and on its UI port, as `same-origin@docker`. The door asks
       # `box`'s `/origin` for each request and passes it on only on a 2xx.
@@ -170,10 +168,8 @@ services:
       # This container is on two networks and the docker provider otherwise
       # picks whichever address it finds first (ADR-0004).
       - traefik.docker.network=rails49
-      - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
-      - traefik.http.routers.page.entrypoints=websecure
-      - traefik.http.routers.page.tls.certresolver=le
-      # The page over plain HTTP on 80, at any host. The rule is written out
+      # The page over plain HTTP on 80, at any host; at the box name over
+      # HTTPS in `compose.https.yaml`. The rule is written out
       # because a docker router with none gets `Host(<container name>)`.
       - traefik.http.routers.page-http.rule=PathPrefix(`/`)
       - traefik.http.routers.page-http.entrypoints=web
@@ -231,16 +227,11 @@ services:
       - traefik.docker.network=rails49
       # No `Host`: the same paths on every name the door serves, which is
       # every origin a UI is served from. Above every label's own router,
-      # which otherwise takes `/box` under its name for itself.
-      - traefik.http.routers.box.rule=PathPrefix(`/box`)
-      - traefik.http.routers.box.priority=100
-      - traefik.http.routers.box.entrypoints=websecure
-      # No resolver: each name's own router already has its certificate.
-      - traefik.http.routers.box.tls=true
-      # The same paths over plain HTTP, on the page's port and every UI
-      # port. A second router, because one with `tls=true` does not match
-      # plain HTTP. On 80 `to-https` outranks it for the box name and its
-      # labels.
+      # which otherwise takes `/box` under its name for itself. Over plain
+      # HTTP, on the page's port and every UI port; over HTTPS in
+      # `compose.https.yaml`, a second router because one with `tls=true`
+      # does not match plain HTTP. On 80 `to-https` outranks it for the box
+      # name and its labels.
       - traefik.http.routers.box-http.rule=PathPrefix(`/box`)
       - traefik.http.routers.box-http.priority=100
       - traefik.http.routers.box-http.entrypoints=web,control,dccex,jmri,occupancy

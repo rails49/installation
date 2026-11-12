@@ -1,0 +1,43 @@
+# The installation's routers that need a box name, started over `compose.yaml`
+# on a box with one and never on a box with no certificate:
+#
+#     docker compose --env-file /etc/rails49/box.env \
+#       -f compose.yaml -f compose.https.yaml up -d --build
+#
+# Each is on `websecure`, uses the `le` resolver or has the box name in its
+# rule, and the door of a box with no certificate has neither 443 nor a
+# resolver. There each would be dropped with an error at every start, and a
+# real error would be hard to find among them (#92). Labels only, merged over
+# the services `compose.yaml` declares: the containers are the same on both
+# kinds of box.
+
+services:
+  door:
+    labels:
+      # On 80, the box name and every name under it redirect to HTTPS, `/box`
+      # included, so the priority is above `box-http`'s. An address or a
+      # `.local` name is not matched and gets the page and `/box` over plain
+      # HTTP. `\Q…\E` makes the box name's dots match only dots.
+      - traefik.http.routers.to-https.rule=Host(`${BOX_DOMAIN}`) || HostRegexp(`^.+\.\Q${BOX_DOMAIN}\E$$`)
+      - traefik.http.routers.to-https.priority=200
+      - traefik.http.routers.to-https.entrypoints=web
+      - traefik.http.routers.to-https.service=noop@internal
+      - traefik.http.routers.to-https.middlewares=to-https
+      - traefik.http.middlewares.to-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.to-https.redirectscheme.permanent=true
+
+  page:
+    labels:
+      - traefik.http.routers.page.rule=Host(`${BOX_DOMAIN}`)
+      - traefik.http.routers.page.entrypoints=websecure
+      - traefik.http.routers.page.tls.certresolver=le
+
+  box:
+    labels:
+      # `/box` on every name the door serves over HTTPS, at the priority of
+      # `box-http` in `compose.yaml`.
+      - traefik.http.routers.box.rule=PathPrefix(`/box`)
+      - traefik.http.routers.box.priority=100
+      - traefik.http.routers.box.entrypoints=websecure
+      # No resolver: each name's own router already has its certificate.
+      - traefik.http.routers.box.tls=true
