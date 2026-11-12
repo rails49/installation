@@ -160,6 +160,17 @@ describe("the band", () => {
     );
     expect(existsSync(new URL("look/look.bundle.js", root))).toBe(true);
   });
+
+  /** look's stylesheet linked in the head ahead of the bundle, so a phone
+   *  draws the page styled the first time rather than once the module has
+   *  run (#95). */
+  it("links look's stylesheet in its head, ahead of the bundle", () => {
+    const head = page.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? "";
+    const link = head.indexOf('<link rel="stylesheet" href="/look/look.css">');
+    expect(link).toBeGreaterThanOrEqual(0);
+    expect(link).toBeLessThan(head.indexOf('<script type="module" src="/look/look.bundle.js">'));
+    expect(existsSync(new URL("look/look.css", root))).toBe(true);
+  });
 });
 
 describe("the page on a box with no certificate", () => {

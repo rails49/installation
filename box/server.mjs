@@ -42,6 +42,7 @@ const POWEROFF = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "sys
 const ASSETS = {
   "GET /box/page.css": [new URL("page.css", import.meta.url), "text/css; charset=utf-8"],
   "GET /box/tick.js": [new URL("tick.js", import.meta.url), "text/javascript; charset=utf-8"],
+  "GET /box/look/look.css": [new URL("../look/look.css", import.meta.url), "text/css; charset=utf-8"],
   "GET /box/look/look.bundle.js": [
     new URL("../look/look.bundle.js", import.meta.url),
     "text/javascript; charset=utf-8",

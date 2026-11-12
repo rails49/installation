@@ -1,8 +1,8 @@
 // The status page at `/box/`, rendered from the status `GET /box/status`
 // answers (#65 decision 16), with updating and going back on a press
 // (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
-// devices (#69 decisions 9 to 15). It loads look's bundle, its stylesheet and
-// the script that ticks control from under `/box`.
+// devices (#69 decisions 9 to 15). It loads look's stylesheet and bundle, its
+// own stylesheet and the script that ticks control from under `/box`.
 
 import { LABELS } from "./setup.mjs";
 import { gb, when } from "./status.mjs";
@@ -78,6 +78,7 @@ export function render(status) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">${running ? '\n<meta http-equiv="refresh" content="5">' : ""}
 <title>Box status: ${escape(status.name)}</title>
+<link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>
 <script type="module" src="/box/tick.js"></script>
 <link rel="stylesheet" href="/box/page.css">
