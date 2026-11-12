@@ -388,7 +388,7 @@ export async function updater(docker) {
  * @returns {Promise<string | null>}
  */
 export async function start(action, env, io) {
-  const state = await updater(io.docker);
+  let state = await updater(io.docker);
   if (state === "running") return BUSY;
 
   const from = (await currentRelease(io.read)) ?? "-";
@@ -415,43 +415,53 @@ export async function start(action, env, io) {
   const { commit, images } = manifest.stacks.installation;
   const image = `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
 
+  // Pulled before the state is read again, so the name is taken just after.
+  await io.docker(["image", "inspect", image]).catch(() => io.docker(["pull", image]));
+  state = await updater(io.docker);
+  if (state === "running") return BUSY;
   if (state) await io.docker(["rm", CONTAINER]);
+  // The probe asks for `<hostname>.local`, which nothing in a container
+  // resolves, so it is named here.
+  const host = env.address ? ["--add-host", `${env.hostname}.local:${env.address}`] : [];
+  try {
+    await io.docker([
+      "create",
+      "--name",
+      CONTAINER,
+      "-v",
+      "/var/run/docker.sock:/var/run/docker.sock",
+      "-v",
+      "/etc/rails49:/etc/rails49:ro",
+      "-v",
+      "/var/lib/rails49:/var/lib/rails49",
+      "-e",
+      `BOX_DOMAIN=${env.BOX_DOMAIN}`,
+      "-e",
+      `BOX_UIS=${env.BOX_UIS}`,
+      "-e",
+      `BOX_HOSTNAME=${env.hostname}`,
+      "-e",
+      `BOX_ADDRESS=${env.address ?? ""}`,
+      ...host,
+      image,
+      "node",
+      "/box/update.mjs",
+      action,
+      from,
+      to,
+    ]);
+  } catch (error) {
+    // Another start took the name first. It runs, and its progress stays.
+    if (message(error).includes("is already in use")) return BUSY;
+    throw error;
+  }
   // The page reads this file while the container runs, so the last run's
   // progress is replaced before it starts.
   await io.write(
     PROGRESS,
     progressText({ action, from, to, started: io.now().toISOString(), step: "Starting.", pull: null }, null),
   );
-  // The probe asks for `<hostname>.local`, which nothing in a container
-  // resolves, so it is named here.
-  const host = env.address ? ["--add-host", `${env.hostname}.local:${env.address}`] : [];
-  await io.docker([
-    "run",
-    "-d",
-    "--name",
-    CONTAINER,
-    "-v",
-    "/var/run/docker.sock:/var/run/docker.sock",
-    "-v",
-    "/etc/rails49:/etc/rails49:ro",
-    "-v",
-    "/var/lib/rails49:/var/lib/rails49",
-    "-e",
-    `BOX_DOMAIN=${env.BOX_DOMAIN}`,
-    "-e",
-    `BOX_UIS=${env.BOX_UIS}`,
-    "-e",
-    `BOX_HOSTNAME=${env.hostname}`,
-    "-e",
-    `BOX_ADDRESS=${env.address ?? ""}`,
-    ...host,
-    image,
-    "node",
-    "/box/update.mjs",
-    action,
-    from,
-    to,
-  ]);
+  await io.docker(["start", CONTAINER]);
   return null;
 }
 

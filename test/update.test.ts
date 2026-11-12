@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { handle } from "../box/server.mjs";
 import { pullImage, run, start, type Io, type PullMessage } from "../box/update.mjs";
 
 const OLD = "2026.11.0";
@@ -569,7 +570,9 @@ describe("an update that fails", () => {
 
 describe("starting one", () => {
   /** What `start()` is handed: the box's docker CLI, files and GitHub. */
-  function starting(options: { state?: string; record?: string; latest?: string | null } = {}) {
+  function starting(
+    options: { state?: string; record?: string; latest?: string | null; missing?: boolean; named?: string } = {},
+  ) {
     const asked: string[] = [];
     const files: Record<string, string> = {
       [RECORD]: options.record ?? `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n`,
@@ -582,6 +585,11 @@ describe("starting one", () => {
       io: {
         docker: async (args: string[]) => {
           asked.push(args.join(" "));
+          if (options.missing && args[0] === "image" && args[1] === "inspect") {
+            throw new Error(`Error: No such image: ${args[2]}`);
+          }
+          // What Docker says where the container cannot have its name.
+          if (options.named && args.includes("--name")) throw new Error(options.named);
           return args[0] === "ps" ? (options.state ?? "") : "";
         },
         read: async (path: string) => files[path] ?? null,
@@ -598,8 +606,8 @@ describe("starting one", () => {
     };
   }
 
-  const RUN = [
-    "run -d --name rails49-update",
+  const CREATE = [
+    "create --name rails49-update",
     "-v /var/run/docker.sock:/var/run/docker.sock",
     "-v /etc/rails49:/etc/rails49:ro",
     "-v /var/lib/rails49:/var/lib/rails49",
@@ -613,8 +621,11 @@ describe("starting one", () => {
     expect(asked).toEqual([
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
       "fetch https://github.com/rails49/installation/releases/download/2026.11.1/manifest.json",
+      `image inspect ghcr.io/rails49/installation-box:inst3@${DIGEST(4)}`,
+      "ps -a --filter name=^rails49-update$ --format {{.State}}",
+      `${CREATE} ghcr.io/rails49/installation-box:inst3@${DIGEST(4)} node /box/update.mjs update ${OLD} ${NEW}`,
       `write ${PROGRESS}`,
-      `${RUN} ghcr.io/rails49/installation-box:inst3@${DIGEST(4)} node /box/update.mjs update ${OLD} ${NEW}`,
+      "start rails49-update",
     ]);
   });
 
@@ -623,8 +634,8 @@ describe("starting one", () => {
       record: `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n2026-11-11T09:00:00Z  ${OLD}  ->  ${NEW}  failed\n`,
     });
     expect(await start("back", ENV, io)).toBeNull();
-    expect(asked.at(-1)).toBe(
-      `${RUN} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs back ${OLD} ${OLD}`,
+    expect(asked.at(-3)).toBe(
+      `${CREATE} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs back ${OLD} ${OLD}`,
     );
   });
 
@@ -632,15 +643,15 @@ describe("starting one", () => {
     const { io, asked } = starting();
     expect(await start("apply", { ...ENV, BOX_UIS: "control dccex" }, io)).toBeNull();
     expect(asked.some((line) => line.startsWith("fetch"))).toBe(false);
-    expect(asked.at(-1)).toBe(
-      `${RUN.replace("BOX_UIS=control jmri", "BOX_UIS=control dccex")} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs apply ${OLD} ${OLD}`,
+    expect(asked.at(-3)).toBe(
+      `${CREATE.replace("BOX_UIS=control jmri", "BOX_UIS=control dccex")} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs apply ${OLD} ${OLD}`,
     );
   });
 
   it("says the new one is starting before its container runs, so the page shows no earlier one", async () => {
     const { io, asked, files } = starting({ state: "exited\n" });
     expect(await start("update", ENV, io)).toBeNull();
-    expect(asked.slice(-3, -1)).toEqual(["rm rails49-update", `write ${PROGRESS}`]);
+    expect(asked.slice(-2)).toEqual([`write ${PROGRESS}`, "start rails49-update"]);
     expect(JSON.parse(files[PROGRESS]!)).toEqual({
       action: "update",
       from: OLD,
@@ -657,13 +668,66 @@ describe("starting one", () => {
   it("removes the container of the last one first", async () => {
     const { io, asked } = starting({ state: "exited\n" });
     expect(await start("update", ENV, io)).toBeNull();
-    expect(asked.at(-3)).toBe("rm rails49-update");
+    expect(asked.at(-4)).toBe("rm rails49-update");
   });
 
   it("is refused while one runs", async () => {
     const { io, asked } = starting({ state: "running\n" });
     expect(await start("update", ENV, io)).toBe("The box is already updating, going back or applying the setup.");
     expect(asked).toHaveLength(1);
+  });
+
+  it("is refused where another start took the name first, and leaves that one's progress", async () => {
+    const { io, files } = starting({
+      named:
+        'docker: Error response from daemon: Conflict. The container name "/rails49-update" is already in use by container "d389b12c9c45". You have to remove (or rename) that container to be able to reuse that name.',
+    });
+    const winner = JSON.stringify({ action: "apply", from: OLD, to: OLD, step: "Starting." });
+    files[PROGRESS] = winner;
+    const busy = "The box is already updating, going back or applying the setup.";
+    expect(await start("update", ENV, io)).toBe(busy);
+    expect(files[PROGRESS]).toBe(winner);
+    const box = { start: (action: "update" | "back") => start(action, ENV, io) };
+    const request = { method: "POST", url: "/box/update", headers: { host: "box" } };
+    expect(await handle(request, box as unknown as Parameters<typeof handle>[1])).toMatchObject({
+      status: 409,
+      body: busy,
+    });
+  });
+
+  it("throws what Docker said where the container cannot be made for another reason", async () => {
+    const { io, files } = starting({ named: "docker: Error response from daemon: no space left on device." });
+    await expect(start("update", ENV, io)).rejects.toThrow(
+      "docker: Error response from daemon: no space left on device.",
+    );
+    expect(files[PROGRESS]).toBeUndefined();
+  });
+
+  it("pulls the box image before it reads the container's state, where the box does not have it", async () => {
+    const { io, asked } = starting({ missing: true, state: "exited\n" });
+    expect(await start("update", ENV, io)).toBeNull();
+    const image = `ghcr.io/rails49/installation-box:inst3@${DIGEST(4)}`;
+    expect(asked.slice(2, 6)).toEqual([
+      `image inspect ${image}`,
+      `pull ${image}`,
+      "ps -a --filter name=^rails49-update$ --format {{.State}}",
+      "rm rails49-update",
+    ]);
+  });
+
+  it("is refused where another start runs once the box image is pulled", async () => {
+    const { io, asked } = starting({ missing: true });
+    let reads = 0;
+    const docker = io.docker;
+    io.docker = async (args) => {
+      if (args[0] === "ps" && ++reads === 2) {
+        asked.push(args.join(" "));
+        return "running\n";
+      }
+      return docker(args);
+    };
+    expect(await start("update", ENV, io)).toBe("The box is already updating, going back or applying the setup.");
+    expect(asked.at(-1)).toBe("ps -a --filter name=^rails49-update$ --format {{.State}}");
   });
 
   it("is refused with no newer release, and going back with no release to go back to", async () => {
