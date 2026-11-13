@@ -153,11 +153,13 @@ machine, not the Mac. Coming back takes a person at the box.
 `box` serves the status page at `/box/`, on every name and every UI port the
 door serves
 ([#65](https://github.com/rails49/installation/issues/65)). It uses look's
-band, from the same copy as the page, and says each failure in a sentence at
-the top. Below them are two parts of bordered groups
+band, from the same copy as the page. At the top it says each failure in a
+sentence, in a group titled "Errors", or "No errors.", and then each note,
+such as a stack on a local build, in a group titled "Notes". Below them are
+two parts of bordered groups
 ([#111](https://github.com/rails49/installation/issues/111)): "Release and
-setup", with the release, the stacks to run, the devices and "Apply"; and
-"Status", with the stacks, the box and Docker. It shows:
+setup", with the release, the stacks to run, and the devices with "Apply";
+and "Status", with the stacks, the box and Docker. It shows:
 
 - Each stack's state (running, restarting or stopped), memory and commit,
   after a green dot for running, grey for stopped and red otherwise. The
@@ -166,8 +168,9 @@ setup", with the release, the stacks to run, the devices and "Apply"; and
   (occupancy-service). The page names them Installation, Control, Occupancy,
   JMRI and DCC-EX translator, in that order. A stack's memory is the sum of
   what its running containers use, from the Engine API's one-shot container
-  stats, less their inactive file cache, as `docker stats` says it. The
-  commit is the `org.opencontainers.image.revision`
+  stats, less their inactive file cache, as `docker stats` says it. Memory
+  is in whole megabytes of 2^20 bytes. The commit, or "n/a" where there is
+  none, is the `org.opencontainers.image.revision`
   of the stack's images. A stack whose commit is not the release's runs a
   local build, and a sentence says so; on a box never updated every stack
   does. JMRI is built on the box and is in no release.
@@ -178,10 +181,10 @@ setup", with the release, the stacks to run, the devices and "Apply"; and
   none.
 - Whether a newer release is out, and when the box last checked. The box asks
   GitHub for `rails49/installation`'s latest release, which is never a
-  pre-release, once a day, and on "Check now". Offline it says it could not
+  pre-release, once a day, and on "Check for update". Offline it says it could not
   check, and when the last check succeeded. What it found is kept in
   `/var/lib/rails49/check.json`.
-- Beside "Check now", whether pre-releases are offered: "Pre-releases: on" or
+- Beside "Check for update", whether pre-releases are offered: "Pre-releases: on" or
   "off" ([#105](https://github.com/rails49/installation/issues/105)). A press
   writes `BOX_PRERELEASES=yes` or `no` into `box.env`, keeping every other
   line, and checks at once. With it on, the check takes the newest release by
@@ -193,7 +196,7 @@ setup", with the release, the stacks to run, the devices and "Apply"; and
 - Disk free, on the file system Docker keeps its images on.
 - Memory, the box's used of its total, from `MemTotal` and `MemAvailable` in
   `/proc/meminfo`. Low memory is no failure.
-- The box's address on its LAN, and that it should be reserved for the box
+- The box's IP address on its LAN, and that it should be reserved for the box
   in the router, so it does not change.
 - Docker Engine's version, against the versions the release was tested on,
   and the daemon's log driver, with a sentence when it is not `local`. Set it
@@ -222,8 +225,9 @@ The status page also chooses the stacks the box runs and their devices
 
 - A checkbox for each of Control, Occupancy, JMRI and DCC-EX translator
   (`control`, `occupancy`, `jmri` and `dccex`), ticked as
-  `BOX_UIS` in `box.env` declares them. Ticking dccex or occupancy ticks
-  `control`, whose broker each dials; `box` ticks it again when the form is
+  `BOX_UIS` in `box.env` declares them. The page says that Occupancy and the
+  DCC-EX translator use the broker installed with Control. Ticking dccex or
+  occupancy ticks `control`, whose broker each dials; `box` ticks it again when the form is
   applied, for a browser that runs no script. Ticking jmri does not: it reads
   `TC49_STORE` from `control.env`, which the install script writes whether or
   not `control` runs.
@@ -242,9 +246,7 @@ The status page also chooses the stacks the box runs and their devices
 `occupancy.env`, in place, so each file keeps its owner and mode. Every other
 line stays as it is, and a file that is not there is made. It then starts `rails49-update` at the release the
 box runs and the box name `box.env` declares, as below, which first stops and removes the containers of each
-stack no longer ticked, keeping its data. While a declared stack runs, the
-page says first that the railroad keeps running while the new images
-download and stops while its stacks restart. It answers 409 with a sentence while
+stack no longer ticked, keeping its data. It answers 409 with a sentence while
 an update, going back or applying runs, on a box that runs no release yet, and
 for a stack or device the page did not offer, and then writes nothing. A page
 on another origin is refused. Applying adds no line to the record and removes
@@ -254,7 +256,7 @@ nothing, so going back is offered as before.
 
 When a newer release is out, the status page offers "Update to <release>".
 Once the record names a release the box ran before the last update, it offers
-"Go back to <release>", and after going back it offers nothing to go back to. Below both, while a declared stack runs, it says that the
+"Revert to <release>", which goes back, and after going back it offers nothing to go back to. Below both, while a declared stack runs, it says that the
 railroad keeps running while the new images download and stops while its
 stacks restart. Anyone on the LAN may press either, as anyone
 may turn the box off, and a page on another origin is refused. Nothing is
@@ -307,7 +309,7 @@ one. While it pulls, a bar shows the images done of all of them, beside the
 image and its bytes, for example "control, 300 MB of 1.2 GB"; while it
 watches, the seconds left. A page from an older release reads only `step` and
 `pull`, and this page says `step` in a sentence for a file with no `steps`. A failure is said in a
-sentence that names the stack, and "Go back to <release>" is offered. The
+sentence that names the stack, and "Revert to <release>" is offered. The
 container stays until the next press, so its log is in the log bundle.
 
 The update container runs as root and has no shell's environment, so each
