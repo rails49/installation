@@ -3,7 +3,7 @@
 // (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
 // devices (#69 decisions 9 to 15). It loads look's stylesheet and bundle, its
 // own stylesheet and the script that ticks control from under `/box`. A
-// toggle beside "Check now" has the check take pre-releases (#105).
+// toggle beside "Check for update" has the check take pre-releases (#105).
 //
 // The failures come first. Then two parts of bordered groups: the release
 // and the setup, and the status (#111).
@@ -49,15 +49,17 @@ export function render(status, now = new Date()) {
   const { update, docker, certificate, resolves } = status;
   const railroad = status.stacks.some(({ stack, state }) => stack !== "installation" && state !== "stopped");
   const failures = status.failures.length
-    ? `<fieldset class="group failures">\n<legend>Failures</legend>\n<ul>\n${status.failures.map(sentence).join("\n")}\n</ul>\n</fieldset>`
-    : '<p><span class="dot ok"></span>Nothing is wrong.</p>';
-  const notes = status.notes.length ? `\n<ul class="notes">\n${status.notes.map(sentence).join("\n")}\n</ul>` : "";
+    ? `<fieldset class="group failures">\n<legend>Errors</legend>\n<ul>\n${status.failures.map(sentence).join("\n")}\n</ul>\n</fieldset>`
+    : '<p><span class="dot ok"></span>No errors.</p>';
+  const notes = status.notes.length
+    ? `\n<fieldset class="group">\n<legend>Notes</legend>\n<ul>\n${status.notes.map(sentence).join("\n")}\n</ul>\n</fieldset>`
+    : "";
 
   const stacks = status.stacks
     .toSorted((a, b) => ORDER.indexOf(a.stack) - ORDER.indexOf(b.stack))
     .map(({ stack, state, commit, memory }) => {
       const dot = state === "running" ? "ok" : state === "stopped" ? "off" : "bad";
-      return `<tr><td><span class="dot ${dot}"></span>${escape(NAMES.get(stack) ?? stack)}</td><td>${escape(state)}</td><td>${memory === null ? "" : size(memory)}</td><td>${commit ? `<code>${escape(commit.slice(0, 7))}</code>` : "none"}</td></tr>`;
+      return `<tr><td><span class="dot ${dot}"></span>${escape(NAMES.get(stack) ?? stack)}</td><td>${escape(state)}</td><td class="number">${memory === null ? "" : mb(memory)}</td><td>${commit ? escape(commit.slice(0, 7)) : "n/a"}</td></tr>`;
     })
     .join("\n");
 
@@ -75,7 +77,7 @@ export function render(status, now = new Date()) {
 <dd>${escape(status.name)} resolves to ${resolves.to_this_box ? "this box" : escape(resolves.addresses.join(", ") || "nothing")}</dd>`
     : "";
   const memory = status.memory
-    ? `\n<dt>Memory</dt>\n<dd>${gb(status.memory.used)} used of ${gb(status.memory.total)}</dd>`
+    ? `\n<dt>Memory</dt>\n<dd>${mb(status.memory.used)} used of ${mb(status.memory.total)}</dd>`
     : "";
 
   return `<!DOCTYPE html>
@@ -98,12 +100,12 @@ ${failures}${notes}
 <fieldset class="group">
 <legend>Release</legend>
 ${running ? progress(running, now) : release(status, railroad)}
-</fieldset>${running ? "" : `\n${setup(status.setup, railroad)}`}
+</fieldset>${running ? "" : `\n${setup(status.setup)}`}
 <h2>Status</h2>
 <fieldset class="group">
 <legend>Stacks</legend>
 <table>
-<thead><tr><th>Stack</th><th>State</th><th>Memory</th><th>Commit</th></tr></thead>
+<thead><tr><th>Stack</th><th>State</th><th class="number">Memory</th><th>Commit</th></tr></thead>
 <tbody>
 ${stacks}
 </tbody>
@@ -114,7 +116,7 @@ ${stacks}
 <dl>
 <dt>Disk free</dt>
 <dd>${gb(status.disk.free)} of ${gb(status.disk.total)}</dd>${memory}
-<dt>Address</dt>
+<dt>IP address</dt>
 <dd>${status.address ? `${escape(status.address)}. Reserve this address for the box in your router.` : "none"}</dd>${named}
 </dl>
 </fieldset>
@@ -168,10 +170,10 @@ function release({ release, update, back }, railroad) {
   return [
     row(runs),
     ...(latest ? [row(latest, offer)] : []),
-    ...(back ? [row("", [`<form method="post" action="/box/back"><button>Go back to ${escape(back)}</button></form>`])] : []),
+    ...(back ? [row("", [`<form method="post" action="/box/back"><button>Revert to ${escape(back)}</button></form>`])] : []),
     ...(railroad && (offer.length || back) ? [KEEPS] : []),
     row(check, [
-      '<form method="post" action="/box/check"><button>Check now</button></form>',
+      '<form method="post" action="/box/check"><button>Check for update</button></form>',
       prereleases(update.prereleases),
     ]),
   ].join("\n");
@@ -237,11 +239,11 @@ function bytes({ current, total }) {
 
 /**
  * The form that chooses the stacks and their devices, and applies them.
+ * Apply sits in the devices group, the last of the form.
  *
  * @param {Status["setup"]} setup
- * @param {boolean} railroad whether a declared stack runs
  */
-function setup({ uis, devices }, railroad) {
+function setup({ uis, devices }) {
   const checkboxes = ORDER.flatMap((name) => {
     const label = STACKS.find(({ stack }) => stack === name)?.label;
     if (!label) return [];
@@ -264,7 +266,7 @@ function setup({ uis, devices }, railroad) {
     ];
     const label = what[0]?.toUpperCase() + what.slice(1);
     return [
-      `<label>${label} <select name="${field}">\n${options.join("\n")}\n</select></label>`,
+      `<label class="row">${label} <select name="${field}">\n${options.join("\n")}\n</select></label>`,
       ...(found.length ? [] : [`<p>No ${what} is plugged in.</p>`]),
     ].join("\n");
   });
@@ -272,13 +274,13 @@ function setup({ uis, devices }, railroad) {
 <fieldset class="group">
 <legend>Stacks to run</legend>
 ${checkboxes.join("\n")}
-<p>Ticking DCC-EX translator or Occupancy ticks Control too: each dials its broker.</p>
+<p>Occupancy and DCC-EX translator use the broker installed with Control.</p>
 </fieldset>
 <fieldset class="group">
 <legend>Devices</legend>
 ${selects.join("\n")}
-</fieldset>${railroad ? `\n${KEEPS}` : ""}
-<button>Apply</button>
+<div class="row"><button>Apply</button></div>
+</fieldset>
 </form>`;
 }
 
@@ -293,6 +295,12 @@ function prereleases(on) {
  *  @param {number} bytes */
 function size(bytes) {
   return bytes >= 1e9 ? gb(bytes) : `${Math.round(bytes / 1e6)} MB`;
+}
+
+/** Memory as the page says it: in whole megabytes of 2^20 bytes.
+ *  @param {number} bytes */
+function mb(bytes) {
+  return `${Math.round(bytes / 2 ** 20).toLocaleString("en-US")} MB`;
 }
 
 /** A sentence as a list item, with a commit in backticks set as code.
