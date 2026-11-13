@@ -112,11 +112,11 @@ if [ -f page/render.sh ]; then
   run "page renders in nginx:alpine with a box name" page_renders example.org \
     '<a class="item" href="https://control.example.org" data-ui-port="8081"><svg' \
     '<a class="item" href="https://turntable.example.org"><svg' \
-    '<span class="name">Box status</span>'
+    '<span class="name">Server (box) status &amp; updates</span>'
   run "page renders in nginx:alpine with no certificate" page_renders "" \
     '.local:8081" data-ui-port="8081"><svg' \
     '<li><span class="item"><svg' \
-    '<span class="name">Box status</span>'
+    '<span class="name">Server (box) status &amp; updates</span>'
 
   # Fails when the page or the status page styles look's band. At the tag of
   # the committed `look/look.bundle.js`, which a release of look moves with it.

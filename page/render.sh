@@ -122,7 +122,7 @@ export LINKS
 # Relative, so the status page stays on the host and port this page was
 # reached at.
 ALWAYS=$(printf '<li><a class="item" href="/box/">%s</a></li>\n<li><a class="item" href="https://rails49.org/">%s</a></li>' \
-  "$(content activity "Box status" "What the server runs, and whether it is well.")" \
+  "$(content activity "Server (box) status &amp; updates" "Software version and errors.")" \
   "$(content globe rails49.org "The project's site and documentation.")")
 export ALWAYS
 
@@ -131,14 +131,19 @@ export ALWAYS
 # environment rather than `-v`, which reads escape sequences and refuses a
 # value with a newline in it.
 #
-# The braces are escaped because this runs under the awk in the stock nginx
-# image, which is busybox's. A brace opens a repetition there, so `{{` is a
-# repetition with nothing in front of it and the script exits 1 before writing
-# a byte — the container then restarts forever, the door files it under
-# "non running container", and every name the box serves answers 404. The awk
-# on a development machine is GNU's or mawk's, both of which read a brace with
-# nothing to repeat as the literal it plainly is, so this ran green everywhere
-# except the only place it runs for real.
+# index() and substr() rather than gsub(): a gsub replacement reads `&` as the
+# text it matched, so "&amp;" came out as "{{ALWAYS}}amp;". And this runs under
+# the awk in the stock nginx image, which is busybox's, where a brace in a
+# regex opens a repetition: an unescaped `{{` exits 1 before writing a byte,
+# the container restarts forever, and every name the box serves answers 404.
 awk '
-  { gsub(/\{\{NAME\}\}/, ENVIRON["NAME"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); gsub(/\{\{ALWAYS\}\}/, ENVIRON["ALWAYS"]); print }
+  function put(s, key, val,   out, i) {
+    out = ""
+    while ((i = index(s, key)) > 0) {
+      out = out substr(s, 1, i - 1) val
+      s = substr(s, i + length(key))
+    }
+    return out s
+  }
+  { $0 = put($0, "{{NAME}}", ENVIRON["NAME"]); $0 = put($0, "{{LINKS}}", ENVIRON["LINKS"]); $0 = put($0, "{{ALWAYS}}", ENVIRON["ALWAYS"]); print }
 ' "$here/index.template.html"
