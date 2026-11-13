@@ -85,7 +85,7 @@ export function render(status, now = new Date()) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">${running ? '\n<meta http-equiv="refresh" content="5">' : ""}
-<title>Box status: ${escape(status.name)}</title>
+<title>Server (box) status &amp; updates: ${escape(status.name)}</title>
 <link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>
 <script type="module" src="/box/tick.js"></script>

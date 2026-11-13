@@ -146,7 +146,7 @@ describe("the status page", () => {
   it("carries look's band with the box's name, loaded from under /box", () => {
     expect(page).toContain('<script type="module" src="/box/look/look.bundle.js"></script>');
     expect(page).toMatch(/<look-band[^>]*><look-about name="example.org"><\/look-about><\/look-band>/);
-    expect(page).toContain("<title>Box status: example.org</title>");
+    expect(page).toContain("<title>Server (box) status &amp; updates: example.org</title>");
     expect(plain).toContain('<look-about name="box">');
   });
 

@@ -192,8 +192,8 @@ describe("the items after the UIs", () => {
         {
           href: "/box/",
           svg: icon("activity"),
-          name: "Box status",
-          text: "What the server runs, and whether it is well.",
+          name: "Server (box) status &amp; updates",
+          text: "Software version and errors.",
         },
         {
           href: "https://rails49.org/",
