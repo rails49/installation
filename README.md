@@ -125,9 +125,10 @@ and ports, `box`'s plain-HTTP router, `page/render.sh` and `scripts/probe.sh`
 name the same ports, and a test checks that they agree.
 
 The band across the top carries the box name, or on a box with no certificate
-the box's hostname, which is the thing you want to know on landing there. Under
-the UIs, always, a second list links to the [status page](#the-status-page) as
-"Box status" and to [rails49.org](https://rails49.org/). The icons are
+the box's hostname, which is the thing you want to know on landing there. After
+the UIs the list always has two more items: the
+[status page](#the-status-page) as "Box status", and
+[rails49.org](https://rails49.org/). The icons are
 [Lucide](https://lucide.dev)'s, under its ISC licence
 ([`page/icons/LICENSE`](page/icons/LICENSE)), inlined so they take the page's
 colours. The band is

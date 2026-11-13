@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/look/look.css">
 <script type="module" src="/look/look.bundle.js"></script>
 <style>
-  /* The page's own: the two lists. The band is look's. */
+  /* The page's own: the list. The band is look's. */
   body {
     margin: 0;
     background: var(--sl-color-neutral-0);
@@ -27,10 +27,6 @@
     margin: 0;
     padding: 0;
   }
-
-  ul + ul { margin-top: 2rem; }
-
-  li + li { border-top: 1px solid var(--sl-color-neutral-200); }
 
   .item {
     align-items: center;
@@ -61,8 +57,6 @@
 <main>
 <ul>
 {{LINKS}}
-</ul>
-<ul>
 {{ALWAYS}}
 </ul>
 </main>

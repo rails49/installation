@@ -43,13 +43,15 @@ function render(uis: string, domain: string = DOMAIN): string {
   });
 }
 
-/** One of the page's lists, by its position: 0 is the UIs, 1 the two links
- *  that are always there. */
+/** One part of the page's one list: 0 is the UIs, 1 the two items that
+ *  always follow them, starting with the status page. */
 function list(html: string, at: 0 | 1): string {
-  return [...html.matchAll(/<ul>([\s\S]*?)<\/ul>/g)][at]![1]!;
+  const ul = html.match(/<ul>([\s\S]*?)<\/ul>/)![1]!;
+  const split = ul.indexOf('<li><a class="item" href="/box/">');
+  return at === 0 ? ul.slice(0, split) : ul.slice(split);
 }
 
-/** The items in one of the page's lists. The address is undefined for an
+/** The items in one part of the page's list. The address is undefined for an
  *  item with no link, and the text for an item with no line of text. */
 function entries(html: string, at: 0 | 1 = 0) {
   return [
@@ -180,8 +182,8 @@ describe("the links the page lists", () => {
   });
 });
 
-describe("the list under the UIs", () => {
-  it("links to the box's status page, always, and to the project", () => {
+describe("the items after the UIs", () => {
+  it("link to the box's status page, always, and to the project", () => {
     // The one place an update is announced is the status page, so the link is
     // there whatever the box's state (#65 decision 17). Relative, so it stays
     // on the host and port the page was reached at.
