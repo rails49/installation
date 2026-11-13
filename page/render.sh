@@ -9,7 +9,7 @@
 # labels this script knows come first, in its order; any other declared label
 # follows in the order the operator declared it, with the default icon and no
 # text. The apex is not a label and is never listed — the page is what lives
-# there. Below them, always: the status page and rails49.org.
+# there. After them, always: the status page and rails49.org.
 #
 # On a box with a box name each label links to that label under the box name.
 # On a box with no certificate (`BOX_DOMAIN` empty) each label links to its UI
