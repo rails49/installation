@@ -13,9 +13,9 @@ const STATUS = {
   address: "192.168.1.20",
   release: "2026.11.0",
   stacks: [
-    { stack: "installation", state: "running", commit: "8f7e6d5c4b3a29180716253443526170819a0b1c", local_build: false },
-    { stack: "control", state: "restarting", commit: "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f", local_build: true },
-    { stack: "jmri", state: "running", commit: null, local_build: false },
+    { stack: "installation", state: "running", commit: "8f7e6d5c4b3a29180716253443526170819a0b1c", local_build: false, memory: 60e6 },
+    { stack: "control", state: "restarting", commit: "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f", local_build: true, memory: 1.23e9 },
+    { stack: "jmri", state: "running", commit: null, local_build: false, memory: 480e6 },
   ],
   update: {
     latest: "2026.11.1",
@@ -28,6 +28,7 @@ const STATUS = {
     could_not_check: false,
   },
   disk: { free: 20e9, total: 64e9 },
+  memory: { used: 2.1e9, total: 8e9 },
   docker: { version: "29.1.3", tested: ["29.1.3", "29.0.4"], log_driver: "local" },
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
@@ -73,7 +74,7 @@ const UPDATING = {
 };
 
 /** What the page says before a press while a declared stack runs. */
-const KEEPS = "<p>The railroad keeps running while images download. It stops for about a minute while the stacks start.</p>";
+const KEEPS = "<p>The railroad keeps running while the new images download. It stops while its stacks restart.</p>";
 
 /** STATUS on a box where no container of a declared stack runs but the
  *  installation's, which serves the page. */
@@ -111,13 +112,33 @@ const PLAIN = {
 const page = render(STATUS);
 const plain = render(PLAIN);
 
-/** The page's items, as `[term, what it says]` with the markup taken out. */
+/** HTML with the markup taken out, as a person reads it. */
+function text(html: string) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** The group with this legend, from its tag to its end, or "". */
+function group(html: string, legend: string) {
+  return html.match(new RegExp(`<fieldset class="group[^"]*">\\s*<legend>${legend}</legend>[\\s\\S]*?</fieldset>`))?.[0] ?? "";
+}
+
+/** The groups' legends and the part headings, in the order the page has them. */
+function outline(html: string) {
+  return [...html.matchAll(/<h2>([^<]*)<\/h2>|<legend>([^<]*)<\/legend>/g)].map(([, h2, legend]) => h2 ?? legend);
+}
+
+/** Each row of a group, as `[what it says, its buttons]`. */
+function rows(html: string) {
+  return [...html.matchAll(/<div class="row">([\s\S]*?)<\/div>/g)].map(([, row]) => [
+    text(row!.replace(/<form[\s\S]*?<\/form>/g, "")),
+    [...row!.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map(([, button]) => button),
+  ]);
+}
+
+/** The items of a group, as `[term, what it says]` with the markup taken out. */
 function items(html: string) {
   return Object.fromEntries(
-    [...html.matchAll(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g)].map(([, term, value]) => [
-      term,
-      value!.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-    ]),
+    [...html.matchAll(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g)].map(([, term, value]) => [term, text(value!)]),
   );
 }
 
@@ -143,12 +164,31 @@ describe("the status page", () => {
     expect(page).not.toContain("style=");
   });
 
-  it("states each failure and each local build in a sentence, failures first", () => {
-    const failures = page.indexOf('<ul class="failures">');
-    const notes = page.indexOf('<ul class="notes">');
-    expect(failures).toBeGreaterThan(-1);
-    expect(notes).toBeGreaterThan(failures);
-    expect(page).toContain("<li>control is restarting.</li>");
+  it("is the failures, then the release and the setup, then the status, each in its groups", () => {
+    expect(outline(page)).toEqual([
+      "Failures",
+      "Release and setup",
+      "Release",
+      "Stacks to run",
+      "Devices",
+      "Status",
+      "Stacks",
+      "Box",
+      "Docker",
+    ]);
+    const apply = page.indexOf("<button>Apply</button>");
+    expect(apply).toBeGreaterThan(page.indexOf("<legend>Devices</legend>"));
+    expect(apply).toBeLessThan(page.indexOf("<h2>Status</h2>"));
+    expect(page.indexOf('<a href="/box/bundle" download>Download the log bundle</a>')).toBeGreaterThan(
+      page.indexOf("<legend>Docker</legend>"),
+    );
+  });
+
+  it("states each failure in a sentence in a red group, and each local build after it", () => {
+    const failures = group(page, "Failures");
+    expect(failures).toMatch(/^<fieldset class="group failures">/);
+    expect(failures).toContain("<li>control is restarting.</li>");
+    expect(page.indexOf('<ul class="notes">')).toBeGreaterThan(page.indexOf(failures) + failures.length);
     expect(page).toContain("<li>control runs a local build of <code>1c3f69b</code>, not release 2026.11.0.</li>");
   });
 
@@ -156,35 +196,34 @@ describe("the status page", () => {
     expect(page).toContain("<li>A &#60;script&#62; &#38; more.</li>");
   });
 
-  it("says when nothing is wrong", () => {
-    expect(plain).not.toContain('class="failures"');
-    expect(plain).toContain("Nothing is wrong.");
+  it("says when nothing is wrong, beside a green dot, first on the page", () => {
+    expect(outline(plain)[0]).toBe("Release and setup");
+    expect(plain).toContain('<p><span class="dot ok"></span>Nothing is wrong.</p>');
+    expect(plain.indexOf("Nothing is wrong.")).toBeLessThan(plain.indexOf("<h2>"));
   });
+});
 
-  it("lists each stack with its state and commit", () => {
-    const rows = [...page.matchAll(/<tr><td>([^<]*)<\/td><td>([^<]*)<\/td><td>(?:<code>)?([^<]*)/g)].map(
-      ([, stack, state, commit]) => [stack, state, commit],
-    );
-    expect(rows).toEqual([
-      ["installation", "running", "8f7e6d5"],
-      ["control", "restarting", "1c3f69b"],
-      ["jmri", "running", "none"],
+describe("the release group", () => {
+  const release = (html: string) => rows(group(html, "Release"));
+
+  it("says the release the box runs, what is out with the update to it, going back, and the last check", () => {
+    expect(release(page)).toEqual([
+      ["This box runs release 2026.11.0.", []],
+      ["Release 2026.11.1 is out.", ["Update to 2026.11.1"]],
+      ["", ["Go back to 2026.10.2"]],
+      ["Checked at 2026-11-12 08:00 UTC.", ["Check now", "Pre-releases: off"]],
+    ]);
+    expect(release(plain)).toEqual([
+      ["This box runs no release yet.", []],
+      ["Not checked yet.", ["Check now", "Pre-releases: off"]],
     ]);
   });
 
-  it("shows the release, the update and the last check", () => {
-    expect(items(page)).toMatchObject({
-      Release: "2026.11.0",
-      Update: "Release 2026.11.1 is out. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
-    });
-    expect(items(plain)).toMatchObject({
-      Release: "none",
-      Update: "Not checked yet. Check now Pre-releases: off",
-    });
+  it("says when the box runs the latest release, or none is out", () => {
     const latest = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.0", available: false } });
-    expect(items(latest).Update).toBe("This box runs the latest release. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off");
-    const none = render({ ...STATUS, update: { ...STATUS.update, latest: null, available: false } });
-    expect(items(none).Update).toBe("No release yet. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off");
+    expect(release(latest)[1]).toEqual(["It is the latest release.", []]);
+    const none = render({ ...STATUS, release: null, back: null, update: { ...STATUS.update, latest: null, available: false } });
+    expect(release(none)[1]).toEqual(["No release is out yet.", []]);
   });
 
   it("says when the box runs a release newer than the latest, and offers no update to it", () => {
@@ -193,26 +232,24 @@ describe("the status page", () => {
       release: "2026.11.5",
       update: { ...STATUS.update, latest: "2026.11.3", available: false, newer: true },
     });
-    expect(items(newer).Update).toBe(
-      "This box runs 2026.11.5, newer than the latest release, 2026.11.3. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
-    );
+    expect(release(newer).slice(0, 2)).toEqual([
+      ["This box runs release 2026.11.5.", []],
+      ["It is newer than the latest release, 2026.11.3.", []],
+    ]);
     expect(newer).not.toContain('action="/box/update"');
   });
 
   it("says it could not check, as the failure says", () => {
     const offline = render({ ...STATUS, update: { ...STATUS.update, checked: "2026-11-12T09:00:00.000Z", could_not_check: true } });
-    expect(items(offline).Update).toBe(
-      "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC. Check now Pre-releases: off",
-    );
+    expect(release(offline).at(-1)).toEqual([
+      "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC.",
+      ["Check now", "Pre-releases: off"],
+    ]);
   });
 
-  it("checks now by a POST to /box/check", () => {
-    expect(page).toContain('<form method="post" action="/box/check"><button>Check now</button></form>');
-  });
-
-  it("shows whether pre-releases are offered, beside Check now, and switches them by a POST to /box/prereleases", () => {
+  it("checks now by a POST to /box/check, and switches pre-releases by a POST to /box/prereleases", () => {
     expect(page).toContain(
-      '<form method="post" action="/box/check"><button>Check now</button></form> <form method="post" action="/box/prereleases"><button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form>',
+      '<form method="post" action="/box/check"><button>Check now</button></form><form method="post" action="/box/prereleases"><button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form>',
     );
     const on = render({ ...STATUS, update: { ...STATUS.update, prereleases: true } });
     expect(on).toContain(
@@ -222,24 +259,23 @@ describe("the status page", () => {
 
   it("names a pre-release that is out, and the update to it, as a pre-release", () => {
     const pre = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.2", prerelease: true, prereleases: true } });
-    expect(items(pre).Update).toBe(
-      "Pre-release 2026.11.2 is out. Checked at 2026-11-12 08:00 UTC. Check now Pre-releases: on",
-    );
+    expect(release(pre)[1]).toEqual(["Pre-release 2026.11.2 is out.", ["Update to pre-release 2026.11.2"]]);
     expect(pre).toContain('<form method="post" action="/box/update"><button>Update to pre-release 2026.11.2</button></form>');
   });
 
-  it("offers updating to the newer release and going back, after saying when the railroad stops", () => {
-    const stops = page.indexOf(`<section class="update">\n${KEEPS}`);
+  it("updates by a POST to /box/update and goes back by a POST to /box/back, then says when the railroad stops", () => {
     const update = page.indexOf('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
     const back = page.indexOf('<form method="post" action="/box/back"><button>Go back to 2026.10.2</button></form>');
-    expect(stops).toBeGreaterThan(-1);
-    expect(update).toBeGreaterThan(stops);
+    const stops = group(page, "Release").indexOf(KEEPS);
+    expect(update).toBeGreaterThan(-1);
     expect(back).toBeGreaterThan(update);
+    expect(stops).toBeGreaterThan(group(page, "Release").indexOf("Go back to"));
+    expect(stops).toBeLessThan(group(page, "Release").indexOf("Checked at"));
   });
 
-  it("offers neither on a box with no newer release and nothing to go back to", () => {
+  it("offers neither on a box with no newer release and nothing to go back to, and says nothing of the railroad", () => {
     expect(plain).not.toMatch(/action="\/box\/(update|back)"/);
-    expect(plain).not.toContain('class="update"');
+    expect(group(plain, "Release")).not.toContain("railroad");
   });
 
   it("says nothing of the railroad stopping where no declared stack runs", () => {
@@ -249,7 +285,7 @@ describe("the status page", () => {
     expect(render({ ...STATUS, stacks: STATUS.stacks.slice(0, 1) })).not.toContain("The railroad keeps running");
     // One stack running is enough.
     const one = render({ ...IDLE, stacks: [...IDLE.stacks.slice(0, 2), STATUS.stacks[2]!] });
-    expect(one).toContain(KEEPS);
+    expect(group(one, "Release")).toContain(KEEPS);
   });
 
   it("offers going back alone when there is no newer release", () => {
@@ -257,47 +293,54 @@ describe("the status page", () => {
     expect(latest).not.toContain('action="/box/update"');
     expect(latest).toContain('<form method="post" action="/box/back"><button>Go back to 2026.10.2</button></form>');
   });
+});
 
-  it("while one runs says what it is doing, offers neither, and reloads itself", () => {
-    const html = render(UPDATING);
-    expect(html).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
-    expect(html).not.toContain('action="/box/update"');
-    expect(html).not.toContain('action="/box/back"');
-    expect(html).toContain('<meta http-equiv="refresh" content="5">');
-    expect(page).not.toContain('http-equiv="refresh"');
-    const back = render({ ...UPDATING, updating: { ...UPDATING.updating, action: "back" as const, to: "2026.10.2" } });
-    expect(back).toContain('<p class="updating">Going back to 2026.10.2: Starting control.</p>');
+describe("the status groups", () => {
+  /** The table's rows, as `[dot, stack, state, memory, commit]`. */
+  const table = (html: string) =>
+    [...group(html, "Stacks").matchAll(/<tr><td><span class="dot (\w+)"><\/span>([^<]*)<\/td>(.*?)<\/tr>/g)].map(
+      ([, dot, stack, cells]) => [dot, stack, ...[...cells!.matchAll(/<td>(.*?)<\/td>/g)].map(([, cell]) => text(cell!))],
+    );
+
+  it("list each stack by its name, in the page's order, with a dot, its state, memory and commit", () => {
+    const all = render({
+      ...STATUS,
+      stacks: [
+        ...STATUS.stacks,
+        { stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null },
+        { stack: "occupancy-service", state: "running", commit: null, local_build: false, memory: 2.5e9 },
+      ],
+    });
+    expect(group(all, "Stacks")).toContain("<th>Stack</th><th>State</th><th>Memory</th><th>Commit</th>");
+    expect(table(all)).toEqual([
+      ["ok", "Installation", "running", "60 MB", "8f7e6d5"],
+      ["bad", "Control", "restarting", "1.2 GB", "1c3f69b"],
+      ["ok", "Occupancy", "running", "2.5 GB", "none"],
+      ["ok", "JMRI", "running", "480 MB", "none"],
+      ["off", "DCC-EX translator", "stopped", "", "none"],
+    ]);
   });
 
-  it("while one pulls an image says which, of how many, and its bytes", () => {
-    const pulling = (pull: Pull | null, step = "Pulling occupancy-service's images.") =>
-      render({ ...UPDATING, updating: { ...UPDATING.updating, to: "2026.11.5", step, pull } });
-    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
-    expect(pulling({ image, index: 4, count: 10, current: 1.23e9, total: 2.34e9 })).toContain(
-      '<p class="updating">Updating to 2026.11.5: Pulling occupancy-service\'s images: ghcr.io/rails49/occupancy-service, image 4 of 10, 1.2 GB of 2.3 GB.</p>',
-    );
-    // Under a gigabyte in megabytes, and no bytes before the stream says any.
-    expect(pulling({ image: "traefik:v3.7", index: 1, count: 10, current: 12.4e6, total: 48e6 })).toContain(
-      ": traefik, image 1 of 10, 12 MB of 48 MB.</p>",
-    );
-    expect(pulling({ image, index: 4, count: 10, current: 0, total: 0 })).toContain(
-      ": ghcr.io/rails49/occupancy-service, image 4 of 10.</p>",
-    );
-    expect(pulling(null, "Pulling jmri's images.")).toContain('<p class="updating">Updating to 2026.11.5: Pulling jmri\'s images.</p>');
-  });
-
-  it("shows the disk, the address and Docker", () => {
-    expect(items(page)).toMatchObject({
+  it("show the disk, the memory and the address in the box group", () => {
+    expect(items(group(page, "Box"))).toMatchObject({
       "Disk free": "20.0 GB of 64.0 GB",
+      Memory: "2.1 GB used of 8.0 GB",
       Address: "192.168.1.20. Reserve this address for the box in your router.",
+    });
+    expect(items(render({ ...STATUS, address: null })).Address).toBe("none");
+    expect(items(render({ ...STATUS, memory: null }))).not.toHaveProperty("Memory");
+  });
+
+  it("show Docker in the Docker group", () => {
+    expect(items(group(page, "Docker"))).toEqual({
       "Docker Engine": "29.1.3, release tested on 29.1.3 and 29.0.4",
       "Log driver": "local",
     });
     expect(items(plain)["Docker Engine"]).toBe("29.1.3");
   });
 
-  it("shows the certificate and the box name on a box with a box name, and not otherwise", () => {
-    expect(items(page)).toMatchObject({
+  it("show the certificate and the box name on a box with a box name, and not otherwise", () => {
+    expect(items(group(page, "Box"))).toMatchObject({
       Certificate: "expires 2027-01-30",
       "Box name": "example.org resolves to this box",
     });
@@ -314,38 +357,29 @@ describe("the status page", () => {
     });
     expect(items(render({ ...STATUS, certificate: null }))).toMatchObject({ Certificate: "could not be read" });
   });
-
-  it("offers the log bundle as a download", () => {
-    expect(page).toContain('<a href="/box/bundle" download>Download the log bundle</a>');
-  });
-
-  it("says to reserve the box's address in the router", () => {
-    expect(items(page).Address).toBe("192.168.1.20. Reserve this address for the box in your router.");
-    expect(items(render({ ...STATUS, address: null })).Address).toBe("none");
-  });
 });
 
 describe("the setup on the status page", () => {
   /** The form, from its tag to its end. */
   const setup = (html: string) => html.match(/<form method="post" action="\/box\/setup"[\s\S]*?<\/form>/)?.[0] ?? "";
 
-  it("offers control, dccex, jmri and occupancy in that order, the declared ones ticked", () => {
-    const boxes = [...setup(page).matchAll(/<input type="checkbox" name="ui" value="(\w+)"( checked)?>/g)].map(
-      ([, value, checked]) => `${value}${checked ? " ticked" : ""}`,
+  it("offers Control, Occupancy, JMRI and the DCC-EX translator in that order, the declared ones ticked", () => {
+    const boxes = [...group(page, "Stacks to run").matchAll(/<input type="checkbox" name="ui" value="(\w+)"( checked)?> ([^<]+)<\/label>/g)].map(
+      ([, value, checked, name]) => `${value} ${name}${checked ? " ticked" : ""}`,
     );
-    expect(boxes).toEqual(["control ticked", "dccex", "jmri ticked", "occupancy"]);
+    expect(boxes).toEqual(["control Control ticked", "occupancy Occupancy", "jmri JMRI ticked", "dccex DCC-EX translator"]);
     expect(setup(plain)).not.toContain("checked");
   });
 
-  it("says why ticking dccex or occupancy ticks control, and loads the script that ticks it", () => {
-    expect(setup(page)).toContain(
-      "<p>Ticking dccex or occupancy ticks control too: each dials its broker.</p>",
+  it("says why ticking the DCC-EX translator or Occupancy ticks Control, and loads the script that ticks it", () => {
+    expect(group(page, "Stacks to run")).toContain(
+      "<p>Ticking DCC-EX translator or Occupancy ticks Control too: each dials its broker.</p>",
     );
     expect(page).toContain('<script type="module" src="/box/tick.js"></script>');
   });
 
   it("offers each station plugged in, or none, with the one dccex.env names chosen", () => {
-    expect(setup(page)).toContain(
+    expect(group(page, "Devices")).toContain(
       [
         '<select name="station">',
         '<option value="/dev/serial/by-id/none">none</option>',
@@ -357,7 +391,7 @@ describe("the setup on the status page", () => {
   });
 
   it("keeps a device named by hand that is not plugged in, and says when none is", () => {
-    expect(setup(page)).toContain(
+    expect(group(page, "Devices")).toContain(
       [
         '<select name="camera">',
         '<option value="/dev/v4l/by-id/none">none</option>',
@@ -374,7 +408,7 @@ describe("the setup on the status page", () => {
   it("says when applying stops the railroad, before the button", () => {
     const form = setup(page);
     const stops = form.indexOf(KEEPS);
-    expect(stops).toBeGreaterThan(-1);
+    expect(stops).toBeGreaterThan(form.indexOf("<legend>Devices</legend>"));
     expect(form.indexOf("<button>Apply</button>")).toBeGreaterThan(stops);
   });
 
@@ -382,14 +416,121 @@ describe("the setup on the status page", () => {
     expect(setup(render(IDLE))).toContain("<button>Apply</button>");
     expect(setup(render(IDLE))).not.toContain("railroad");
   });
+});
 
-  it("is not offered while an update, going back or applying runs, which the page says", () => {
-    expect(setup(render(UPDATING))).toBe("");
+describe("while an update, going back or applying runs", () => {
+  /** UPDATING at step `at` of an update that downloads, with `fields`
+   *  changed, rendered 25 seconds after the step began. */
+  const at = (step: string, fields: object = {}) =>
+    render(
+      {
+        ...UPDATING,
+        updating: {
+          ...UPDATING.updating,
+          steps: ["download", "pull", "start", "watch", "probe", "prune"] as const,
+          at: step as "pull",
+          since: "2026-11-12T10:00:00.000Z",
+          pull: null,
+          building: false,
+          ...fields,
+        },
+      },
+      new Date("2026-11-12T10:00:25.400Z"),
+    );
+  /** The step list, as `[state, what the step says]`. */
+  const steps = (html: string) =>
+    [...group(html, "Release").matchAll(/<li(?: class="(\w+)")?>([\s\S]*?)<\/li>/g)].map(([, state, said]) => [
+      state ?? "",
+      text(said!),
+    ]);
+
+  it("lists the run's steps in the release group, ticking those done and spinning at the current one", () => {
+    const html = at("start");
+    expect(group(html, "Release")).toContain("<p>Updating to 2026.11.1</p>");
+    expect(steps(html)).toEqual([
+      ["done", "Download release"],
+      ["done", "Pull images"],
+      ["current", "Start stacks"],
+      ["", "Watch for 60 seconds"],
+      ["", "Probe"],
+      ["", "Remove unused images"],
+    ]);
+  });
+
+  it("offers neither updating nor going back, hides the setup, and reloads itself", () => {
+    const html = at("start");
+    expect(html).not.toMatch(/action="\/box\/(update|back|check|prereleases|setup)"/);
+    expect(outline(html)).toEqual(["Failures", "Release and setup", "Release", "Status", "Stacks", "Box", "Docker"]);
+    expect(html).toContain('<meta http-equiv="refresh" content="5">');
+    expect(page).not.toContain('http-equiv="refresh"');
+  });
+
+  it("lists the steps applying takes", () => {
+    const html = at("stop", { action: "apply", to: "2026.11.0", steps: ["pull", "stop", "start", "watch", "probe"] });
+    expect(group(html, "Release")).toContain("<p>Applying the setup</p>");
+    expect(steps(html).map(([state, said]) => `${state} ${said}`)).toEqual([
+      "done Pull images",
+      "current Stop stacks no longer chosen",
+      " Start stacks",
+      " Watch for 60 seconds",
+      " Probe",
+    ]);
+  });
+
+  it("while it pulls, shows the images done of all of them, and the image by its last name with its bytes", () => {
+    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
+    const html = at("pull", { pull: { image, index: 6, count: 7, current: 300e6, total: 1.2e9 } });
+    expect(group(html, "Release")).toContain(
+      '<li class="current">Pull images <progress value="5" max="7">5 of 7</progress> occupancy-service, 300 MB of 1.2 GB</li>',
+    );
+    // No bytes before the stream says any.
+    const traefik = at("pull", { pull: { image: "traefik:v3.7", index: 1, count: 7, current: 0, total: 0 } });
+    expect(group(traefik, "Release")).toContain('<progress value="0" max="7">0 of 7</progress> traefik</li>');
+  });
+
+  it("while JMRI is built, says so with no bar", () => {
+    expect(steps(at("pull", { building: true }))[1]).toEqual(["current", "Building JMRI"]);
+    expect(at("pull", { building: true })).not.toContain("<progress");
+  });
+
+  it("counts down the 60 seconds from when they began", () => {
+    expect(steps(at("watch"))[3]).toEqual(["current", "Watching for 60 seconds: 35 left"]);
+  });
+
+  it("goes back to the release group's own rows once it has ended", () => {
+    const ended = render({ ...UPDATING, updating: { ...UPDATING.updating, running: false } });
+    expect(group(ended, "Release")).not.toContain("<ol");
+    expect(ended).toContain('action="/box/update"');
+    expect(ended).not.toContain('http-equiv="refresh"');
+  });
+
+  it("from a file an older release wrote, which lists no steps, says what it is doing in a sentence", () => {
+    const html = render(UPDATING);
+    expect(group(html, "Release")).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
+    const back = render({ ...UPDATING, updating: { ...UPDATING.updating, action: "back" as const, to: "2026.10.2" } });
+    expect(back).toContain('<p class="updating">Going back to 2026.10.2: Starting control.</p>');
     const applying = render({
       ...UPDATING,
       updating: { ...UPDATING.updating, action: "apply" as const, to: "2026.11.0", step: "Stopping dccex." },
     });
     expect(applying).toContain('<p class="updating">Applying the setup: Stopping dccex.</p>');
   });
-});
 
+  it("says what it is doing in a sentence before it has listed its steps", () => {
+    const html = render({ ...UPDATING, updating: { ...UPDATING.updating, steps: [], at: null } });
+    expect(group(html, "Release")).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
+  });
+
+  it("from such a file, says which image it pulls, of how many, and its bytes", () => {
+    const pulling = (pull: Pull | null, step = "Pulling occupancy-service's images.") =>
+      render({ ...UPDATING, updating: { ...UPDATING.updating, to: "2026.11.5", step, pull } });
+    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
+    expect(pulling({ image, index: 4, count: 10, current: 1.23e9, total: 2.34e9 })).toContain(
+      '<p class="updating">Updating to 2026.11.5: Pulling occupancy-service\'s images: ghcr.io/rails49/occupancy-service, image 4 of 10, 1.2 GB of 2.3 GB.</p>',
+    );
+    expect(pulling({ image: "traefik:v3.7", index: 1, count: 10, current: 12.4e6, total: 48e6 })).toContain(
+      ": traefik, image 1 of 10, 12 MB of 48 MB.</p>",
+    );
+    expect(pulling(null, "Pulling jmri's images.")).toContain('<p class="updating">Updating to 2026.11.5: Pulling jmri\'s images.</p>');
+  });
+});

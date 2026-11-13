@@ -15,7 +15,8 @@
 // removes the containers of each stack no longer declared, keeping their
 // data, and neither appends to the record nor prunes. What it is doing is in
 // `PROGRESS`, which the status page reads: the step, and while an image is
-// pulled, which one of how many and its bytes (#96).
+// pulled, which one of how many and its bytes (#96); and the steps this run
+// takes, the one it is at and when that began (#111).
 //
 // The docker CLI, the Engine API's pull, the box's files, GitHub, the probe
 // and the clock are handed in as `io`, so this reads nothing itself.
@@ -102,10 +103,22 @@ const EVERY = 1000;
 class Failure extends Error {}
 
 /**
- * The progress file's text: what runs, the step it is at, the image it pulls
- * or null, and once it has finished, when, whether it passed, and why not.
+ * A step of a run, as the progress file lists it: downloading the release,
+ * pulling the images, stopping the stacks no longer chosen, starting the
+ * stacks, watching them for 60 seconds, probing, and removing what neither
+ * release uses.
  *
- * @param {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, pull: Pull | null }} run
+ * @typedef {"download" | "pull" | "stop" | "start" | "watch" | "probe" | "prune"} Step
+ */
+
+/**
+ * The progress file's text: what runs, the step it is at in a sentence, the
+ * image it pulls or null, and once it has finished, when, whether it passed,
+ * and why not. A run also lists its steps, the one it is at, null once it has
+ * passed, when that began, and whether JMRI is being built. A page from an
+ * older release reads only the sentence and the pull.
+ *
+ * @param {{ action: "update" | "back" | "apply", from: string, to: string, started: string, steps?: Step[], at?: Step | null, since?: string, step: string, pull: Pull | null, building?: boolean }} run
  * @param {{ finished: Date, passed: boolean, failure: string | null } | null} result
  */
 function progressText(run, result) {
@@ -123,10 +136,26 @@ function progressText(run, result) {
 export async function run(action, from, to, env, io) {
   const started = io.now().toISOString();
   let written = -Infinity;
-  /** @param {string} step @param {{ passed: boolean, failure: string | null } | null} [result] @param {Pull | null} [pull] */
-  const progress = (step, result = null, pull = null) => {
+  /** @type {Step[]} */
+  let steps = [];
+  /** @type {Step | null} */
+  let at = null;
+  let since = started;
+  /**
+   * @param {Step | null} id the step, null once passed
+   * @param {string} step
+   * @param {{ result?: { passed: boolean, failure: string | null }, pull?: Pull, building?: boolean }} [more]
+   */
+  const progress = (id, step, { result, pull, building = false } = {}) => {
+    if (id !== at) [at, since] = [id, io.now().toISOString()];
     written = io.now().getTime();
-    return io.write(PROGRESS, progressText({ action, from, to, started, step, pull }, result && { ...result, finished: io.now() }));
+    return io.write(
+      PROGRESS,
+      progressText(
+        { action, from, to, started, steps, at, since, step, pull: pull ?? null, building },
+        result ? { ...result, finished: io.now() } : null,
+      ),
+    );
   };
 
   const stacks = declared(env.BOX_UIS);
@@ -150,14 +179,29 @@ export async function run(action, from, to, env, io) {
   /** @type {Set<string>} */
   let ran = new Set();
   try {
-    if ((await io.read(manifestPath(to))) === null) {
-      await progress(`Downloading release ${to}.`);
+    const missing = (await io.read(manifestPath(to))) === null;
+    const all = await inspected(io.docker);
+    ran = new Set(own(all, stacks).map((c) => c.Image));
+    // Applying the setup stops each stack no longer declared that has a
+    // container.
+    const undeclared = STACKS.filter((stack) => !stacks.includes(stack));
+    const stopping = action === "apply" ? undeclared.filter((stack) => own(all, [stack]).length) : [];
+    steps = [
+      ...(missing ? /** @type {const} */ (["download"]) : []),
+      "pull",
+      ...(stopping.length ? /** @type {const} */ (["stop"]) : []),
+      "start",
+      "watch",
+      "probe",
+      ...(action === "update" ? /** @type {const} */ (["prune"]) : []),
+    ];
+
+    if (missing) {
+      await progress("download", `Downloading release ${to}.`);
       await download(to, io).catch((error) => {
         throw new Failure(`Could not download release ${to}: ${sentence(error)}`);
       });
     }
-
-    ran = new Set((await containers(stacks, io)).map((c) => c.Image));
 
     /** @param {(typeof stacks)[number]} stack @param {unknown} error */
     const unpulled = (stack, error) =>
@@ -176,16 +220,17 @@ export async function run(action, from, to, env, io) {
     let index = 0;
     for (const stack of stacks) {
       const step = `Pulling ${stack.stack}'s images.`;
-      await progress(step);
       try {
         if (stack.stack === "jmri") {
+          await progress("pull", step, { building: true });
           await compose(stack, ["build", "--pull"]);
           continue;
         }
+        await progress("pull", step);
         for (const image of images.get(stack) ?? []) {
           index += 1;
           await pull(image, index, count, io, async (pulled) => {
-            if (io.now().getTime() - written >= EVERY) await progress(step, null, pulled);
+            if (io.now().getTime() - written >= EVERY) await progress("pull", step, { pull: pulled });
           });
         }
       } catch (error) {
@@ -193,23 +238,19 @@ export async function run(action, from, to, env, io) {
       }
     }
 
-    if (action === "apply") {
-      const undeclared = STACKS.filter((stack) => !stacks.includes(stack));
-      const running = new Set((await containers(undeclared, io)).map((c) => c.Config.Labels?.["com.docker.compose.project"]));
-      for (const stack of undeclared.filter(({ project }) => running.has(project))) {
-        await progress(`Stopping ${stack.stack}.`);
-        await io.docker(["compose", "-p", stack.project, "down"]);
-      }
+    for (const stack of stopping) {
+      await progress("stop", `Stopping ${stack.stack}.`);
+      await io.docker(["compose", "-p", stack.project, "down"]);
     }
 
     for (const stack of stacks) {
-      await progress(`Starting ${stack.stack}.`);
+      await progress("start", `Starting ${stack.stack}.`);
       await compose(stack, ["up", "-d", "--no-build", "--pull", "never", "--remove-orphans"]).catch((error) => {
         throw new Failure(`${stack.stack} did not start on release ${to}: ${sentence(error)}`);
       });
     }
 
-    await progress("Waiting 60 seconds to see that every container keeps running.");
+    await progress("watch", "Waiting 60 seconds to see that every container keeps running.");
     const before = await containers(stacks, io);
     await io.sleep(WAIT);
     const after = await containers(stacks, io);
@@ -227,7 +268,7 @@ export async function run(action, from, to, env, io) {
       }
     }
 
-    await progress("Probing every way into every UI.");
+    await progress("probe", "Probing every way into every UI.");
     const labels = env.BOX_UIS.split(/\s+/).filter(Boolean);
     const probed = await io.probe([env.address, env.hostname, env.BOX_DOMAIN, ...labels]);
     if (!probed.ok) {
@@ -246,10 +287,11 @@ export async function run(action, from, to, env, io) {
   // Only after an update: going back after a failed one would otherwise
   // leave the release before it with no files and no images.
   if (passed && action === "update") {
-    await progress("Removing what neither release uses.");
+    await progress("prune", "Removing what neither release uses.");
     await prune([to, from].filter((release) => release !== "-"), ran, io);
   }
-  await progress(passed ? "Done." : "Failed.", { passed, failure });
+  // A run that failed stays at the step that failed.
+  await progress(passed ? null : at, passed ? "Done." : "Failed.", { result: { passed, failure } });
 }
 
 /**
@@ -311,8 +353,16 @@ async function download(release, io) {
  * @returns {Promise<Container[]>}
  */
 async function containers(stacks, io) {
-  /** @type {Container[]} */
-  const all = await inspected(io.docker);
+  return own(await inspected(io.docker), stacks);
+}
+
+/**
+ * The containers among `all` that belong to the stacks.
+ *
+ * @param {Container[]} all
+ * @param {{ project: string }[]} stacks
+ */
+function own(all, stacks) {
   const projects = stacks.map((s) => s.project);
   return all.filter((c) => projects.includes(c.Config.Labels?.["com.docker.compose.project"] ?? ""));
 }

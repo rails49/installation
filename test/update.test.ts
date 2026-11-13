@@ -210,15 +210,15 @@ describe("an update that passes", () => {
     const part = `${RELEASES}/${NEW}.part`;
     const base = "https://github.com/rails49/installation/releases/download/2026.11.1";
     expect(asked.slice(0, 20)).toEqual([
+      // What ran before, for pruning.
+      "ps -aq",
+      "inspect a b c d",
       `remove ${part}`,
       `download ${base}/manifest.json ${part}/manifest.json`,
       `download ${base}/box-files.tar.gz ${part}/box-files.tar.gz`,
       `unpack ${part}/box-files.tar.gz ${part}`,
       `remove ${part}/box-files.tar.gz`,
       `rename ${part} ${RELEASES}/${NEW}`,
-      // What ran before, for pruning.
-      "ps -aq",
-      "inspect a b c d",
       // Every image, before any container is recreated, counted first.
       `${INSTALLATION(NEW)} config --images`,
       `${CONTROL(NEW)} config --images`,
@@ -258,8 +258,12 @@ describe("an update that passes", () => {
       from: OLD,
       to: NEW,
       started: "2026-11-12T10:00:00.000Z",
+      steps: ["download", "pull", "start", "watch", "probe", "prune"],
+      at: null,
+      since: "2026-11-12T10:00:00.000Z",
       step: "Done.",
       pull: null,
+      building: false,
       finished: "2026-11-12T10:00:00.000Z",
       passed: true,
       failure: null,
@@ -283,6 +287,71 @@ describe("an update that passes", () => {
       "image rm ghcr.io/rails49/control:0a1b2c3",
       `image rm traefik@${DIGEST(1)}`,
     ]);
+  });
+});
+
+describe("the steps the progress file lists", () => {
+  /** Each step the progress file was at, in order, with when it began. */
+  const reached = (writes: Box["writes"]) =>
+    writes.reduce<[unknown, unknown][]>((seen, { progress: { at, since } }) => {
+      if (at !== seen.at(-1)?.[0]) seen.push([at, since]);
+      return seen;
+    }, []);
+
+  it("are those an update takes, downloading only a release not on the box", async () => {
+    const { io, writes } = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const steps = ["download", "pull", "start", "watch", "probe", "prune"];
+    expect(writes.every(({ progress }) => JSON.stringify(progress.steps) === JSON.stringify(steps))).toBe(true);
+    expect(reached(writes).map(([at]) => at)).toEqual([...steps, null]);
+  });
+
+  it("stay at the one that failed once a run has failed", async () => {
+    const { io, progress } = box({ fail: "control/compose.https.yaml up" });
+    await run("update", OLD, NEW, ENV, io);
+    expect(progress()).toMatchObject({ at: "start", step: "Failed.", passed: false });
+  });
+
+  it("are those going back takes, with no removing", async () => {
+    const { io, writes } = box({
+      files: {
+        [RECORD]: `2026-11-10T09:00:00Z  ${OLD}  ->  ${NEW}  passed\n`,
+        [`${RELEASES}/${NEW}/manifest.json`]: JSON.stringify(manifest(NEW, 3)),
+      },
+    });
+    await run("back", NEW, OLD, ENV, io);
+    expect(writes.at(-1)?.progress.steps).toEqual(["pull", "start", "watch", "probe"]);
+  });
+
+  it("are those applying takes, stopping stacks only where one is no longer chosen", async () => {
+    const stopping = box();
+    await run("apply", OLD, OLD, ENV, stopping.io);
+    expect(stopping.progress().steps).toEqual(["pull", "stop", "start", "watch", "probe"]);
+    const none = box({ gone: ["d"] });
+    await run("apply", OLD, OLD, ENV, none.io);
+    expect(none.progress().steps).toEqual(["pull", "start", "watch", "probe"]);
+  });
+
+  it("say when each step began, which writes during it keep", async () => {
+    const { io, writes } = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const pulling = writes.filter(({ progress }) => progress.at === "pull");
+    expect(pulling.length).toBeGreaterThan(2);
+    expect(new Set(pulling.map(({ progress }) => progress.since))).toEqual(
+      new Set([new Date(pulling[0]!.at).toISOString()]),
+    );
+    const watching = writes.find(({ progress }) => progress.at === "watch")!;
+    expect(watching.progress.since).toBe(new Date(watching.at).toISOString());
+  });
+
+  it("say while JMRI is built, which is no pull", async () => {
+    const { io, writes } = box();
+    await run("update", OLD, NEW, ENV, io);
+    const building = writes.filter(({ progress }) => progress.building);
+    expect(building.map(({ progress }) => [progress.at, progress.step, progress.pull])).toEqual([
+      ["pull", "Pulling jmri's images.", null],
+    ]);
+    expect(writes.at(-1)?.progress.building).toBe(false);
   });
 });
 

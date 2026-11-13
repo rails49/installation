@@ -1,6 +1,7 @@
 // What the status page shows (#65 decision 16), gathered from the docker CLI,
-// the box's files under /var/lib/rails49, the disk, the door's certificate
-// and DNS. Each of those is handed in as `io`, so this reads nothing itself.
+// the Engine API's container stats, the box's files under /var/lib/rails49
+// and /proc/meminfo, the disk, the door's certificate and DNS. Each of those
+// is handed in as `io`, so this reads nothing itself.
 // A failure is said in a sentence in `failures`, and a stack on a local build
 // in `notes` (decision 13).
 
@@ -12,6 +13,7 @@
  *   address: () => Promise<string | null>,
  *   certificate: (name: string) => Promise<{ valid_from: string, valid_to: string, error: string | null }>,
  *   resolve: (name: string) => Promise<string[]>,
+ *   stats: (id: string) => Promise<Stats | null>,
  *   now: () => Date,
  * }} Io
  *
@@ -19,6 +21,16 @@
  * is none. `address` is the box's address on its LAN. `certificate` is what
  * the door presents for a name, with `error` saying why it is not valid.
  * `resolve` is the addresses a name resolves to, and throws where it does not.
+ * `stats` is what the Engine API's one-shot stats say of a container, or null
+ * where it says nothing.
+ */
+
+/**
+ * A container's stats, the fields read here: the memory it uses, of which
+ * the inactive file cache, `inactive_file` under cgroup v2 and
+ * `total_inactive_file` under v1, can be reclaimed.
+ *
+ * @typedef {{ memory_stats: { usage?: number, stats?: { inactive_file?: number, total_inactive_file?: number } } }} Stats
  */
 
 /**
@@ -29,7 +41,7 @@
  * One container as `docker inspect` writes it, the fields read here and in
  * the update.
  *
- * @typedef {{ Name: string, Image: string, State: { Status: string, StartedAt: string }, Config: { Labels: Record<string, string> | null } }} Container
+ * @typedef {{ Id: string, Name: string, Image: string, State: { Status: string, StartedAt: string }, Config: { Labels: Record<string, string> | null } }} Container
  */
 
 /** Each stack the box can run: the label in `BOX_UIS` that declares it, its
@@ -207,7 +219,7 @@ export async function status(env, io) {
   const containers = await inspected(io.docker);
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
 
-  const stacks = declared(env.BOX_UIS).map(({ stack, project }) => {
+  const stacks = await Promise.all(declared(env.BOX_UIS).map(async ({ stack, project }) => {
     const own = containers.filter((c) => c.Config.Labels?.["com.docker.compose.project"] === project);
     const states = own.map((c) => c.State.Status);
     const state = states.includes("restarting")
@@ -224,8 +236,15 @@ export async function status(env, io) {
       const of = commit ? `of \`${commit.slice(0, 7)}\`` : "with no commit named";
       notes.push(`${stack} runs a local build ${of}${release ? `, not release ${release}` : ""}.`);
     }
-    return { stack, state, commit, local_build };
-  });
+    // What the running containers use, as `docker stats` says it.
+    const running = own.filter((c) => c.State.Status === "running");
+    const used = (await Promise.all(running.map((c) => io.stats(c.Id)))).map((stats) => {
+      const { usage = 0, stats: more = {} } = stats?.memory_stats ?? {};
+      return usage - (more.inactive_file ?? more.total_inactive_file ?? 0);
+    });
+    const memory = running.length ? used.reduce((a, b) => a + b, 0) : null;
+    return { stack, state, commit, local_build, memory };
+  }));
 
   /** @type {{ checked?: string | null, succeeded?: string | null, latest?: string | null, prerelease?: boolean }} */
   const check = parse(await io.read(CHECK)) ?? {};
@@ -252,9 +271,11 @@ export async function status(env, io) {
 
   // The update, going back or applying that ran last, from its progress
   // file, and whether its container runs.
-  // `pull` is null outside a pull, and missing from a file an older
-  // release's `rails49-update` wrote.
-  /** @type {{ action: "update" | "back" | "apply", from: string, to: string, started: string, step: string, pull?: import("./update.mjs").Pull | null, finished: string | null, passed: boolean | null, failure: string | null } | null} */
+  // `pull` is null outside a pull. It, and the steps, the one it is at, when
+  // that began and whether JMRI is built, are missing from a file an older
+  // release's `rails49-update` wrote, and from the one `box` writes as it
+  // starts it.
+  /** @type {{ action: "update" | "back" | "apply", from: string, to: string, started: string, steps?: import("./update.mjs").Step[], at?: import("./update.mjs").Step | null, since?: string, step: string, pull?: import("./update.mjs").Pull | null, building?: boolean, finished: string | null, passed: boolean | null, failure: string | null } | null} */
   const progress = parse(await io.read(PROGRESS));
   const updater = containers.find((c) => c.Name === "/rails49-update");
   const updating = progress && { ...progress, running: updater?.State.Status === "running" };
@@ -271,6 +292,13 @@ export async function status(env, io) {
 
   const disk = await io.disk();
   if (disk.free < disk.total / 10) failures.push(`The disk has ${gb(disk.free)} free of ${gb(disk.total)}.`);
+
+  // The box's memory: a container reads the host's /proc/meminfo. Low memory
+  // is no failure.
+  const meminfo = (await io.read("/proc/meminfo")) ?? "";
+  const kb = (/** @type {string} */ key) => Number(meminfo.match(new RegExp(`^${key}:\\s+(\\d+) kB`, "m"))?.[1] ?? NaN) * 1024;
+  const total = kb("MemTotal");
+  const memory = Number.isNaN(total) ? null : { used: total - kb("MemAvailable"), total };
 
   const address = await io.address();
   if (address === null) failures.push("This box has no address on a network.");
@@ -334,6 +362,7 @@ export async function status(env, io) {
     updating,
     back,
     disk,
+    memory,
     docker,
     certificate,
     resolves,

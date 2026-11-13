@@ -15,6 +15,7 @@ const RELEASED = "8f7e6d5c4b3a29180716253443526170819a0b1c";
 /** One container as `docker inspect` writes it, the fields read here. */
 function container(name: string, project: string, state = "running", revision = COMMIT) {
   return {
+    Id: `${name}-id`,
     Name: `/${name}`,
     State: { Status: state },
     Config: {
@@ -82,6 +83,7 @@ function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: 
       error: null,
     }),
     resolve: async () => ["192.168.1.20"],
+    stats: async () => null,
     now: () => new Date("2026-11-12T10:00:00Z"),
     ...facts,
   };
@@ -94,9 +96,63 @@ describe("the stacks", () => {
   it("are the installation and one per declared label, each with its state and commit", async () => {
     const { stacks } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
     expect(stacks).toEqual([
-      { stack: "installation", state: "running", commit: COMMIT, local_build: true },
-      { stack: "control", state: "running", commit: COMMIT, local_build: true },
+      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: 0 },
+      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: 0 },
     ]);
+  });
+});
+
+describe("memory", () => {
+  const MEMINFO = "MemTotal:        7812500 kB\nMemFree:          512000 kB\nMemAvailable:    5761719 kB\n";
+
+  it("is how much the box uses of how much it has, from /proc/meminfo", async () => {
+    const { memory } = await status(NAMED, io({ files: { "/proc/meminfo": MEMINFO } }));
+    expect(memory).toEqual({ used: (7812500 - 5761719) * 1024, total: 7812500 * 1024 });
+  });
+
+  it("is none where /proc/meminfo cannot be read", async () => {
+    expect((await status(NAMED, io())).memory).toBeNull();
+  });
+
+  it("is never a failure, however little is left", async () => {
+    const low = "MemTotal:        7812500 kB\nMemAvailable:      10000 kB\n";
+    expect((await status(NAMED, io({ files: { "/proc/meminfo": low } }))).failures).toEqual([]);
+  });
+
+  /** What the Engine API's one-shot stats say of a container's memory, by
+   *  id: its usage and the inactive file cache in it, under cgroup v2. */
+  const stats: Io["stats"] = async (id) =>
+    ({
+      "tc49-store-1-id": { memory_stats: { usage: 300e6, stats: { inactive_file: 100e6 } } },
+      "tc49-broker-1-id": { memory_stats: { usage: 50e6, stats: { inactive_file: 0 } } },
+      "installation-door-1-id": { memory_stats: { usage: 40e6, stats: { inactive_file: 10e6 } } },
+      "installation-page-1-id": { memory_stats: { usage: 10e6, stats: { inactive_file: 0 } } },
+    })[id] ?? null;
+
+  it("is, for each stack, the sum of what its containers use, less their inactive file cache", async () => {
+    const { stacks } = await status(NAMED, io({ stats }));
+    expect(stacks.map((s) => [s.stack, s.memory])).toEqual([
+      ["installation", 40e6],
+      ["control", 250e6],
+    ]);
+  });
+
+  it("is read under cgroup v1 too", async () => {
+    const v1: Io["stats"] = async (id) =>
+      id === "tc49-store-1-id" ? { memory_stats: { usage: 300e6, stats: { total_inactive_file: 100e6 } } } : null;
+    const { stacks } = await status(NAMED, io({ stats: v1 }));
+    expect(stacks[1]!.memory).toBe(200e6);
+  });
+
+  it("is asked of running containers only, and is none for a stack with none running", async () => {
+    const asked: string[] = [];
+    const containers = [...CONTAINERS.slice(0, 3), container("tc49-store-1", "tc49", "exited")];
+    const { stacks } = await status(
+      NAMED,
+      io({ containers, stats: async (id) => (asked.push(id), stats(id)) }),
+    );
+    expect(asked.sort()).toEqual(["installation-box-1-id", "installation-door-1-id", "installation-page-1-id"]);
+    expect(stacks[1]!.memory).toBeNull();
   });
 });
 
@@ -181,7 +237,7 @@ describe("a stack on a local build", () => {
   it("is never JMRI, which is built on the box and in no release", async () => {
     const containers = [...CONTAINERS, container("jmri-jmri-1", "jmri", "running", "")];
     const { stacks, notes } = await status({ ...NAMED, BOX_UIS: "control jmri" }, io({ containers }));
-    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false });
+    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: 0 });
     expect(notes).toHaveLength(1);
   });
 });
@@ -198,7 +254,7 @@ describe("a stack that is not running", () => {
     const exited = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "exited")];
     expect((await status(NAMED, io({ containers: exited }))).failures).toEqual(["control is stopped."]);
     const missing = await status({ ...NAMED, BOX_UIS: "control dccex" }, io());
-    expect(missing.stacks[2]).toEqual({ stack: "dccex", state: "stopped", commit: null, local_build: false });
+    expect(missing.stacks[2]).toEqual({ stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null });
     expect(missing.failures).toEqual(["dccex is stopped."]);
   });
 

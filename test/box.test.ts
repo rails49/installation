@@ -17,7 +17,7 @@ const STATUS = {
   name: "example.org",
   address: "192.168.1.20",
   release: null,
-  stacks: [{ stack: "installation", state: "running", commit: null, local_build: true }],
+  stacks: [{ stack: "installation", state: "running", commit: null, local_build: true, memory: 50e6 }],
   update: {
     latest: null,
     prerelease: false,
@@ -29,6 +29,7 @@ const STATUS = {
     could_not_check: false,
   },
   disk: { free: 20e9, total: 64e9 },
+  memory: { used: 2.1e9, total: 8e9 },
   docker: { version: "29.1.3", tested: [], log_driver: "local" },
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
