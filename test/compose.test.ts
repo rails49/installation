@@ -775,10 +775,16 @@ describe("the UI ports", () => {
       },
       encoding: "utf8",
     }).stdout;
-    const linked = [...html.matchAll(/<a href="http:\/\/shed\.local:(\d+)"[^>]*>([a-z]+)<\/a>/g)].map(
-      ([, port, label]) => [label, Number(port)],
+    const linked = [
+      ...html.matchAll(
+        /<a class="item" href="http:\/\/shed\.local:(\d+)"[^>]*><svg[\s\S]*?<\/svg><span class="name">([a-z]+)<\/span>/g,
+      ),
+    ].map(([, port, label]) => [label, Number(port)]);
+    // The page lists them in its own order, not the table's.
+    expect(linked).toEqual(
+      expect.arrayContaining(uis.map(([label, , port]) => [label, port])),
     );
-    expect(linked).toEqual(uis.map(([label, , port]) => [label, port]));
+    expect(linked).toHaveLength(uis.length);
   });
 
   it("are what the probe asks", () => {

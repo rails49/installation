@@ -5,9 +5,11 @@
 #
 #     BOX_DOMAIN=example.org BOX_UIS="control jmri" ./page/render.sh
 #
-# One item per declared label, in the order the operator declared them; the
-# text is the label. The apex is not a label and is never listed — the page is
-# what lives there.
+# One item per declared label: an icon, the label and a line of text. The
+# labels this script knows come first, in its order; any other declared label
+# follows in the order the operator declared it, with the default icon and no
+# text. The apex is not a label and is never listed — the page is what lives
+# there. Below them, always: the status page and rails49.org.
 #
 # On a box with a box name each label links to that label under the box name.
 # On a box with no certificate (`BOX_DOMAIN` empty) each label links to its UI
@@ -17,7 +19,8 @@
 # host the page was reached at. The page's title and band carry the box name,
 # or the box's hostname, read from `HOSTNAME_FILE`.
 #
-# The page holds two facts about a UI: its label and its UI port.
+# The page holds four facts about a UI: its label, its UI port, its icon and
+# its line of text.
 #
 # `sh` rather than bash: the container this runs in is stock nginx, which has
 # none. Word splitting is what reads `BOX_UIS`, so it is left on deliberately.
@@ -40,6 +43,35 @@ ui_port() {
   esac
 }
 
+# The UIs the page knows, in the order it lists them, and each one's icon (a
+# file in `icons/`) and line of text.
+KNOWN="control occupancy jmri dccex"
+
+ui_icon() {
+  case $1 in
+    control) echo train-front ;;
+    occupancy) echo cctv ;;
+    jmri) echo cpu ;;
+    dccex) echo circuit-board ;;
+    *) echo app-window ;;
+  esac
+}
+
+ui_text() {
+  case $1 in
+    control) echo "Schedule, dispatch and drive trains." ;;
+    occupancy) echo "See which track is occupied, from a camera." ;;
+    jmri) echo "JMRI, with DecoderPro for programming locos." ;;
+    dccex) echo "The DCC-EX command station: firmware, serial monitor and script." ;;
+  esac
+}
+
+# An item's content: its icon, its name and, when it has one, its line of text.
+content() {
+  printf '%s<span class="name">%s</span>' "$(cat "$here/icons/$1.svg")" "$2"
+  [ -z "$3" ] || printf '<span class="text">%s</span>' "$3"
+}
+
 if [ -n "$BOX_DOMAIN" ]; then
   NAME=$BOX_DOMAIN
 else
@@ -47,26 +79,52 @@ else
 fi
 export NAME
 
-LINKS=""
+declared() {
+  for label in $BOX_UIS; do
+    [ "$label" != "$1" ] || return 0
+  done
+  return 1
+}
+
+LISTED=""
+for label in $KNOWN; do
+  ! declared "$label" || LISTED="$LISTED $label"
+done
 for label in $BOX_UIS; do
+  case " $KNOWN " in
+    *" $label "*) ;;
+    *) LISTED="$LISTED $label" ;;
+  esac
+done
+
+LINKS=""
+for label in $LISTED; do
   [ -z "$LINKS" ] || LINKS="$LINKS
 "
   port=$(ui_port "$label")
+  body=$(content "$(ui_icon "$label")" "$label" "$(ui_text "$label")")
   if [ -n "$BOX_DOMAIN" ] && [ -n "$port" ]; then
-    item=$(printf '<li><a href="https://%s.%s" data-ui-port="%s">%s</a></li>' \
-      "$label" "$BOX_DOMAIN" "$port" "$label")
+    item=$(printf '<li><a class="item" href="https://%s.%s" data-ui-port="%s">%s</a></li>' \
+      "$label" "$BOX_DOMAIN" "$port" "$body")
   elif [ -n "$BOX_DOMAIN" ]; then
-    item=$(printf '<li><a href="https://%s.%s">%s</a></li>' \
-      "$label" "$BOX_DOMAIN" "$label")
+    item=$(printf '<li><a class="item" href="https://%s.%s">%s</a></li>' \
+      "$label" "$BOX_DOMAIN" "$body")
   elif [ -n "$port" ]; then
-    item=$(printf '<li><a href="http://%s.local:%s" data-ui-port="%s">%s</a></li>' \
-      "$NAME" "$port" "$port" "$label")
+    item=$(printf '<li><a class="item" href="http://%s.local:%s" data-ui-port="%s">%s</a></li>' \
+      "$NAME" "$port" "$port" "$body")
   else
-    item="<li>$label</li>"
+    item=$(printf '<li><span class="item">%s</span></li>' "$body")
   fi
   LINKS="$LINKS$item"
 done
 export LINKS
+
+# Relative, so the status page stays on the host and port this page was
+# reached at.
+ALWAYS=$(printf '<li><a class="item" href="/box/">%s</a></li>\n<li><a class="item" href="https://rails49.org/">%s</a></li>' \
+  "$(content activity "Box status" "What the server runs, and whether it is well.")" \
+  "$(content globe rails49.org "The project's site and documentation.")")
+export ALWAYS
 
 # awk rather than sed: what goes in is whole lines of HTML, holding slashes and
 # ampersands that a sed replacement would read as its own. Through the
@@ -82,5 +140,5 @@ export LINKS
 # nothing to repeat as the literal it plainly is, so this ran green everywhere
 # except the only place it runs for real.
 awk '
-  { gsub(/\{\{NAME\}\}/, ENVIRON["NAME"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); print }
+  { gsub(/\{\{NAME\}\}/, ENVIRON["NAME"]); gsub(/\{\{LINKS\}\}/, ENVIRON["LINKS"]); gsub(/\{\{ALWAYS\}\}/, ENVIRON["ALWAYS"]); print }
 ' "$here/index.template.html"

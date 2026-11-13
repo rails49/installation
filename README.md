@@ -111,19 +111,26 @@ error for each and serves the rest.
 
 ## The page
 
-One item per label in `BOX_UIS`, rendered once when its container starts. The
-text is the label. Opened over HTTPS, the address is
+One item per label in `BOX_UIS`, rendered once when its container starts. An
+item is an icon, the label and a line of text saying what the UI is. The page
+lists the UIs it knows in its own order: control, occupancy, jmri, dccex. Any
+other label follows in the order `BOX_UIS` declares it, with a default icon
+and no text. Opened over HTTPS, the address is
 `https://<label>.$BOX_DOMAIN`. Opened over plain HTTP, it is the label's UI port
 at the host the page was reached at. On a box with no certificate a label with
 no UI port is listed with no link; on a box with a box name it keeps its HTTPS
-address. The page holds two facts about a UI, its label and its UI port. A new UI takes the next free number in the table above; the door's flags
+address. The page holds four facts about a UI: its label, its UI port, its
+icon and its line of text. A new UI takes the next free number in the table above; the door's flags
 and ports, `box`'s plain-HTTP router, `page/render.sh` and `scripts/probe.sh`
 name the same ports, and a test checks that they agree.
 
 The band across the top carries the box name, or on a box with no certificate
-the box's hostname, which is the thing you want to know on landing there. A
-footer links to the [status page](#the-status-page) as "Box status", always,
-and to [rails49.org](https://rails49.org/). The band is
+the box's hostname, which is the thing you want to know on landing there. Under
+the UIs, always, a second list links to the [status page](#the-status-page) as
+"Box status" and to [rails49.org](https://rails49.org/). The icons are
+[Lucide](https://lucide.dev)'s, under its ISC licence
+([`page/icons/LICENSE`](page/icons/LICENSE)), inlined so they take the page's
+colours. The band is
 [look](https://github.com/rails49/look)'s, from a copy in
 [`look/`](look/README.md).
 
