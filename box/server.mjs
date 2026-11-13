@@ -22,7 +22,7 @@ import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, statfs, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { connect } from "node:tls";
 import { promisify } from "node:util";
 
@@ -206,6 +206,23 @@ function certificate(name) {
   });
 }
 
+/** What the Engine API's one-shot stats say of a container, or null where it
+ *  answers anything but 200, as for a container that has gone.
+ *  @param {string} id
+ *  @returns {Promise<import("./status.mjs").Stats | null>} */
+function stats(id) {
+  return new Promise((resolve, reject) => {
+    const path = `/containers/${encodeURIComponent(id)}/stats?stream=false&one-shot=true`;
+    request({ socketPath: "/var/run/docker.sock", path }, async (answer) => {
+      let body = "";
+      for await (const chunk of answer) body += chunk;
+      resolve(answer.statusCode === 200 ? JSON.parse(body) : null);
+    })
+      .on("error", reject)
+      .end();
+  });
+}
+
 // Listening, only when run rather than imported by the tests.
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   // On a Mac this is the PID 1 of Docker Desktop's virtual machine, which is
@@ -235,6 +252,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     address,
     certificate,
     resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
+    stats,
     now,
   };
   const startIo = { docker, read, write: writeFile, now, fetch };

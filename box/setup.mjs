@@ -28,7 +28,7 @@ import { BUSY, NO_RELEASE, updater } from "./update.mjs";
  * sentence.
  */
 
-/** The labels the page offers, in the order `BOX_UIS` lists them. */
+/** The labels a box can declare, in the order `BOX_UIS` lists them. */
 export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
 
 /** The labels that dial control's broker, so that ticking one ticks control.

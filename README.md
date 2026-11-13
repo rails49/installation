@@ -154,12 +154,20 @@ machine, not the Mac. Coming back takes a person at the box.
 door serves
 ([#65](https://github.com/rails49/installation/issues/65)). It uses look's
 band, from the same copy as the page, and says each failure in a sentence at
-the top. It shows:
+the top. Below them are two parts of bordered groups
+([#111](https://github.com/rails49/installation/issues/111)): "Release and
+setup", with the release, the stacks to run, the devices and "Apply"; and
+"Status", with the stacks, the box and Docker. It shows:
 
-- Each stack's state (running, restarting or stopped) and commit. The stacks
-  are the installation and one per label in `BOX_UIS`: `control`, `dccex`,
-  `jmri` (this repository's JMRI project) and `occupancy`
-  (occupancy-service). The commit is the `org.opencontainers.image.revision`
+- Each stack's state (running, restarting or stopped), memory and commit,
+  after a green dot for running, grey for stopped and red otherwise. The
+  stacks are the installation and one per label in `BOX_UIS`: `control`,
+  `dccex`, `jmri` (this repository's JMRI project) and `occupancy`
+  (occupancy-service). The page names them Installation, Control, Occupancy,
+  JMRI and DCC-EX translator, in that order. A stack's memory is the sum of
+  what its running containers use, from the Engine API's one-shot container
+  stats, less their inactive file cache, as `docker stats` says it. The
+  commit is the `org.opencontainers.image.revision`
   of the stack's images. A stack whose commit is not the release's runs a
   local build, and a sentence says so; on a box never updated every stack
   does. JMRI is built on the box and is in no release.
@@ -183,6 +191,8 @@ the top. It shows:
   Turning it off leaves a box on the pre-release it runs, and the page then
   says the box runs a release newer than the latest.
 - Disk free, on the file system Docker keeps its images on.
+- Memory, the box's used of its total, from `MemTotal` and `MemAvailable` in
+  `/proc/meminfo`. Low memory is no failure.
 - The box's address on its LAN, and that it should be reserved for the box
   in the router, so it does not change.
 - Docker Engine's version, against the versions the release was tested on,
@@ -210,7 +220,8 @@ CLI with compose. With the socket it can do anything on the box that root can.
 The status page also chooses the stacks the box runs and their devices
 ([#69](https://github.com/rails49/installation/issues/69)):
 
-- A checkbox for each of `control`, `dccex`, `jmri` and `occupancy`, ticked as
+- A checkbox for each of Control, Occupancy, JMRI and DCC-EX translator
+  (`control`, `occupancy`, `jmri` and `dccex`), ticked as
   `BOX_UIS` in `box.env` declares them. Ticking dccex or occupancy ticks
   `control`, whose broker each dials; `box` ticks it again when the form is
   applied, for a browser that runs no script. Ticking jmri does not: it reads
@@ -232,8 +243,8 @@ The status page also chooses the stacks the box runs and their devices
 line stays as it is, and a file that is not there is made. It then starts `rails49-update` at the release the
 box runs and the box name `box.env` declares, as below, which first stops and removes the containers of each
 stack no longer ticked, keeping its data. While a declared stack runs, the
-page says first that the railroad keeps running while images download and
-stops for about a minute while the stacks start. It answers 409 with a sentence while
+page says first that the railroad keeps running while the new images
+download and stops while its stacks restart. It answers 409 with a sentence while
 an update, going back or applying runs, on a box that runs no release yet, and
 for a stack or device the page did not offer, and then writes nothing. A page
 on another origin is refused. Applying adds no line to the record and removes
@@ -243,9 +254,9 @@ nothing, so going back is offered as before.
 
 When a newer release is out, the status page offers "Update to <release>".
 Once the record names a release the box ran before the last update, it offers
-"Go back to <release>", and after going back it offers nothing to go back to. Above both, while a declared stack runs, it says that the
-railroad keeps running while images download and stops for about a minute
-while the stacks start. Anyone on the LAN may press either, as anyone
+"Go back to <release>", and after going back it offers nothing to go back to. Below both, while a declared stack runs, it says that the
+railroad keeps running while the new images download and stops while its
+stacks restart. Anyone on the LAN may press either, as anyone
 may turn the box off, and a page on another origin is refused. Nothing is
 installed without a press, and a failed update is not gone back from by
 itself.
@@ -281,10 +292,21 @@ starts the container `rails49-update` from the target release's
    releases' files are kept under `/var/lib/rails49/releases`.
 
 What it is doing is in `/var/lib/rails49/update.json`, which the status page
-shows and reloads every 5 seconds while it runs. While an image is pulled it
-also holds `pull`: the image, its place among every image the run pulls, and
-the bytes downloaded of its total, so the page says, for example, "image 4 of
-10, 1.2 GB of 2.3 GB". It is written at most once a second. A failure is said in a
+shows and reloads every 5 seconds while it runs. It holds the step in a
+sentence, `step`, and while an image is pulled `pull`: the image, its place
+among every image the run pulls, and the bytes downloaded of its total. It is
+written at most once a second while it pulls. It also holds `steps`, the steps
+this run takes, `at`, the one it is at, `since`, when that began, and
+`building`, true while JMRI is built
+([#111](https://github.com/rails49/installation/issues/111)). The steps are
+`download`, only for a release whose files are not on the box, `pull`,
+`stop`, only for applying with a stack no longer ticked that has containers,
+`start`, `watch`, `probe`, and `prune`, only for an update. In place of the
+release group the page lists them, ticks those done and spins at the current
+one. While it pulls, a bar shows the images done of all of them, beside the
+image and its bytes, for example "control, 300 MB of 1.2 GB"; while it
+watches, the seconds left. A page from an older release reads only `step` and
+`pull`, and this page says `step` in a sentence for a file with no `steps`. A failure is said in a
 sentence that names the stack, and "Go back to <release>" is offered. The
 container stays until the next press, so its log is in the log bundle.
 
