@@ -4642,6 +4642,10 @@ Le.styles = [
         --width: 420px;
       }
 
+      :host([size='large']) sl-dialog {
+        --width: clamp(560px, 70vw, 960px);
+      }
+
       .footer {
         display: flex;
         justify-content: flex-end;
