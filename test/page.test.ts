@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,10 +20,10 @@ import { afterAll, describe, expect, it } from "vitest";
 const root = new URL("../", import.meta.url);
 
 const DOMAIN = "example.org";
-const UIS = ["control", "occupancy", "jmri"];
-/** Declared out of alphabetical order on purpose: the operator wrote this
- *  order and a sort would silently override it. */
-const DECLARED = "control occupancy jmri";
+/** The order the page lists the UIs it knows. */
+const UIS = ["control", "occupancy", "jmri", "dccex"];
+/** Declared in another order on purpose: the page's order wins. */
+const DECLARED = "dccex jmri control occupancy";
 
 /** The box's hostname on a box with no certificate, as the page container
  *  reads it from the box's `/etc/hostname`. */
@@ -43,18 +43,36 @@ function render(uis: string, domain: string = DOMAIN): string {
   });
 }
 
-/** The page's list, one entry per item, as `[address, text]`; the address is
- *  undefined for an item with no link. */
+/** One of the page's lists, by its position: 0 is the UIs, 1 the two links
+ *  that are always there. */
+function list(html: string, at: 0 | 1): string {
+  return [...html.matchAll(/<ul>([\s\S]*?)<\/ul>/g)][at]![1]!;
+}
+
+/** The items in one of the page's lists. The address is undefined for an
+ *  item with no link, and the text for an item with no line of text. */
+function entries(html: string, at: 0 | 1 = 0) {
+  return [
+    ...list(html, at).matchAll(
+      /<li>(?:<a class="item" href="([^"]+)"[^>]*>|<span class="item">)(<svg[\s\S]*?<\/svg>)<span class="name">([^<]*)<\/span>(?:<span class="text">([^<]*)<\/span>)?<\/(?:a|span)><\/li>/g,
+    ),
+  ].map(([, href, svg, name, text]) => ({ href, svg: svg!, name: name!, text }));
+}
+
+/** The UI list as `[address, name]`. */
 function items(html: string) {
-  return [...html.matchAll(/<li>(?:<a href="([^"]+)"[^>]*>)?([^<]*)(?:<\/a>)?<\/li>/g)].map(
-    ([, href, text]) => [href, text!] as const,
-  );
+  return entries(html).map(({ href, name }) => [href, name] as const);
+}
+
+/** An icon as the page inlines it. */
+function icon(name: string): string {
+  return readFileSync(new URL(`page/icons/${name}.svg`, root), "utf8").trim();
 }
 
 /** The page's own script run against its links, as a browser that reached it
  *  at `url` would. Returns each link's address afterwards. */
 function browse(html: string, url: string): string[] {
-  const anchors = [...html.matchAll(/<li><a href="([^"]+)"([^>]*)>/g)].map(([, href, attrs]) => {
+  const anchors = [...list(html, 0).matchAll(/<li><a class="item" href="([^"]+)"([^>]*)>/g)].map(([, href, attrs]) => {
     const port = attrs!.match(/ data-ui-port="(\d+)"/)?.[1];
     return { href: href!, dataset: port === undefined ? {} : { uiPort: port } };
   });
@@ -71,11 +89,9 @@ function browse(html: string, url: string): string[] {
 
 const page = render(DECLARED);
 
-/** Every link in the page's list, in the order it draws them, as
- *  `[address, text]`. */
-const links = [...page.matchAll(/<li><a href="([^"]+)"[^>]*>([^<]*)<\/a><\/li>/g)].map(
-  ([, href, text]) => [href!, text!] as const,
-);
+/** Every link in the page's UI list, in the order it draws them, as
+ *  `[address, name]`. */
+const links = items(page).map(([href, name]) => [href!, name] as const);
 
 describe("the links the page lists", () => {
   it("are one per declared label and nothing else", () => {
@@ -88,10 +104,40 @@ describe("the links the page lists", () => {
     );
   });
 
-  it("keep the order the operator declared", () => {
-    // The assertions above are already in declared order; this says why that
-    // order rather than any other, against a set that is not sorted.
-    expect(UIS).not.toEqual([...UIS].sort());
+  it("keep the page's order, not the order the operator declared", () => {
+    // The assertions above are already in the page's order; this says the
+    // declaration was in another.
+    expect(DECLARED.split(" ")).not.toEqual(UIS);
+  });
+
+  it("list a label the page does not know after the known ones, in declared order", () => {
+    expect(items(render("turntable jmri crane control")).map(([, name]) => name)).toEqual([
+      "control",
+      "jmri",
+      "turntable",
+      "crane",
+    ]);
+  });
+
+  it("give each known UI its own icon and a line of text", () => {
+    expect(entries(page).map(({ name, text }) => [name, text])).toEqual([
+      ["control", "Schedule, dispatch and drive trains."],
+      ["occupancy", "See which track is occupied, from a camera."],
+      ["jmri", "JMRI, with DecoderPro for programming locos."],
+      ["dccex", "The DCC-EX command station: firmware, serial monitor and script."],
+    ]);
+    const svgs = entries(page).map(({ svg }) => svg);
+    expect(new Set([...svgs, icon("app-window")]).size).toBe(svgs.length + 1);
+  });
+
+  it("give a label the page does not know the default icon and no text", () => {
+    const [turntable] = entries(render("turntable"));
+    expect(turntable).toEqual({
+      href: `https://turntable.${DOMAIN}`,
+      svg: icon("app-window"),
+      name: "turntable",
+      text: undefined,
+    });
   });
 
   it("never list the apex, which is where this page is", () => {
@@ -111,6 +157,7 @@ describe("the links the page lists", () => {
       "http://192.168.1.20:8081",
       "http://192.168.1.20:8084",
       "http://192.168.1.20:8083",
+      "http://192.168.1.20:8082",
     ]);
     expect(browse(page, "http://shed.local/")[0]).toBe("http://shed.local:8081");
   });
@@ -128,20 +175,31 @@ describe("the links the page lists", () => {
 
   it("are absent on a box that serves nothing yet", () => {
     const empty = render("");
-    expect(empty).not.toContain("<li>");
+    expect(list(empty, 0)).not.toContain("<li>");
     expect(empty).toContain(DOMAIN);
   });
 });
 
-describe("the footer", () => {
+describe("the list under the UIs", () => {
   it("links to the box's status page, always, and to the project", () => {
     // The one place an update is announced is the status page, so the link is
     // there whatever the box's state (#65 decision 17). Relative, so it stays
     // on the host and port the page was reached at.
     for (const html of [page, render("", ""), render("control", "")]) {
-      expect(html).toContain(
-        '<footer><a href="/box/">Box status</a><a href="https://rails49.org/">rails49.org</a></footer>',
-      );
+      expect(entries(html, 1)).toEqual([
+        {
+          href: "/box/",
+          svg: icon("activity"),
+          name: "Box status",
+          text: "What the server runs, and whether it is well.",
+        },
+        {
+          href: "https://rails49.org/",
+          svg: icon("globe"),
+          name: "rails49.org",
+          text: "The project's site and documentation.",
+        },
+      ]);
     }
   });
 });

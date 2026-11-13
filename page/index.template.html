@@ -7,23 +7,20 @@
 <link rel="stylesheet" href="/look/look.css">
 <script type="module" src="/look/look.bundle.js"></script>
 <style>
-  /* The page's own: the list and the footer. The band is look's. */
+  /* The page's own: the two lists. The band is look's. */
   body {
     margin: 0;
     background: var(--sl-color-neutral-0);
     color: var(--sl-color-neutral-900);
     font-family: var(--sl-font-sans);
-    line-height: 1.6;
+    line-height: 1.4;
   }
 
-  main,
-  footer {
+  main {
     margin: 0 auto;
     max-width: 48rem;
     padding: 2rem 1.5rem;
   }
-
-  footer { padding-top: 0; }
 
   ul {
     list-style: none;
@@ -31,19 +28,31 @@
     padding: 0;
   }
 
+  ul + ul { margin-top: 2rem; }
+
   li + li { border-top: 1px solid var(--sl-color-neutral-200); }
 
-  li a,
-  footer a {
+  .item {
+    align-items: center;
     color: inherit;
-    display: block;
-    font-size: 1.25rem;
+    column-gap: 1rem;
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
     padding: 1rem 0;
     text-decoration: none;
   }
 
-  li a:hover,
-  footer a:hover { text-decoration: underline; }
+  .item svg {
+    grid-row: span 2;
+    height: 1.75rem;
+    width: 1.75rem;
+  }
+
+  .name { font-size: 1.25rem; }
+
+  .text { color: var(--sl-color-neutral-600); }
+
+  a.item:hover .name { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -53,8 +62,10 @@
 <ul>
 {{LINKS}}
 </ul>
+<ul>
+{{ALWAYS}}
+</ul>
 </main>
-<footer><a href="/box/">Box status</a><a href="https://rails49.org/">rails49.org</a></footer>
 </look-shell>
 <script>
   // Over plain HTTP a link goes to its UI port at whatever host this page was
