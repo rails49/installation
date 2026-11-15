@@ -3,8 +3,9 @@
 // page at `/box/`, the status it shows at `/box/status`, a check for a new
 // release, the log bundle (#65 decisions 5 to 7), starting an update or
 // going back (decisions 8 to 10, `update.mjs`), applying the setup of
-// stacks and devices (#69 decisions 10 to 15, `setup.mjs`), and offering
-// pre-releases (#105).
+// stacks and devices (#69 decisions 10 to 15, `setup.mjs`), offering
+// pre-releases (#105), and downloading a newer release in the background
+// (#121, `download.mjs`).
 //
 // Node's standard library and nothing else, run by `node:22-slim` with the
 // Docker CLI added. The container shares the box's PID namespace and is
@@ -28,6 +29,7 @@ import { promisify } from "node:util";
 
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
+import { begin } from "./download.mjs";
 import { render } from "./page.mjs";
 import { apply, form, offerPrereleases } from "./setup.mjs";
 import { CHECK, message, prereleases, status } from "./status.mjs";
@@ -63,9 +65,11 @@ const ASSETS = {
  * `box.start` starts an update or going back, and `box.apply` applies the
  * setup the page posted as its form's body; each says why it will not.
  * `box.prereleases` writes whether the check takes pre-releases.
+ * `box.download` starts downloading the release a check found, where it is
+ * newer than both the one the box runs and the one it has downloaded (#121).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -111,11 +115,13 @@ export async function handle(request, box) {
   }
   if (route === "POST /box/check") {
     await box.check();
+    await box.download();
     return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
   }
   if (route === "POST /box/prereleases") {
     await box.prereleases(new URLSearchParams(request.body ?? "").get("prereleases") === "yes");
     await box.check();
+    await box.download();
     return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
   }
   if (route === "POST /box/update" || route === "POST /box/back") {
@@ -294,14 +300,26 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     now,
   };
 
-  // Asked every hour, and checks when a day has passed since the last check
-  // that succeeded.
+  // Starts downloading the release the last check found, where there is one
+  // to download. A failure goes to the log, and is tried again after the
+  // next check.
+  const download = async () => {
+    try {
+      await begin(env, startIo);
+    } catch (error) {
+      console.error(`downloading a new release: ${message(error)}`);
+    }
+  };
+  // Asked every hour, and as `box` starts: checks when a day has passed since
+  // the last check that succeeded, and downloads what a check found, so a
+  // download a reboot stopped carries on.
   const daily = async () => {
     try {
       if (await due(checkIo)) await check(checkIo);
     } catch (error) {
       console.error(`checking for a new release: ${message(error)}`);
     }
+    await download();
   };
   daily();
   setInterval(daily, 60 * 60 * 1000);
@@ -323,6 +341,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         ),
       status: async () => ({ ...(await status(env, statusIo)), setup: await form(setupIo) }),
       check: () => check(checkIo),
+      download,
       bundle: async () => {
         const { name, entries } = await bundle(env, bundleIo);
         return { name, body: await pack(name, entries) };

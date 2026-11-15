@@ -305,6 +305,14 @@ export async function status(env, io) {
   }
   const back = await backTo(io.read);
 
+  // Downloading the newest release, from its file, and whether its container
+  // runs (#121). What it did is said on the page beside the release, and is
+  // no failure of the box's.
+  /** @type {import("./download.mjs").Download | null} */
+  const downloaded = parse(await io.read(DOWNLOADING));
+  const downloader = containers.find((c) => c.Name === "/rails49-download");
+  const download = downloaded && { ...downloaded, running: downloader?.State.Status === "running" };
+
   const disk = await io.disk();
   if (disk.free < disk.total / 10) failures.push(`The disk has ${gb(disk.free)} free of ${gb(disk.total)}.`);
 
@@ -375,6 +383,7 @@ export async function status(env, io) {
     stacks,
     update,
     updating,
+    download,
     back,
     disk,
     memory,

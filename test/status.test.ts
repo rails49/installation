@@ -665,3 +665,37 @@ describe("updating and going back", () => {
     ]);
   });
 });
+
+describe("downloading a release", () => {
+  const DOWNLOADING = "/var/lib/rails49/download.json";
+  const download = {
+    release: "2026.11.1",
+    started: "2026-11-12T09:58:00.000Z",
+    finished: null,
+    downloaded: false,
+    failure: null,
+    disk: null,
+    bytes: { current: 300e6, total: 1.6e9 },
+  };
+  const DOWNLOADER = { ...container("rails49-download", ""), Config: { Labels: {} } };
+
+  it("is nothing on a box that has downloaded none", async () => {
+    expect((await status(NAMED, io())).download).toBeNull();
+  });
+
+  it("is what download.json says, and whether its container runs", async () => {
+    const files = { [DOWNLOADING]: JSON.stringify(download) };
+    expect((await status(NAMED, io({ files, containers: [...CONTAINERS, DOWNLOADER] }))).download).toEqual({
+      ...download,
+      running: true,
+    });
+    expect((await status(NAMED, io({ files }))).download).toMatchObject({ running: false });
+  });
+
+  it("is no failure of the box's, nor is a download that failed", async () => {
+    const failed = { ...download, finished: "2026-11-12T09:59:00.000Z", failure: "GitHub answered 502." };
+    const box = await status(NAMED, io({ files: { [DOWNLOADING]: JSON.stringify(failed) } }));
+    expect(box.failures).toEqual([]);
+    expect(box.updating).toBeNull();
+  });
+});

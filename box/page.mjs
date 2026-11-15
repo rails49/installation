@@ -3,7 +3,8 @@
 // (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
 // devices (#69 decisions 9 to 15). It loads look's stylesheet and bundle, its
 // own stylesheet and the script that ticks control from under `/box`, and
-// while a run goes the script that follows it in place (#117). A
+// while a run or a download goes the script that follows it in place (#117,
+// #121). A
 // toggle beside "Check for update" has the check take pre-releases (#105).
 //
 // The failures come first. Then two parts of bordered groups: the release
@@ -14,10 +15,10 @@ import { gb, STACKS, when } from "./status.mjs";
 /** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>> & { setup: Awaited<ReturnType<typeof import("./setup.mjs").form>> }} Status */
 
 /** What the page says before a press that brings the stacks up, while a
- *  declared stack runs: the images are pulled first, with the railroad
- *  running (#96). The installation is left out, since it runs whenever the
- *  page is served and is no railroad. */
-const KEEPS = "<p>The railroad keeps running while the new images download. It stops while its stacks restart.</p>";
+ *  declared stack runs: the images are on the box already, downloaded with
+ *  the railroad running (#121). The installation is left out, since it runs
+ *  whenever the page is served and is no railroad. */
+const RESTARTS = "<p>The railroad stops while its stacks restart.</p>";
 
 /** What the page loads while a run goes: the script that follows it in place,
  *  and for a browser that runs no script, a reload every 5 seconds (#117). */
@@ -89,7 +90,7 @@ export function render(status, now = new Date()) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">${running ? FOLLOW : ""}
+<meta name="viewport" content="width=device-width, initial-scale=1">${running || status.download?.running ? FOLLOW : ""}
 <title>Server (box) status &amp; updates: ${escape(status.name)}</title>
 <link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>
@@ -144,19 +145,19 @@ ${stacks}
 
 /**
  * The release group while nothing runs: the release the box runs, what the
- * last check found with the update to it, going back, the railroad, and the
- * check. Each button sits on its sentence's row.
+ * last check found with the update to it once it is downloaded, going back,
+ * the railroad, and the check. Each button sits on its sentence's row.
  *
  * @param {Status} status
  * @param {boolean} railroad whether a declared stack runs
  */
-function release({ release, update, back }, railroad) {
+function release({ release, update, back, download }, railroad) {
   /** @param {string} said @param {string[]} [forms] */
   const row = (said, forms = []) => `<div class="row">${said ? `<p>${said}</p>` : ""}${forms.join("")}</div>`;
   const runs = release ? `This box runs release ${escape(release)}.` : "This box runs no release yet.";
   const checked = update.checked !== null && !update.could_not_check;
   const latest = update.available
-    ? `${update.prerelease ? "Pre-release" : "Release"} ${escape(update.latest ?? "")} is out.`
+    ? available(update, download)
     : !checked
       ? ""
       : update.newer
@@ -164,7 +165,7 @@ function release({ release, update, back }, railroad) {
         : update.latest
           ? "It is the latest release."
           : "No release is out yet.";
-  const offer = update.available && update.latest
+  const offer = update.available && update.latest && download?.release === update.latest && download.downloaded
     ? [`<form method="post" action="/box/update"><button>Update to ${update.prerelease ? "pre-release " : ""}${escape(update.latest)}</button></form>`]
     : [];
   const check = update.could_not_check
@@ -176,12 +177,35 @@ function release({ release, update, back }, railroad) {
     row(runs),
     ...(latest ? [row(latest, offer)] : []),
     ...(back ? [row("", [`<form method="post" action="/box/back"><button>Revert to ${escape(back)}</button></form>`])] : []),
-    ...(railroad && (offer.length || back) ? [KEEPS] : []),
+    ...(railroad && (offer.length || back) ? [RESTARTS] : []),
     row(check, [
       '<form method="post" action="/box/check"><button>Check for update</button></form>',
       prereleases(update.prereleases),
     ]),
   ].join("\n");
+}
+
+/**
+ * What the page says of a newer release that is out: that it is available,
+ * and how far downloading it has got, or why it is not downloaded (#121).
+ *
+ * @param {Status["update"]} update
+ * @param {Status["download"]} download
+ */
+function available(update, download) {
+  const latest = escape(update.latest ?? "");
+  const kind = update.prerelease ? "pre-release" : "release";
+  const ours = download?.release === update.latest ? download : null;
+  const is = `New ${kind} ${latest} is available.`;
+  if (!ours || ours.downloaded) return is;
+  if (ours.running) {
+    return ours.bytes?.total ? `${is} Downloaded ${size(ours.bytes.current)} of ${size(ours.bytes.total)}.` : `${is} Downloading it.`;
+  }
+  if (ours.finished === null) return is;
+  if (ours.disk) {
+    return `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
+  }
+  return `Could not download ${latest}: ${escape(ours.failure ?? "it stopped.")} The box tries again at its next check.`;
 }
 
 /**

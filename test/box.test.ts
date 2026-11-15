@@ -34,6 +34,7 @@ const STATUS = {
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
   updating: null,
+  download: null,
   back: null,
   failures: [],
   notes: [],
@@ -49,6 +50,7 @@ function box(pid1: string, refusal: string | null = null) {
     pid1,
     turnedOff: 0,
     checked: 0,
+    downloads: 0,
     env: "# the box\nBOX_DOMAIN=example.org\nBOX_UIS=\"control\"\n",
     checkedWith: [] as string[],
     started: [] as string[],
@@ -58,6 +60,11 @@ function box(pid1: string, refusal: string | null = null) {
     check: async () => {
       counted.checked++;
       counted.checkedWith.push(counted.env);
+    },
+    download: async () => {
+      // After the check, so it downloads what the check found.
+      expect(counted.downloads).toBe(counted.checked - 1);
+      counted.downloads++;
     },
     prereleases: (on: boolean) =>
       offerPrereleases(on, {
@@ -287,6 +294,12 @@ describe("POST /box/check", () => {
     expect(on.checked).toBe(1);
   });
 
+  it("then starts downloading what the check found", async () => {
+    const on = box("systemd");
+    await ask(on, "POST", "/box/check");
+    expect(on.downloads).toBe(1);
+  });
+
   it("is refused from a page on another origin, and checks nothing", async () => {
     const on = box("systemd");
     const headers = { host: HOST, origin: "https://evil.example" };
@@ -308,6 +321,7 @@ describe("POST /box/prereleases", () => {
     await ask(on, "POST", "/box/prereleases", form, "prereleases=no");
     expect(on.env).toBe('# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_PRERELEASES=no\n');
     expect(on.checked).toBe(2);
+    expect(on.downloads).toBe(2);
   });
 
   it("is refused from a page on another origin, and writes and checks nothing", async () => {
