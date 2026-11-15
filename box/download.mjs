@@ -29,7 +29,7 @@ import {
   older,
   RELEASES,
 } from "./status.mjs";
-import { boxImage, composed, counted, download, DOWNLOAD, oneShot, pinned, pull, sentence, stateOf, tally, updater } from "./update.mjs";
+import { boxImage, composed, counted, download, DOWNLOAD, oneShot, pinned, pull, sentence, stateOf, tally, toPull, updater } from "./update.mjs";
 
 const CONTAINER = "rails49-download";
 /** What a download leaves free on the disk, beyond what it downloads. */
@@ -130,8 +130,9 @@ export async function run(from, to, env, io) {
       state.bytes = counted(bytes);
     }
 
+    const pulling = await toPull(images, io);
     let index = 0;
-    for (const image of images) {
+    for (const image of pulling) {
       // An image unpacks to more than its layers, and the registry says not
       // how much: the box keeps SPARE free as it pulls (#129).
       if (index > 0) {
@@ -142,7 +143,7 @@ export async function run(from, to, env, io) {
         }
       }
       index += 1;
-      await pull(image, index, images.length, bytes, io, async ({ run }) => {
+      await pull(image, index, pulling.length, bytes, io, async ({ run }) => {
         state.bytes = run ?? null;
         if (io.now().getTime() - written >= EVERY) await save();
       }).catch((error) => {

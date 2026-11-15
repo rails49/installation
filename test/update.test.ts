@@ -59,8 +59,8 @@ type Box = {
 /** A layer's digest, from a letter. */
 const LAYER = (c: string) => `sha256:${c.repeat(64)}`;
 
-/** The images the box's stacks pull, as the fake's `config --images` lists
- *  them. `traefik` is already on the box. */
+/** The images the box's stacks list, as the fake's `config --images` lists
+ *  them: each stack lists `traefik`, which is already on the box. */
 const INSTALLATION_IMAGE = `ghcr.io/rails49/installation:x@${DIGEST(7)}`;
 const TRAEFIK_IMAGE = `traefik:v3.7@${DIGEST(8)}`;
 const CONTROL_IMAGE = `ghcr.io/rails49/control:x@${DIGEST(4)}`;
@@ -167,6 +167,8 @@ function box(
     /** Ids `docker ps` lists whose container is gone by the time
      *  `docker inspect` asks for it. */
     gone?: string[];
+    /** Digests `docker image ls` leaves out, as images the box has not. */
+    lacks?: string[];
   } = {},
 ): Box {
   const files: Record<string, string> = {
@@ -215,6 +217,7 @@ function box(
           { Repository: "traefik", Tag: "<none>", Digest: DIGEST(8), ID: "sha256:new-traefik" },
           { Repository: "eclipse-temurin", Tag: "21", Digest: DIGEST(2), ID: "sha256:other" },
         ]
+          .filter((image) => !options.lacks?.includes(image.Digest))
           .map((image) => JSON.stringify(image))
           .join("\n");
       }
@@ -283,12 +286,12 @@ const JMRI = (r: string) =>
   compose(r, ["installation/jmri/compose.yaml", "installation/jmri/compose.https.yaml"], "control.env");
 
 describe("an update that passes", () => {
-  it("downloads the release, pulls every image, then brings up the declared stacks in order", async () => {
+  it("downloads the release, pulls the images the box has not, then brings up the declared stacks in order", async () => {
     const { io, asked } = box();
     await run("update", OLD, NEW, ENV, io);
     const part = `${RELEASES}/${NEW}.part`;
     const base = "https://github.com/rails49/installation/releases/download/2026.11.1";
-    expect(asked.slice(0, 20)).toEqual([
+    expect(asked.slice(0, 19)).toEqual([
       // What ran before, for pruning.
       "ps -aq",
       "inspect a b c d",
@@ -301,10 +304,10 @@ describe("an update that passes", () => {
       // Every image, before any container is recreated, counted first.
       `${INSTALLATION(NEW)} config --images`,
       `${CONTROL(NEW)} config --images`,
+      // traefik is on the box by its digest (#136).
+      "image ls --digests --no-trunc --format {{json .}}",
       `pull ghcr.io/rails49/installation:x@${DIGEST(7)}`,
-      `pull traefik:v3.7@${DIGEST(8)}`,
       `pull ${CONTROL_IMAGE}`,
-      `pull traefik:v3.7@${DIGEST(8)}`,
       // JMRI is built on the box from a stock image.
       `${JMRI(NEW)} build --pull`,
       `${INSTALLATION(NEW)} up -d --no-build --pull never --remove-orphans`,
@@ -313,7 +316,7 @@ describe("an update that passes", () => {
       "ps -aq",
       "inspect a b c d",
     ]);
-    expect(asked.slice(20, 24)).toEqual([
+    expect(asked.slice(19, 23)).toEqual([
       "sleep 60000",
       "ps -aq",
       "inspect a b c d",
@@ -447,7 +450,7 @@ describe("pulling the images", () => {
     const { io, writes } = box({ tick: 1000 });
     await run("update", OLD, NEW, ENV, io);
     const control = pulls(writes).filter(([image]) => image === CONTROL_IMAGE);
-    expect(control.map(([, index, count]) => [index, count])).toContainEqual([3, 4]);
+    expect(control.map(([, index, count]) => [index, count])).toContainEqual([2, 2]);
     expect(control.map(([, , , current, total]) => [current, total])).toEqual([
       ...Array(4).fill([0, 0]),
       [3e6, 12e6],
@@ -463,13 +466,29 @@ describe("pulling the images", () => {
     const currents = installation.map(([, , , current]) => current as number);
     expect(currents).toEqual([...currents].sort((a, b) => a - b));
     expect(currents.at(-1)).toBe(128e6);
-    expect(pulls(writes).map(([image, index]) => `${index} ${image}`)).toContain(`4 ${TRAEFIK_IMAGE}`);
+    expect(pulls(writes).some(([image]) => image === TRAEFIK_IMAGE)).toBe(false);
+  });
+
+  // #136: a pull of an image the box has still asks the registry, for
+  // seconds, and `config --images` lists an image once per service.
+  it("pulls each image once, by the first stack that lists it, and none the box has by its digest", async () => {
+    const has = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, has.io);
+    expect(has.asked.filter((line) => line.startsWith("pull "))).toEqual([`pull ${INSTALLATION_IMAGE}`, `pull ${CONTROL_IMAGE}`]);
+    const lacks = box({ tick: 1000, lacks: [DIGEST(8)] });
+    await run("update", OLD, NEW, ENV, lacks.io);
+    expect(lacks.asked.filter((line) => line.startsWith("pull "))).toEqual([
+      `pull ${INSTALLATION_IMAGE}`,
+      `pull ${TRAEFIK_IMAGE}`,
+      `pull ${CONTROL_IMAGE}`,
+    ]);
+    expect(pulls(lacks.writes).find(([image]) => image === CONTROL_IMAGE)!.slice(1, 3)).toEqual([3, 3]);
   });
 
   it("says each stack's step beside it, and nothing of a pull once the pulls are done", async () => {
     const { io, writes } = box({ tick: 1000 });
     await run("update", OLD, NEW, ENV, io);
-    const shown = writes.find(({ progress }) => (progress.pull as { index?: number } | null)?.index === 3);
+    const shown = writes.find(({ progress }) => (progress.pull as { index?: number } | null)?.index === 2);
     expect(shown?.progress.step).toBe("Pulling control's images.");
     const building = writes.find(({ progress }) => progress.step === "Pulling jmri's images.");
     expect(building?.progress.pull).toBeNull();
@@ -548,7 +567,7 @@ describe("counting the run's bytes from the manifest's layers", () => {
     const { io, writes } = box({ layers: true, tick: 1000 });
     await run("update", OLD, NEW, ENV, io);
     const last = writes.filter(({ progress }) => progress.pull).at(-1)!.progress.pull;
-    expect(last).toMatchObject({ image: TRAEFIK_IMAGE, index: 4, count: 4, current: 0, total: 0 });
+    expect(last).toMatchObject({ image: CONTROL_IMAGE, index: 2, count: 2, current: 12e6, total: 12e6 });
   });
 
   it("takes off the total a layer the stream says the box has, of which the run downloaded nothing", async () => {
