@@ -109,6 +109,8 @@ export const CHECK = "/var/lib/rails49/check.json";
 export const RELEASES = "/var/lib/rails49/releases";
 /** What the update or going back that ran last is doing, or did. */
 export const PROGRESS = "/var/lib/rails49/update.json";
+/** What downloading the newest release is doing, or did (#121). */
+export const DOWNLOADING = "/var/lib/rails49/download.json";
 
 /** @param {string} release */
 export const manifestPath = (release) => `${RELEASES}/${release}/manifest.json`;
