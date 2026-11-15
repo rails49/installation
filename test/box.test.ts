@@ -8,9 +8,9 @@
 import { describe, expect, it } from "vitest";
 
 import { beginDownload, starting } from "../box/download.mjs";
-import { handle } from "../box/server.mjs";
-import { offerPrereleases } from "../box/setup.mjs";
-import { status } from "../box/status.mjs";
+import { handle, tick } from "../box/server.mjs";
+import { offerDownload, offerPrereleases } from "../box/setup.mjs";
+import { downloads, status } from "../box/status.mjs";
 
 const HOST = "control.example.org";
 
@@ -24,6 +24,7 @@ const STATUS = {
     latest: null,
     prerelease: false,
     prereleases: false,
+    download: true,
     available: false,
     newer: false,
     checked: null,
@@ -70,6 +71,12 @@ function box(pid1: string, refusal: string | null = null) {
     },
     prereleases: (on: boolean) =>
       offerPrereleases(on, {
+        read: async () => counted.env,
+        write: async (_path: string, text: string) => void (counted.env = text),
+      }),
+    automatic: () => downloads(async () => counted.env),
+    setAutomatic: (on: boolean) =>
+      offerDownload(on, {
         read: async () => counted.env,
         write: async (_path: string, text: string) => void (counted.env = text),
       }),
@@ -386,6 +393,89 @@ describe("POST /box/prereleases", () => {
     expect((await ask(on, "POST", "/box/prereleases", headers, "prereleases=yes")).status).toBe(403);
     expect(on.env).toBe(before);
     expect(on.checked).toBe(0);
+  });
+});
+
+describe("on a box that downloads only on a press (#141)", () => {
+  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
+  const off = () => {
+    const on = box("systemd");
+    on.env += "BOX_DOWNLOAD=no\n";
+    return on;
+  };
+
+  it("POST /box/check checks and downloads", async () => {
+    const on = off();
+    await ask(on, "POST", "/box/check");
+    expect([on.checked, on.downloads]).toEqual([1, 1]);
+  });
+
+  it("POST /box/prereleases checks and downloads nothing", async () => {
+    const on = off();
+    expect(await ask(on, "POST", "/box/prereleases", form, "prereleases=yes")).toMatchObject({ status: 303 });
+    expect([on.checked, on.downloads]).toEqual([1, 0]);
+  });
+});
+
+describe("the hourly tick, also as box starts", () => {
+  const ticking = (due: boolean, env: string) => {
+    const on = { checked: 0, downloads: 0 };
+    return Object.assign(on, {
+      due: async () => due,
+      check: async () => void on.checked++,
+      download: async () => void on.downloads++,
+      automatic: () => downloads(async () => env),
+    });
+  };
+
+  it("checks once a check is due, and downloads what the last check found", async () => {
+    for (const [due, checked] of [[true, 1], [false, 0]] as const) {
+      const on = ticking(due, "BOX_DOMAIN=\n");
+      await tick(on);
+      expect([on.checked, on.downloads]).toEqual([checked, 1]);
+    }
+  });
+
+  it("on a box that downloads only on a press, checks when one is due and downloads nothing (#141)", async () => {
+    for (const [due, checked] of [[true, 1], [false, 0]] as const) {
+      const on = ticking(due, "BOX_DOMAIN=\nBOX_DOWNLOAD=no\n");
+      await tick(on);
+      expect([on.checked, on.downloads]).toEqual([checked, 0]);
+    }
+  });
+});
+
+describe("POST /box/download", () => {
+  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
+  /** A box that counts the downloads it starts, with no check before them. */
+  const counting = () => {
+    const on = box("systemd");
+    on.download = async () => void on.downloads++;
+    return on;
+  };
+
+  it("writes BOX_DOWNLOAD=no into box.env, keeping every other line, and checks and downloads nothing", async () => {
+    const on = counting();
+    const answer = await ask(on, "POST", "/box/download", form, "download=no");
+    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(on.env).toBe('# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_DOWNLOAD=no\n');
+    expect([on.checked, on.downloads]).toEqual([0, 0]);
+  });
+
+  it("writes BOX_DOWNLOAD=yes and starts downloading what the last check found, without checking again", async () => {
+    const on = counting();
+    await ask(on, "POST", "/box/download", form, "download=no");
+    await ask(on, "POST", "/box/download", form, "download=yes");
+    expect(on.env).toBe('# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_DOWNLOAD=yes\n');
+    expect([on.checked, on.downloads]).toEqual([0, 1]);
+  });
+
+  it("is refused from a page on another origin, and writes and downloads nothing", async () => {
+    const on = counting();
+    const before = on.env;
+    expect((await ask(on, "POST", "/box/download", { ...form, origin: "https://evil.example" }, "download=yes")).status).toBe(403);
+    expect(on.env).toBe(before);
+    expect(on.downloads).toBe(0);
   });
 });
 

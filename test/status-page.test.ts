@@ -22,6 +22,7 @@ const STATUS = {
     latest: "2026.11.1",
     prerelease: false,
     prereleases: false,
+    download: true,
     available: true,
     newer: false,
     checked: "2026-11-12T08:00:00.000Z",
@@ -102,6 +103,7 @@ const PLAIN = {
     latest: null,
     prerelease: false,
     prereleases: false,
+    download: true,
     available: false,
     newer: false,
     checked: null,
@@ -224,11 +226,11 @@ describe("the release group", () => {
       ["This box runs release 2026.11.0.", []],
       ["New release 2026.11.1 is available.", ["Update to 2026.11.1"]],
       ["", ["Revert to 2026.10.2"]],
-      ["Checked at 2026-11-12 08:00 UTC.", ["Check for update", "Pre-releases: off"]],
+      ["Checked at 2026-11-12 08:00 UTC.", ["Check for update", "Pre-releases: off", "Download automatically: on"]],
     ]);
     expect(release(plain)).toEqual([
       ["This box runs no release yet.", []],
-      ["Not checked yet.", ["Check for update", "Pre-releases: off"]],
+      ["Not checked yet.", ["Check for update", "Pre-releases: off", "Download automatically: on"]],
     ]);
   });
 
@@ -256,7 +258,7 @@ describe("the release group", () => {
     const offline = render({ ...STATUS, update: { ...STATUS.update, checked: "2026-11-12T09:00:00.000Z", could_not_check: true } });
     expect(release(offline).at(-1)).toEqual([
       "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC.",
-      ["Check for update", "Pre-releases: off"],
+      ["Check for update", "Pre-releases: off", "Download automatically: on"],
     ]);
   });
 
@@ -267,6 +269,16 @@ describe("the release group", () => {
     const on = render({ ...STATUS, update: { ...STATUS.update, prereleases: true } });
     expect(on).toContain(
       '<form method="post" action="/box/prereleases"><button name="prereleases" value="no" aria-pressed="true">Pre-releases: on</button></form>',
+    );
+  });
+
+  it("switches downloading by itself by a POST to /box/download, beside the pre-releases (#141)", () => {
+    expect(page).toContain(
+      '<button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form><form method="post" action="/box/download"><button name="download" value="no" aria-pressed="true">Download automatically: on</button></form>',
+    );
+    const off = render({ ...STATUS, update: { ...STATUS.update, download: false } });
+    expect(off).toContain(
+      '<form method="post" action="/box/download"><button name="download" value="yes" aria-pressed="false">Download automatically: off</button></form>',
     );
   });
 
@@ -398,6 +410,24 @@ describe("downloading a release", () => {
       "Stopped downloading 2026.11.1: 0.9 GB is free, and the box keeps 1 GB free. The box tries again at its next check.",
       [],
     ]);
+  });
+
+  it("on a box that downloads only on a press, says Check for update downloads it, and tries again (#141)", () => {
+    const off = (download: Partial<typeof STATUS.download> | null) =>
+      release(render({ ...STATUS, update: { ...STATUS.update, download: false }, download: download && { ...STATUS.download, ...download } }))[1];
+    expect(off(null)).toEqual(["New release 2026.11.1 is available. Check for update downloads it.", []]);
+    expect(off({ release: "2026.11.0" })![0]).toBe("New release 2026.11.1 is available. Check for update downloads it.");
+    expect(off(DOWNLOADING)![0]).toBe("New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.");
+    expect(off({})).toEqual(["New release 2026.11.1 is available.", ["Update to 2026.11.1"]]);
+    expect(off({ downloaded: false, failure: "GitHub answered 502." })![0]).toBe(
+      "Could not download 2026.11.1: GitHub answered 502. Check for update tries again.",
+    );
+    expect(off({ ...DOWNLOADING, running: false })![0]).toBe(
+      "Could not download 2026.11.1: it stopped before it finished. Its log is in the log bundle. Check for update tries again.",
+    );
+    expect(off({ downloaded: false, disk: { keeps: 1e9, free: 0.9e9 }, failure: "Stopped." })![0]).toBe(
+      "Stopped downloading 2026.11.1: 0.9 GB is free, and the box keeps 1 GB free. Check for update tries again.",
+    );
   });
 
   it("names a pre-release as a pre-release", () => {

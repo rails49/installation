@@ -31,8 +31,8 @@ import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
 import { beginDownload, starting } from "./download.mjs";
 import { render } from "./page.mjs";
-import { apply, form, offerPrereleases } from "./setup.mjs";
-import { CHECK, message, prereleases, status } from "./status.mjs";
+import { apply, form, offerDownload, offerPrereleases } from "./setup.mjs";
+import { CHECK, downloads, message, prereleases, status } from "./status.mjs";
 import { docker, read, start } from "./update.mjs";
 
 const PORT = 8080;
@@ -65,6 +65,9 @@ const ASSETS = {
  * `box.start` starts an update or going back, and `box.apply` applies the
  * setup the page posted as its form's body; each says why it will not.
  * `box.prereleases` writes whether the check takes pre-releases.
+ * `box.automatic` reads whether the box downloads after every check, and
+ * `box.setAutomatic` writes it; with it off, only `POST /box/check`
+ * downloads (#141).
  * `box.download` starts downloading the release a check found, where it is
  * newer than the one the box runs and not the one it has downloaded (#121,
  * #126).
@@ -74,7 +77,7 @@ const ASSETS = {
  * and to `download.json` (#124).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -126,7 +129,13 @@ export async function handle(request, box) {
   if (route === "POST /box/prereleases") {
     await box.prereleases(new URLSearchParams(request.body ?? "").get("prereleases") === "yes");
     await box.check();
-    await box.download();
+    if (await box.automatic()) await box.download();
+    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+  }
+  if (route === "POST /box/download") {
+    const on = new URLSearchParams(request.body ?? "").get("download") === "yes";
+    await box.setAutomatic(on);
+    if (on) await box.download();
     return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
   }
   if (route === "POST /box/update" || route === "POST /box/back") {
@@ -151,6 +160,23 @@ export async function handle(request, box) {
   const asset = ASSETS[route];
   if (asset) return { status: 200, type: asset[1], body: await readFile(asset[0]) };
   return text(404, "");
+}
+
+/**
+ * Asked every hour, and as `box` starts: checks when a day has passed since
+ * the last check that succeeded, and downloads what the last check found, so
+ * a download a reboot stopped carries on. A box that downloads only after a
+ * press of "Check for update" downloads nothing here (#141).
+ *
+ * @param {{ due: () => Promise<boolean>, check: () => Promise<void>, download: () => Promise<void>, automatic: () => Promise<boolean> }} box
+ */
+export async function tick(box) {
+  try {
+    if (await box.due()) await box.check();
+  } catch (error) {
+    console.error(`checking for a new release: ${message(error)}`);
+  }
+  if (await box.automatic()) await box.download();
 }
 
 /**
@@ -311,17 +337,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   // goes to the log and, as the download's, to the page (#124), and is tried
   // again after the next check.
   const download = () => beginDownload(env, startIo);
-  // Asked every hour, and as `box` starts: checks when a day has passed since
-  // the last check that succeeded, and downloads what a check found, so a
-  // download a reboot stopped carries on.
-  const daily = async () => {
-    try {
-      if (await due(checkIo)) await check(checkIo);
-    } catch (error) {
-      console.error(`checking for a new release: ${message(error)}`);
-    }
-    await download();
-  };
+  const automatic = () => downloads(read);
+  const daily = () => tick({ due: () => due(checkIo), check: () => check(checkIo), download, automatic });
   daily();
   setInterval(daily, 60 * 60 * 1000);
 
@@ -350,6 +367,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       start: async (action) => start(action, { ...env, address: await address() }, startIo),
       apply: (body) => apply(new URLSearchParams(body), setupIo),
       prereleases: (on) => offerPrereleases(on, setupIo),
+      automatic,
+      setAutomatic: (on) => offerDownload(on, setupIo),
     }).catch((error) => {
       console.error(`${req.method} ${req.url}: ${error.stack}`);
       return text(500, `${error.message}`);

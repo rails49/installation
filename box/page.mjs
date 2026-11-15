@@ -5,7 +5,9 @@
 // own stylesheet and the script that ticks control from under `/box`, and
 // while a run or a download goes the script that follows it in place (#117,
 // #121). A
-// toggle beside "Check for update" has the check take pre-releases (#105).
+// toggle beside "Check for update" has the check take pre-releases (#105),
+// and another has the box download a newer release after every check, or
+// only after a press of "Check for update" (#141).
 //
 // The failures come first. Then two parts of bordered groups: the release
 // and the setup, and the status (#111).
@@ -186,6 +188,7 @@ function release({ release, update, back, download }, railroad) {
     row(check, [
       '<form method="post" action="/box/check"><button>Check for update</button></form>',
       prereleases(update.prereleases),
+      downloads(update.download),
     ]),
   ].join("\n");
 }
@@ -204,20 +207,22 @@ function available(update, download) {
   const kind = update.prerelease ? "pre-release" : "release";
   const ours = download?.release === update.latest ? download : null;
   const is = `New ${kind} ${latest} is available.`;
-  if (!ours || ours.downloaded) return is;
+  const again = update.download ? "The box tries again at its next check." : "Check for update tries again.";
+  if (!ours) return update.download ? is : `${is} Check for update downloads it.`;
+  if (ours.downloaded) return is;
   if (ours.running) {
     return ours.bytes?.total ? `${is} Downloaded ${size(ours.bytes.current)} of ${size(ours.bytes.total)}.` : `${is} Downloading it.`;
   }
   if (ours.finished === null) {
-    return `Could not download ${latest}: it stopped before it finished. Its log is in the log bundle. The box tries again at its next check.`;
+    return `Could not download ${latest}: it stopped before it finished. Its log is in the log bundle. ${again}`;
   }
   if (ours.disk && "keeps" in ours.disk) {
-    return `Stopped downloading ${latest}: ${gb(ours.disk.free)} is free, and the box keeps ${ours.disk.keeps / 1e9} GB free. The box tries again at its next check.`;
+    return `Stopped downloading ${latest}: ${gb(ours.disk.free)} is free, and the box keeps ${ours.disk.keeps / 1e9} GB free. ${again}`;
   }
   if (ours.disk) {
     return `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
   }
-  return `Could not download ${latest}: ${escape(ours.failure ?? "it stopped.")} The box tries again at its next check.`;
+  return `Could not download ${latest}: ${escape(ours.failure ?? "it stopped.")} ${again}`;
 }
 
 /**
@@ -349,6 +354,13 @@ ${selects.join("\n")}
  *  @param {boolean} on */
 function prereleases(on) {
   return `<form method="post" action="/box/prereleases"><button name="prereleases" value="${on ? "no" : "yes"}" aria-pressed="${on}">Pre-releases: ${on ? "on" : "off"}</button></form>`;
+}
+
+/** The toggle that has the box download a newer release after every check,
+ *  or only after a press of "Check for update", showing which.
+ *  @param {boolean} on */
+function downloads(on) {
+  return `<form method="post" action="/box/download"><button name="download" value="${on ? "no" : "yes"}" aria-pressed="${on}">Download automatically: ${on ? "on" : "off"}</button></form>`;
 }
 
 /** Bytes as the page says them while an image is pulled: in gigabytes from

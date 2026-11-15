@@ -168,6 +168,17 @@ export async function prereleases(read) {
 }
 
 /**
+ * Whether the box downloads a newer release after every check, not only after
+ * a press of "Check for update": unless `box.env` sets `BOX_DOWNLOAD=no`
+ * (#141).
+ *
+ * @param {(path: string) => Promise<string | null>} read
+ */
+export async function downloads(read) {
+  return setting((await read(BOX)) ?? "", "BOX_DOWNLOAD") !== "no";
+}
+
+/**
  * The value the env file's text sets `key` to, without its quotes, or null
  * where it sets none.
  *
@@ -282,6 +293,7 @@ export async function status(env, io) {
     latest,
     prerelease: check.prerelease ?? false,
     prereleases: await prereleases(io.read),
+    download: await downloads(io.read),
     available: latest !== null && (release === null || older(release, latest)),
     newer: latest !== null && release !== null && older(latest, release),
     checked: check.checked ?? null,

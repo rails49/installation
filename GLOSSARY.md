@@ -65,8 +65,9 @@ _Avoid_: upgrade, deploy (what `deploy.sh` does)
 
 **Downloading a release**:
 Fetching a release's files and images while the box keeps running its
-current release, so that updating to it only restarts the stacks; see
-[README](README.md#downloading-a-release).
+current release, so that updating to it only restarts the stacks. A pressed
+check always downloads what it finds; a daily check does only on a box set to
+download by itself; see [README](README.md#downloading-a-release).
 _Avoid_: pre-pull, staging, prefetch
 
 **Going back**:

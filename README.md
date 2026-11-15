@@ -204,6 +204,16 @@ and "Status", with the stacks, the box and Docker. It shows:
   pre-release. A missing line is off, and the install script writes none.
   Turning it off leaves a box on the pre-release it runs, and the page then
   says the box runs a release newer than the latest.
+- Beside it, whether the box downloads a newer release by itself: "Download
+  automatically: on" or "off"
+  ([#141](https://github.com/rails49/installation/issues/141)). A press
+  writes `BOX_DOWNLOAD=yes` or `no` into `box.env`, keeping every other line.
+  Turning it on starts downloading the release the last check found, and
+  checks nothing; turning it off lets a download that runs finish. A missing
+  line is on, and the install script writes none. With it off, only "Check
+  for update" downloads, and the page says of a newer release it has not
+  downloaded "New release <release> is available. Check for update downloads
+  it."
 - Disk free, on the file system Docker keeps its images on.
 - Memory, the box's used of its total, from `MemTotal` and `MemAvailable` in
   `/proc/meminfo`. Low memory is no failure.
@@ -219,7 +229,8 @@ and "Status", with the stacks, the box and Docker. It shows:
 
 `GET /box/status` answers the same as JSON. `POST /box/check` checks now.
 `POST /box/prereleases` with `prereleases=yes` or `no` sets the toggle and
-checks.
+checks. `POST /box/download` with `download=yes` or `no` sets whether the box
+downloads by itself.
 `GET /box/bundle` downloads the log bundle, one `.tar.gz` of the records, the
 current manifest, `docker version` and `docker info`, `box.env` and every
 `<stack>.env`, `docker compose ps -a` for each stack, and the last 1000 lines
@@ -265,8 +276,8 @@ nothing, so going back is offered as before.
 
 ### Updating the box and going back
 
-When a check, daily or pressed, finds a newer release, the box downloads it
-by itself, with the railroad running (see
+When a check finds a newer release, the box downloads it by itself, with the
+railroad running (see
 [Downloading a release](#downloading-a-release)). Once it is downloaded, the
 status page says "New release <release> is available." and offers "Update to
 <release>". Once the record names a release the box ran before the last
@@ -358,12 +369,14 @@ not control's defaults.
 
 ### Downloading a release
 
-When a check, daily or pressed, finds a release newer than the one the box
-runs and not the one it has downloaded, `box` starts the container
+When a check finds a release newer than the one the box runs and not the one
+it has downloaded, `box` starts the container
 `rails49-download` from that release's `installation-box` image, mounted as
 `rails49-update` is, running `node /box/update.mjs download <from> <to>`. It
 does the same when it starts, so a download a reboot stopped carries on; and
-never while `rails49-update` runs. Its name is its own, so going back and
+never while `rails49-update` runs. A pressed check always starts it; a daily
+check, and `box` starting, only where "Download automatically" is on
+([#141](https://github.com/rails49/installation/issues/141)). Its name is its own, so going back and
 applying the setup stay possible while it runs. It stops and recreates no
 container, and the railroad operates as normal
 ([#121](https://github.com/rails49/installation/issues/121)). It:
@@ -393,8 +406,8 @@ room or `{ keeps, free }` where it stopped for it between pulls, and `bytes`, `{
 failure before the container starts, such as GitHub refusing the manifest or
 pulling the `installation-box` image or creating the container failing, is
 the download's `failure` there, as one inside the container is
-([#124](https://github.com/rails49/installation/issues/124)). `POST /box/check`
-and `POST /box/prereleases` answer once `box` has written it, not once the
+([#124](https://github.com/rails49/installation/issues/124)). `POST /box/check`,
+`POST /box/prereleases` and `POST /box/download` answer once `box` has written it, not once the
 `installation-box` image has pulled, so the page they send the browser back
 to already shows the download
 ([#125](https://github.com/rails49/installation/issues/125)). The download
@@ -413,7 +426,9 @@ check." One refused for room says "Not enough free disk to
 download <release>: it needs 1.6 GB, 0.9 GB is free." One stopped between
 pulls says "Stopped downloading <release>: 0.9 GB is free, and the box keeps
 1 GB free. The box tries again at its next check." For a pre-release,
-"release" reads "pre-release".
+"release" reads "pre-release". With "Download automatically" off, only a
+pressed check tries again, and each "The box tries again at its next check."
+reads "Check for update tries again."
 
 ## A page on another origin
 
