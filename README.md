@@ -294,8 +294,11 @@ starts the container `rails49-update` from the target release's
    releases' files are kept under `/var/lib/rails49/releases`.
 
 What it is doing is in `/var/lib/rails49/update.json`, which the status page
-shows and reloads every 5 seconds while it runs. It holds the step in a
-sentence, `step`, and while an image is pulled `pull`: the image, its place
+shows while it runs. The page swaps in what changed every 2 seconds, says so
+while `box` is restarting, and reloads once when the run ends; without script
+it reloads every 5 seconds
+([#117](https://github.com/rails49/installation/issues/117)). It holds the
+step in a sentence, `step`, and while an image is pulled `pull`: the image, its place
 among every image the run pulls, and the bytes downloaded of its total. It is
 written at most once a second while it pulls. It also holds `steps`, the steps
 this run takes, `at`, the one it is at, `since`, when that began, and

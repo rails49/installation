@@ -378,6 +378,13 @@ describe("GET /box/tick.js", () => {
   });
 });
 
+describe("GET /box/follow.js", () => {
+  it("serves the script that follows a run", async () => {
+    const answer = await ask(box("systemd"), "GET", "/box/follow.js");
+    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
+  });
+});
+
 describe("anything else", () => {
   it("answers 404 and runs nothing", async () => {
     const on = box("systemd");

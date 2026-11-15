@@ -457,12 +457,14 @@ describe("while an update, going back or applying runs", () => {
     ]);
   });
 
-  it("offers neither updating nor going back, hides the setup, and reloads itself", () => {
+  it("offers neither updating nor going back, hides the setup, and follows the run, or reloads without script", () => {
     const html = at("start");
     expect(html).not.toMatch(/action="\/box\/(update|back|check|prereleases|setup)"/);
     expect(outline(html)).toEqual(["Errors", "Notes", "Release and setup", "Release", "Status", "Stacks", "Box", "Docker"]);
-    expect(html).toContain('<meta http-equiv="refresh" content="5">');
+    expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
+    expect(html).toContain('<script type="module" src="/box/follow.js"></script>');
     expect(page).not.toContain('http-equiv="refresh"');
+    expect(page).not.toContain("/box/follow.js");
   });
 
   it("lists the steps applying takes", () => {
@@ -502,6 +504,7 @@ describe("while an update, going back or applying runs", () => {
     expect(group(ended, "Release")).not.toContain("<ol");
     expect(ended).toContain('action="/box/update"');
     expect(ended).not.toContain('http-equiv="refresh"');
+    expect(ended).not.toContain("/box/follow.js");
   });
 
   it("from a file an older release wrote, which lists no steps, says what it is doing in a sentence", () => {
