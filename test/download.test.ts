@@ -6,6 +6,9 @@
  * in, so a test needs no daemon and no box.
  */
 
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { begin, beginDownload, run, wanted, type Io } from "../box/download.mjs";
@@ -485,5 +488,22 @@ describe("starting a download", () => {
     files[CHECK] = JSON.stringify({ latest: OLD });
     expect(await begin(ENV, io)).toBeNull();
     expect(asked).toEqual([]);
+  });
+});
+
+// 2026.11.8's `rails49-download` exited 13 at once: `update.mjs` awaited a
+// dynamic import of `download.mjs`, which imports it back. Run as the
+// container runs it, with no write access, so the first write `run()` makes
+// is refused and nothing on the machine is touched.
+describe("the container's command", () => {
+  it("reaches run(), which writes download.json first", () => {
+    const script = fileURLToPath(new URL("../box/update.mjs", import.meta.url));
+    const ran = spawnSync(process.execPath, ["--permission", "--allow-fs-read=*", script, "download", OLD, NEW], {
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    expect(ran.stderr).not.toContain("unsettled top-level await");
+    expect(ran.stderr).toContain("ERR_ACCESS_DENIED");
+    expect(ran.stderr).toContain(DOWNLOADING);
   });
 });

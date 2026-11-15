@@ -29,7 +29,7 @@ import { appendFile, mkdir, readdir, readFile, rename, rm, statfs, writeFile } f
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 
-import { isDownloaded } from "./download.mjs";
+import { isDownloaded, run as downloading } from "./download.mjs";
 import {
   backTo,
   CHECK,
@@ -787,7 +787,6 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       const disk = await statfs("/");
       return disk.bavail * disk.bsize;
     };
-    const { run: downloading } = await import("./download.mjs");
     await downloading(from, to, env, { ...io, free });
   } else {
     await run(/** @type {"update" | "back" | "apply"} */ (action), from, to, env, io);
