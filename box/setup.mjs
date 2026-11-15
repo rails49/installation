@@ -4,7 +4,8 @@
 // and the device lines into `dccex.env` and `occupancy.env`, keeping every
 // line it does not write, and starts `rails49-update` at the current release.
 // `offerPrereleases()` is a press of the pre-releases toggle beside "Check
-// now": it writes `BOX_PRERELEASES` into `box.env` (#105).
+// now": it writes `BOX_PRERELEASES` into `box.env` (#105). `offerDownload()`
+// is a press of the toggle beside it: it writes `BOX_DOWNLOAD` (#141).
 //
 // The box's files, its `/dev`, the docker CLI and starting the update are
 // handed in as `io`, so this reads nothing itself.
@@ -143,6 +144,17 @@ export async function apply(posted, io) {
  */
 export async function offerPrereleases(on, io) {
   await rewrite(BOX, "BOX_PRERELEASES", on ? "yes" : "no", io);
+}
+
+/**
+ * Writes `BOX_DOWNLOAD=yes`, or `no`, into `box.env`, keeping every other
+ * line. With `no` the box downloads a newer release only after a press of
+ * "Check for update" (#141).
+ *
+ * @param {boolean} on @param {Pick<Io, "read" | "write">} io
+ */
+export async function offerDownload(on, io) {
+  await rewrite(BOX, "BOX_DOWNLOAD", on ? "yes" : "no", io);
 }
 
 /**

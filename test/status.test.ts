@@ -332,6 +332,7 @@ describe("the check for a new release", () => {
       latest: "2026.11.1",
       prerelease: false,
       prereleases: false,
+      download: true,
       available: true,
       newer: false,
       checked: "2026-11-12T08:00:00Z",
@@ -406,6 +407,14 @@ describe("the check for a new release", () => {
     }
   });
 
+  it("says whether box.env has the box download a release by itself, which a missing line does (#141)", async () => {
+    const declared = (text: string) => io({ files: { "/etc/rails49/box.env": text } });
+    for (const text of ["BOX_DOMAIN=\n", "BOX_DOWNLOAD=yes\n"]) {
+      expect((await status(NAMED, declared(text))).update.download, text).toBe(true);
+    }
+    expect((await status(NAMED, declared("BOX_DOMAIN=\nBOX_DOWNLOAD=no\n"))).update.download).toBe(false);
+  });
+
   it("with pre-releases off, says a box on a pre-release runs one newer than the latest (#88)", async () => {
     const box = on("2026.11.6", "2026.11.5");
     expect((await status(NAMED, box)).update).toMatchObject({
@@ -446,6 +455,7 @@ describe("the check for a new release", () => {
       latest: null,
       prerelease: false,
       prereleases: false,
+      download: true,
       available: false,
       newer: false,
       checked: null,
