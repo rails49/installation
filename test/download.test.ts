@@ -65,7 +65,11 @@ function* stream(image: string): Generator<PullMessage> {
  * declaring control and jmri. Its control container runs `OLD`'s control
  * image.
  */
-function box(options: { free?: number; fail?: string; files?: Record<string, string>; layers?: boolean } = {}) {
+function box(
+  options: { free?: number | number[]; fail?: string; files?: Record<string, string>; layers?: boolean } = {},
+) {
+  // A list is free disk at each read, its last repeated.
+  const frees = Array.isArray(options.free) ? [...options.free] : [options.free ?? 20e9];
   const files: Record<string, string> = {
     [RECORD]: `2026-11-01T09:00:00Z  -  ->  ${BACK}  passed\n2026-11-10T09:00:00Z  ${BACK}  ->  ${OLD}  passed\n`,
     [`${RELEASES}/${BACK}/manifest.json`]: JSON.stringify(manifest(BACK, 1)),
@@ -140,7 +144,10 @@ function box(options: { free?: number; fail?: string; files?: Record<string, str
       if (path === DOWNLOADING) writes.push(JSON.parse(text));
     },
     now: () => new Date(clock),
-    free: async () => options.free ?? 20e9,
+    free: async () => {
+      asked.push("free");
+      return frees.length > 1 ? frees.shift()! : frees[0]!;
+    },
   };
   return { io, files, asked, dirs, writes, state: () => JSON.parse(files[DOWNLOADING]!) };
 }
@@ -199,9 +206,11 @@ describe("a download that passes", () => {
   });
 
   it("says nothing of bytes where the manifest lists no layers, and downloads anyway", async () => {
-    const { io, state } = box({ layers: false, free: 1 });
+    const { io, asked, state } = box({ layers: false });
     await run(OLD, NEW, ENV, io);
     expect(state()).toMatchObject({ downloaded: true, bytes: null, disk: null });
+    // No total to compare: free disk is first read between pulls.
+    expect(asked.indexOf("free")).toBeGreaterThan(asked.indexOf(`pull ${BOX_IMAGE}`));
   });
 });
 
@@ -246,6 +255,36 @@ describe("a download that does not pass", () => {
       failure: `Not enough free disk to download ${NEW}: it needs 1.6 GB, 0.9 GB is free.`,
       finished: expect.any(String),
     });
+  });
+
+  it("with free disk falling below 1 GB after the first image pulls no further image and says it stopped (#129)", async () => {
+    const { io, asked, state } = box({ free: [20e9, 0.9e9] });
+    await run(OLD, NEW, ENV, io);
+    expect(asked.filter((line) => line.startsWith("pull") || line === "free")).toEqual([
+      "free",
+      `pull ${BOX_IMAGE}`,
+      "free",
+    ]);
+    expect(state()).toMatchObject({
+      downloaded: false,
+      disk: { keeps: 1e9, free: 0.9e9 },
+      failure: `Stopped downloading ${NEW}: 0.9 GB is free, and the box keeps 1 GB free.`,
+      finished: expect.any(String),
+    });
+  });
+
+  it("reads free disk between image pulls, not after the last (#129)", async () => {
+    const { io, asked, state } = box();
+    await run(OLD, NEW, ENV, io);
+    expect(asked.filter((line) => line.startsWith("pull") || line === "free")).toEqual([
+      "free",
+      `pull ${BOX_IMAGE}`,
+      "free",
+      `pull ${TRAEFIK_IMAGE}`,
+      "free",
+      `pull ${CONTROL_IMAGE}`,
+    ]);
+    expect(state()).toMatchObject({ downloaded: true, disk: null });
   });
 
   it("whose pull fails says which image and why", async () => {

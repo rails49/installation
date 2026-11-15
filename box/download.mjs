@@ -13,8 +13,9 @@
 // removes the release it downloaded before, with the images neither the
 // release the box runs nor the one to go back to uses, and pulls every image
 // of every declared stack. It stops or recreates no container. Before the
-// first pull it compares the bytes it is to download with free disk. What it
-// is doing is in `DOWNLOADING`, which the status page reads.
+// first pull it compares the bytes it is to download with free disk, and
+// between pulls it stops where less than `SPARE` is free (#129). What it is
+// doing is in `DOWNLOADING`, which the status page reads.
 
 import {
   backTo,
@@ -41,7 +42,8 @@ const EVERY = 1000;
  * finished, null until then, whether it has downloaded every file and image,
  * why not in a sentence, and the run's bytes downloaded of its total, null
  * where the manifest lists no layers. `disk` is what it needed and what was
- * free where it did not download for want of room.
+ * free where it did not download for want of room, or what the box keeps
+ * free and what was where it stopped between image pulls (#129).
  *
  * @typedef {{
  *   release: string,
@@ -49,7 +51,7 @@ const EVERY = 1000;
  *   finished: string | null,
  *   downloaded: boolean,
  *   failure: string | null,
- *   disk: { needs: number, free: number } | null,
+ *   disk: { needs: number, free: number } | { keeps: number, free: number } | null,
  *   bytes: import("./update.mjs").Bytes | null,
  * }} Download
  *
@@ -130,6 +132,15 @@ export async function run(from, to, env, io) {
 
     let index = 0;
     for (const image of images) {
+      // An image unpacks to more than its layers, and the registry says not
+      // how much: the box keeps SPARE free as it pulls (#129).
+      if (index > 0) {
+        const free = await io.free();
+        if (free < SPARE) {
+          state.disk = { keeps: SPARE, free };
+          throw new Failure(`Stopped downloading ${to}: ${gb(free)} is free, and the box keeps ${SPARE / 1e9} GB free.`);
+        }
+      }
       index += 1;
       await pull(image, index, images.length, bytes, io, async ({ run }) => {
         state.bytes = run ?? null;
