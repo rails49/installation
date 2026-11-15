@@ -277,7 +277,9 @@ gone back from by itself.
 the box has downloaded it, and `POST /box/back` goes back. Each answers 409
 with a sentence while one of them or applying the setup runs,
 when there is no newer release, when it is not downloaded yet, or when there
-is nothing to go back to. Each
+is nothing to go back to; the page offers "Update to" exactly when
+`POST /box/update` would accept
+([#126](https://github.com/rails49/installation/issues/126)). Each
 starts the container `rails49-update` from the target release's
 `installation-box` image, with the Docker socket, `/etc/rails49` read-only and
 `/var/lib/rails49`, in no compose project. That container:
@@ -345,8 +347,8 @@ not control's defaults.
 
 ### Downloading a release
 
-When a check, daily or pressed, finds a release newer than both the one the
-box runs and the one it has downloaded, `box` starts the container
+When a check, daily or pressed, finds a release newer than the one the box
+runs and not the one it has downloaded, `box` starts the container
 `rails49-download` from that release's `installation-box` image, mounted as
 `rails49-update` is, running `node /box/update.mjs download <from> <to>`. It
 does the same when it starts, so a download a reboot stopped carries on; and
@@ -359,6 +361,10 @@ container, and the railroad operates as normal
 2. Removes the files of every other release but the one the box runs and the
    one to go back to, and the images those pin that neither of the two does
    and no container runs. The box keeps only releases that can be installed.
+   The downloaded release follows the check: one it downloaded before goes,
+   newer or not, as a pre-release does once pre-releases go off and the check
+   finds an older full release
+   ([#126](https://github.com/rails49/installation/issues/126)).
 3. Totals the bytes to download from the manifest's `layers`, as `pull.run`
    does. With less than that plus 1 GB free on the disk, it pulls nothing.
 4. Pulls every image of every declared stack, as step 2 above. JMRI is built
