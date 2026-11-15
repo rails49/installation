@@ -208,7 +208,9 @@ function available(update, download) {
   if (ours.running) {
     return ours.bytes?.total ? `${is} Downloaded ${size(ours.bytes.current)} of ${size(ours.bytes.total)}.` : `${is} Downloading it.`;
   }
-  if (ours.finished === null) return is;
+  if (ours.finished === null) {
+    return `Could not download ${latest}: it stopped before it finished. Its log is in the log bundle. The box tries again at its next check.`;
+  }
   if (ours.disk && "keeps" in ours.disk) {
     return `Stopped downloading ${latest}: ${gb(ours.disk.free)} is free, and the box keeps ${ours.disk.keeps / 1e9} GB free. The box tries again at its next check.`;
   }
