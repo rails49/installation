@@ -368,7 +368,11 @@ What it is doing is in `/var/lib/rails49/download.json`: `release`,
 `started`, `finished` (null while it runs), `downloaded`, `failure` in a
 sentence, `disk`, `{ needs, free }` where it did not download for want of
 room, and `bytes`, `{ current, total }`, null for a manifest with no `layers`.
-While it runs the status page says "New release <release> is available.
+`box` writes it before reading the release's manifest from GitHub, and a
+failure before the container starts, such as GitHub refusing the manifest or
+pulling the `installation-box` image or creating the container failing, is
+the download's `failure` there, as one inside the container is
+([#124](https://github.com/rails49/installation/issues/124)). While it runs the status page says "New release <release> is available.
 Downloaded 300 MB of 1.6 GB." and follows it as it follows an update. A
 failed download says "Could not download <release>: <reason> The box tries
 again at its next check.", and the next check, daily or pressed, does; Docker
