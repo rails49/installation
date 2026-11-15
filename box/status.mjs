@@ -223,6 +223,9 @@ export async function status(env, io) {
   const release = await currentRelease(io.read);
   const manifest = release === null ? null : parse(await io.read(manifestPath(release)));
 
+  // Before the containers, so a start that ends between the two still reads
+  // as running (#132).
+  const starting = io.starting();
   const containers = await inspected(io.docker);
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
   // Each image's unpacked size, asked once however many stacks run it.
@@ -315,7 +318,7 @@ export async function status(env, io) {
   /** @type {import("./download.mjs").Download | null} */
   const downloaded = parse(await io.read(DOWNLOADING));
   const downloader = containers.find((c) => c.Name === "/rails49-download");
-  const download = downloaded && { ...downloaded, running: io.starting() || downloader?.State.Status === "running" };
+  const download = downloaded && { ...downloaded, running: starting || downloader?.State.Status === "running" };
 
   const disk = await io.disk();
   if (disk.free < disk.total / 10) failures.push(`The disk has ${gb(disk.free)} free of ${gb(disk.total)}.`);

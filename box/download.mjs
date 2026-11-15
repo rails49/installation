@@ -225,8 +225,7 @@ export async function wanted(read) {
 
 /**
  * The `begin()` in flight: `named` settles once it has written `DOWNLOADING`
- * or has ended, and `written` says it has written it. Every caller of
- * `begin()` is in `box` (#132).
+ * or has ended, and `written` says it has written it (#132).
  *
  * @type {{ named: Promise<void>, written: boolean } | null}
  */
@@ -253,7 +252,8 @@ export function starting() {
  * is called once `DOWNLOADING` names the release, before the image pulls.
  *
  * A `begin()` while another is in flight starts nothing and leaves
- * `DOWNLOADING` alone. It answers null once the other has written it (#132).
+ * `DOWNLOADING` alone. It answers null once the other has written it or has
+ * ended (#132).
  *
  * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
  * @param {StartIo} io
@@ -265,18 +265,18 @@ export async function begin(env, io, begun = () => {}) {
     await flight.named;
     return null;
   }
-  let named = () => {};
-  const mine = { named: new Promise((resolve) => (named = /** @type {() => void} */ (resolve))), written: false };
+  let settle = () => {};
+  const mine = { named: new Promise((resolve) => (settle = /** @type {() => void} */ (resolve))), written: false };
   flight = mine;
   try {
     return await launch(env, io, () => {
       mine.written = true;
-      named();
+      settle();
       begun();
     });
   } finally {
     flight = null;
-    named();
+    settle();
   }
 }
 
