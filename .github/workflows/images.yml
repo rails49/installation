@@ -92,6 +92,10 @@ jobs:
           file: ${{ matrix.image }}/Dockerfile
           build-args: INSTALLATION_COMMIT=${{ inputs.commit }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Layers that did not change since the last build are taken from GHCR,
+          # so a box pulls only the ones that did (rails49/.github#80).
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ runner.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ runner.arch }},mode=max
       - name: Keep the digest for the join
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
