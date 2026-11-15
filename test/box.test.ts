@@ -446,7 +446,7 @@ describe("the hourly tick, also as box starts", () => {
 
 describe("the box's time zone (#144)", () => {
   it("is the name the host's /etc/localtime links to under zoneinfo", () => {
-    expect(zone("/usr/share/zoneinfo/Europe/Zurich\n")).toBe("Europe/Zurich");
+    expect(zone("/usr/share/zoneinfo/Asia/Tokyo\n")).toBe("Asia/Tokyo");
     expect(zone("../usr/share/zoneinfo/America/Los_Angeles")).toBe("America/Los_Angeles");
   });
 
