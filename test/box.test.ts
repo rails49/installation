@@ -7,9 +7,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { beginDownload } from "../box/download.mjs";
+import { beginDownload, starting } from "../box/download.mjs";
 import { handle } from "../box/server.mjs";
 import { offerPrereleases } from "../box/setup.mjs";
+import { status } from "../box/status.mjs";
 
 const HOST = "control.example.org";
 
@@ -302,7 +303,8 @@ describe("POST /box/check", () => {
   });
 
   // #125: the press is answered while the new release's box image still pulls.
-  it("answers at once, while the download it started still pulls, and the page already names it", async () => {
+  // #132: and the page it loads follows the download through that pull.
+  it("answers at once, while the download it started still pulls, and the page it loads follows the download", async () => {
     const files: Record<string, string> = {
       "/var/lib/rails49/deploys/installation": "2026-11-10T09:00:00Z  -  ->  2026.11.0  passed\n",
     };
@@ -312,6 +314,7 @@ describe("POST /box/check", () => {
       docker: async (args: string[]) => {
         if (args[0] === "image" && args[1] === "inspect") throw new Error("No such image");
         if (args[0] === "pull") return await new Promise<string>(() => {});
+        if (args[0] === "info") return JSON.stringify({ ServerVersion: "29.1.3", LoggingDriver: "local" });
         return "";
       },
       read: async (path: string) => files[path] ?? null,
@@ -326,6 +329,19 @@ describe("POST /box/check", () => {
         files["/var/lib/rails49/check.json"] = JSON.stringify({ latest: "2026.11.2", checked: "2026-11-15T10:00:00.000Z" });
       },
       download: () => beginDownload({ BOX_DOMAIN: "example.org", BOX_UIS: "control" }, io),
+      status: async () => ({
+        ...(await status({ BOX_DOMAIN: "", BOX_UIS: "control", hostname: "box" }, {
+          ...io,
+          disk: async () => ({ free: 20e9, total: 64e9 }),
+          address: async () => "192.168.1.20",
+          certificate: async () => ({ valid_from: "", valid_to: "", error: null }),
+          resolve: async () => [],
+          stats: async () => null,
+          image: async () => null,
+          starting,
+        })),
+        setup: { uis: [], devices: [] },
+      }),
     };
     const answer = await handle({ method: "POST", url: "/box/check", headers: { host: HOST }, body: "" }, on);
     expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
@@ -334,6 +350,9 @@ describe("POST /box/check", () => {
       finished: null,
       failure: null,
     });
+    const page = (await handle({ method: "GET", url: "/box/", headers: { host: HOST }, body: "" }, on)).body;
+    expect(page).toContain("New release 2026.11.2 is available. Downloading it.");
+    expect(page).toContain('<script type="module" src="/box/follow.js" data-follows="download"></script>');
   });
 
   it("is refused from a page on another origin, and checks nothing", async () => {

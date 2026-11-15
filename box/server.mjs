@@ -29,7 +29,7 @@ import { promisify } from "node:util";
 
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
-import { beginDownload } from "./download.mjs";
+import { beginDownload, starting } from "./download.mjs";
 import { render } from "./page.mjs";
 import { apply, form, offerPrereleases } from "./setup.mjs";
 import { CHECK, message, prereleases, status } from "./status.mjs";
@@ -282,6 +282,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
     stats,
     image,
+    starting,
     now,
   };
   const startIo = { docker, read, write: writeFile, now, fetch };
