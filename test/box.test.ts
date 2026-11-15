@@ -337,7 +337,7 @@ describe("POST /box/check", () => {
           certificate: async () => ({ valid_from: "", valid_to: "", error: null }),
           resolve: async () => [],
           stats: async () => null,
-          image: async () => null,
+          size: async () => null,
           starting,
         })),
         setup: { uis: [], devices: [] },

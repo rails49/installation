@@ -235,13 +235,13 @@ function stats(id) {
   });
 }
 
-/** What the Engine API's image inspect says of an image, its unpacked size
- *  among the rest, or null where it answers anything but 200.
+/** What the Engine API's container inspect says of a container's size, or
+ *  null where it answers anything but 200, as for a container that has gone.
  *  @param {string} id
- *  @returns {Promise<{ Size: number } | null>} */
-function image(id) {
+ *  @returns {Promise<{ SizeRootFs: number, SizeRw: number } | null>} */
+function size(id) {
   return new Promise((resolve, reject) => {
-    request({ socketPath: "/var/run/docker.sock", path: `/images/${encodeURIComponent(id)}/json` }, async (answer) => {
+    request({ socketPath: "/var/run/docker.sock", path: `/containers/${encodeURIComponent(id)}/json?size=true` }, async (answer) => {
       let body = "";
       for await (const chunk of answer) body += chunk;
       resolve(answer.statusCode === 200 ? JSON.parse(body) : null);
@@ -281,7 +281,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     certificate,
     resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
     stats,
-    image,
+    size,
     starting,
     now,
   };
