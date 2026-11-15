@@ -62,9 +62,9 @@ export function render(status, now = new Date()) {
 
   const stacks = status.stacks
     .toSorted((a, b) => ORDER.indexOf(a.stack) - ORDER.indexOf(b.stack))
-    .map(({ stack, state, commit, memory }) => {
+    .map(({ stack, state, commit, memory, disk }) => {
       const dot = state === "running" ? "ok" : state === "stopped" ? "off" : "bad";
-      return `<tr><td><span class="dot ${dot}"></span>${escape(NAMES.get(stack) ?? stack)}</td><td>${escape(state)}</td><td class="number">${memory === null ? "" : mb(memory)}</td><td>${commit ? escape(commit.slice(0, 7)) : "n/a"}</td></tr>`;
+      return `<tr><td><span class="dot ${dot}"></span>${escape(NAMES.get(stack) ?? stack)}</td><td>${escape(state)}</td><td class="number">${memory === null ? "" : mb(memory)}</td><td class="number">${disk === null ? "" : mb(disk)}</td><td>${commit ? escape(commit.slice(0, 7)) : "n/a"}</td></tr>`;
     })
     .join("\n");
 
@@ -110,7 +110,7 @@ ${running ? progress(running, now) : release(status, railroad)}
 <fieldset class="group">
 <legend>Stacks</legend>
 <table>
-<thead><tr><th>Stack</th><th>State</th><th class="number">Memory</th><th>Commit</th></tr></thead>
+<thead><tr><th>Stack</th><th>State</th><th class="number">Memory</th><th class="number">Disk</th><th>Commit</th></tr></thead>
 <tbody>
 ${stacks}
 </tbody>
@@ -308,7 +308,8 @@ function size(bytes) {
   return bytes >= 1e9 ? gb(bytes) : `${Math.round(bytes / 1e6)} MB`;
 }
 
-/** Memory as the page says it: in whole megabytes of 2^20 bytes.
+/** Memory, and a stack's disk, as the page says them: in whole megabytes of
+ *  2^20 bytes.
  *  @param {number} bytes */
 function mb(bytes) {
   return `${Math.round(bytes / 2 ** 20).toLocaleString("en-US")} MB`;

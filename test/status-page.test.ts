@@ -297,13 +297,13 @@ describe("the release group", () => {
 });
 
 describe("the status groups", () => {
-  /** The table's rows, as `[dot, stack, state, memory, commit]`. */
+  /** The table's rows, as `[dot, stack, state, memory, disk, commit]`. */
   const table = (html: string) =>
     [...group(html, "Stacks").matchAll(/<tr><td><span class="dot (\w+)"><\/span>([^<]*)<\/td>(.*?)<\/tr>/g)].map(
       ([, dot, stack, cells]) => [dot, stack, ...[...cells!.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(([, cell]) => cell)],
     );
 
-  it("list each stack by its name, in the page's order, with a dot, its state, memory and commit", () => {
+  it("list each stack by its name, in the page's order, with a dot, its state, memory, disk and commit", () => {
     const all = render({
       ...STATUS,
       stacks: [
@@ -312,14 +312,14 @@ describe("the status groups", () => {
         { stack: "occupancy-service", state: "running", commit: null, local_build: false, memory: 2500 * 2 ** 20, disk: 30e6 },
       ],
     });
-    expect(group(all, "Stacks")).toContain('<th>Stack</th><th>State</th><th class="number">Memory</th><th>Commit</th>');
-    expect(group(all, "Stacks")).toContain('<td class="number">60 MB</td>');
+    expect(group(all, "Stacks")).toContain('<th>Stack</th><th>State</th><th class="number">Memory</th><th class="number">Disk</th><th>Commit</th>');
+    expect(group(all, "Stacks")).toContain('<td class="number">60 MB</td><td class="number">348 MB</td>');
     expect(table(all)).toEqual([
-      ["ok", "Installation", "running", "60 MB", "8f7e6d5"],
-      ["bad", "Control", "restarting", "1,200 MB", "1c3f69b"],
-      ["ok", "Occupancy", "running", "2,500 MB", "n/a"],
-      ["ok", "JMRI", "running", "480 MB", "n/a"],
-      ["off", "DCC-EX translator", "stopped", "", "n/a"],
+      ["ok", "Installation", "running", "60 MB", "348 MB", "8f7e6d5"],
+      ["bad", "Control", "restarting", "1,200 MB", "1,144 MB", "1c3f69b"],
+      ["ok", "Occupancy", "running", "2,500 MB", "29 MB", "n/a"],
+      ["ok", "JMRI", "running", "480 MB", "620 MB", "n/a"],
+      ["off", "DCC-EX translator", "stopped", "", "", "n/a"],
     ]);
   });
 

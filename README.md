@@ -161,7 +161,7 @@ two parts of bordered groups
 setup", with the release, the stacks to run, and the devices with "Apply";
 and "Status", with the stacks, the box and Docker. It shows:
 
-- Each stack's state (running, restarting or stopped), memory and commit,
+- Each stack's state (running, restarting or stopped), memory, disk and commit,
   after a green dot for running, grey for stopped and red otherwise. The
   stacks are the installation and one per label in `BOX_UIS`: `control`,
   `dccex`, `jmri` (this repository's JMRI project) and `occupancy`
@@ -169,8 +169,13 @@ and "Status", with the stacks, the box and Docker. It shows:
   JMRI and DCC-EX translator, in that order. A stack's memory is the sum of
   what its running containers use, from the Engine API's one-shot container
   stats, less their inactive file cache, as `docker stats` says it. Memory
-  is in whole megabytes of 2^20 bytes. The commit, or "n/a" where there is
-  none, is the `org.opencontainers.image.revision`
+  is in whole megabytes of 2^20 bytes. A stack's disk is the sum of the
+  unpacked sizes the Engine API's image inspect gives for the distinct images
+  its containers run, running or not, in megabytes like memory, and blank for
+  a stack with no containers. A layer shared between stacks counts in each
+  stack that uses it, so the column does not add up to the disk used
+  ([#119](https://github.com/rails49/installation/issues/119)). The commit,
+  or "n/a" where there is none, is the `org.opencontainers.image.revision`
   of the stack's images. A stack whose commit is not the release's runs a
   local build, and a sentence says so; on a box never updated every stack
   does. JMRI is built on the box and is in no release.
