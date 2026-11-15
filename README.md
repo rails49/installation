@@ -188,7 +188,9 @@ and "Status", with the stacks, the box and Docker. It shows:
   GitHub for `rails49/installation`'s latest release, which is never a
   pre-release, once a day, and on "Check for update". Offline it says it could not
   check, and when the last check succeeded. What it found is kept in
-  `/var/lib/rails49/check.json`.
+  `/var/lib/rails49/check.json`. A newer release it found is downloaded in
+  the background, and the page says how far that has got (see
+  [Downloading a release](#downloading-a-release)).
 - Beside "Check for update", whether pre-releases are offered: "Pre-releases: on" or
   "off" ([#105](https://github.com/rails49/installation/issues/105)). A press
   writes `BOX_PRERELEASES=yes` or `no` into `box.env`, keeping every other
@@ -259,19 +261,23 @@ nothing, so going back is offered as before.
 
 ### Updating the box and going back
 
-When a newer release is out, the status page offers "Update to <release>".
-Once the record names a release the box ran before the last update, it offers
-"Revert to <release>", which goes back, and after going back it offers nothing to go back to. Below both, while a declared stack runs, it says that the
-railroad keeps running while the new images download and stops while its
-stacks restart. Anyone on the LAN may press either, as anyone
-may turn the box off, and a page on another origin is refused. Nothing is
-installed without a press, and a failed update is not gone back from by
-itself.
+When a check, daily or pressed, finds a newer release, the box downloads it
+by itself, with the railroad running (see
+[Downloading a release](#downloading-a-release)). Once it is downloaded, the
+status page says "New release <release> is available." and offers "Update to
+<release>". Once the record names a release the box ran before the last
+update, it offers "Revert to <release>", which goes back, and after going back
+it offers nothing to go back to. Below both, while a declared stack runs, it
+says that the railroad stops while its stacks restart. Anyone on the LAN may
+press either, as anyone may turn the box off, and a page on another origin is
+refused. Nothing is installed without a press, and a failed update is not
+gone back from by itself.
 
-`POST /box/update` updates to the latest release the last check found, and
-`POST /box/back` goes back. Each answers 409 with a sentence while one of
-them or applying the setup runs,
-when there is no newer release, or when there is nothing to go back to. Each
+`POST /box/update` updates to the latest release the last check found, once
+the box has downloaded it, and `POST /box/back` goes back. Each answers 409
+with a sentence while one of them or applying the setup runs,
+when there is no newer release, when it is not downloaded yet, or when there
+is nothing to go back to. Each
 starts the container `rails49-update` from the target release's
 `installation-box` image, with the Docker socket, `/etc/rails49` read-only and
 `/var/lib/rails49`, in no compose project. That container:
@@ -279,7 +285,8 @@ starts the container `rails49-update` from the target release's
 1. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
    into `/var/lib/rails49/releases/<release>/`, unless they are there already.
 2. Pulls every image of every declared stack through the Engine API
-   (`POST /images/create` on the socket), and builds JMRI. A failure here
+   (`POST /images/create` on the socket), and builds JMRI. After a download
+   every image is on the box and this takes seconds. A failure here
    changes nothing on the box, and the railroad keeps running throughout.
 3. Brings the declared stacks up in order: the installation, control, dccex,
    JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and
@@ -335,6 +342,39 @@ The update container runs as root and has no shell's environment, so each
 box wired to a command station and `COMPOSE_PROFILES=layout,sim` on one with
 nothing attached, and `TC49_STORE`, `TC49_UID` and `TC49_GID` where they are
 not control's defaults.
+
+### Downloading a release
+
+When a check, daily or pressed, finds a release newer than both the one the
+box runs and the one it has downloaded, `box` starts the container
+`rails49-download` from that release's `installation-box` image, mounted as
+`rails49-update` is, running `node /box/update.mjs download <from> <to>`. It
+does the same when it starts, so a download a reboot stopped carries on; and
+never while `rails49-update` runs. Its name is its own, so going back and
+applying the setup stay possible while it runs. It stops and recreates no
+container, and the railroad operates as normal
+([#121](https://github.com/rails49/installation/issues/121)). It:
+
+1. Downloads the release's files, as step 1 above.
+2. Removes the files of every other release but the one the box runs and the
+   one to go back to, and the images those pin that neither of the two does
+   and no container runs. The box keeps only releases that can be installed.
+3. Totals the bytes to download from the manifest's `layers`, as `pull.run`
+   does. With less than that plus 1 GB free on the disk, it pulls nothing.
+4. Pulls every image of every declared stack, as step 2 above. JMRI is built
+   by the update.
+
+What it is doing is in `/var/lib/rails49/download.json`: `release`,
+`started`, `finished` (null while it runs), `downloaded`, `failure` in a
+sentence, `disk`, `{ needs, free }` where it did not download for want of
+room, and `bytes`, `{ current, total }`, null for a manifest with no `layers`.
+While it runs the status page says "New release <release> is available.
+Downloaded 300 MB of 1.6 GB." and follows it as it follows an update. A
+failed download says "Could not download <release>: <reason> The box tries
+again at its next check.", and the next check, daily or pressed, does; Docker
+keeps the layers it has. One refused for room says "Not enough free disk to
+download <release>: it needs 1.6 GB, 0.9 GB is free." For a pre-release,
+"release" reads "pre-release".
 
 ## A page on another origin
 
