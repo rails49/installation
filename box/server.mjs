@@ -164,7 +164,7 @@ export async function handle(request, box) {
 
 /**
  * The time zone `readlink /etc/localtime` names on the host, as
- * `Europe/Zurich`, or null where it names none. The box's clock is in it, so
+ * `Asia/Tokyo`, or null where it names none. The box's clock is in it, so
  * the daily check runs at 2:00 there (#144).
  *
  * @param {string} link
