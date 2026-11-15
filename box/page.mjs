@@ -187,8 +187,10 @@ function release({ release, update, back }, railroad) {
 /**
  * The release group while an update, going back or applying runs: the steps
  * it takes, those done ticked and the current one with a spinner. While it
- * pulls, a bar of the images done of all of them, and the image with its
- * bytes; while it watches, the seconds left. A file an older release wrote
+ * pulls, a bar of the run's bytes downloaded of its total, and the image with
+ * the same two numbers (#118); from a run whose manifest lists no layers, a
+ * bar of the images done of all of them, and the image with its own bytes.
+ * While it watches, the seconds left. A file an older release wrote
  * lists no steps, and the page says the step in a sentence.
  *
  * @param {NonNullable<Status["updating"]>} running
@@ -208,8 +210,12 @@ function progress(running, now) {
     }
     if (id === "pull" && building) return '<li class="current">Building JMRI</li>';
     if (id === "pull" && pull) {
-      const done = pull.index - 1;
       const image = repository(pull).replace(/^.*\//, "");
+      if (pull.run?.total) {
+        const { current, total } = pull.run;
+        return `<li class="current">${name} <progress value="${current}" max="${total}">${size(current)} of ${size(total)}</progress> ${escape(image)}; ${size(current)} of ${size(total)}</li>`;
+      }
+      const done = pull.index - 1;
       return `<li class="current">${name} <progress value="${done}" max="${pull.count}">${done} of ${pull.count}</progress> ${escape(image)}${bytes(pull)}</li>`;
     }
     return `<li class="current">${name}</li>`;

@@ -299,7 +299,14 @@ while `box` is restarting, and reloads once when the run ends; without script
 it reloads every 5 seconds
 ([#117](https://github.com/rails49/installation/issues/117)). It holds the
 step in a sentence, `step`, and while an image is pulled `pull`: the image, its place
-among every image the run pulls, and the bytes downloaded of its total. It is
+among every image the run pulls, and the bytes downloaded of its total; and
+`pull.run`, the run's bytes downloaded and its total. Before the first pull,
+that total is the distinct layers of every image the run pulls, for the box's
+platform, from the manifest's `layers`, less those of the images already on
+the box; a layer Docker's stream says already exists, of which the run
+downloaded nothing, comes off it. `pull.run` is null for a release whose
+manifest has no `layers`
+([#118](https://github.com/rails49/installation/issues/118)). It is
 written at most once a second while it pulls. It also holds `steps`, the steps
 this run takes, `at`, the one it is at, `since`, when that began, and
 `building`, true while JMRI is built
@@ -308,8 +315,10 @@ this run takes, `at`, the one it is at, `since`, when that began, and
 `stop`, only for applying with a stack no longer ticked that has containers,
 `start`, `watch`, `probe`, and `prune`, only for an update. In place of the
 release group the page lists them, ticks those done and spins at the current
-one. While it pulls, a bar shows the images done of all of them, beside the
-image and its bytes, for example "control, 300 MB of 1.2 GB"; while it
+one. While it pulls, a bar shows the run's bytes downloaded of its total,
+beside the image and the same two numbers, for example "occupancy-service;
+1.1 GB of 1.6 GB"; without `pull.run`, a bar of the images done of all of
+them, beside the image and its own bytes, "control, 300 MB of 1.2 GB". While it
 watches, the seconds left. A page from an older release reads only `step` and
 `pull`, and this page says `step` in a sentence for a file with no `steps`. A failure is said in a
 sentence that names the stack, and "Revert to <release>" is offered. The
