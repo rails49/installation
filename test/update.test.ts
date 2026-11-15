@@ -56,22 +56,95 @@ type Box = {
   writes: { at: number; progress: Record<string, unknown> }[];
 };
 
-/** Two layers of 600 and 400 bytes, downloaded in steps of 200, as the
- *  Engine API streams them. */
-function* layers(): Generator<PullMessage> {
-  yield { status: "Pulling from rails49/x", id: "x" };
-  yield { status: "Pulling fs layer", id: "a", progressDetail: {} };
-  yield { status: "Pulling fs layer", id: "b", progressDetail: {} };
-  yield { status: "Already exists", id: "c", progressDetail: {} };
-  for (const current of [200, 400, 600]) yield { status: "Downloading", id: "a", progressDetail: { current, total: 600 } };
-  yield { status: "Download complete", id: "a", progressDetail: {} };
-  for (const current of [200, 400]) yield { status: "Downloading", id: "b", progressDetail: { current, total: 400 } };
-  yield { status: "Download complete", id: "b", progressDetail: {} };
-  yield { status: "Extracting", id: "a", progressDetail: { current: 600, total: 600 } };
-  yield { status: "Pull complete", id: "a", progressDetail: {} };
-  yield { status: "Pull complete", id: "b", progressDetail: {} };
-  yield { status: "Digest: sha256:0" };
-  yield { status: "Status: Downloaded newer image" };
+/** A layer's digest, from a letter. */
+const LAYER = (c: string) => `sha256:${c.repeat(64)}`;
+
+/** The images the box's stacks pull, as the fake's `config --images` lists
+ *  them. `traefik` is already on the box. */
+const INSTALLATION_IMAGE = `ghcr.io/rails49/installation:x@${DIGEST(7)}`;
+const TRAEFIK_IMAGE = `traefik:v3.7@${DIGEST(8)}`;
+const CONTROL_IMAGE = `ghcr.io/rails49/control:x@${DIGEST(4)}`;
+
+/**
+ * Each image's linux/arm64 layers, as the manifest's `layers` lists them.
+ * `a` is a base layer of all three, so the box has it from traefik; `d` is in
+ * installation and control, so control finds it downloaded earlier in the
+ * run.
+ */
+const ARM64: Record<string, { digest: string; size: number }[]> = {
+  [INSTALLATION_IMAGE]: [
+    { digest: LAYER("a"), size: 30e6 },
+    { digest: LAYER("b"), size: 40e6 },
+    { digest: LAYER("c"), size: 20e6 },
+    { digest: LAYER("d"), size: 60e6 },
+    { digest: LAYER("e"), size: 8e6 },
+  ],
+  [TRAEFIK_IMAGE]: [
+    { digest: LAYER("a"), size: 30e6 },
+    { digest: LAYER("f"), size: 48e6 },
+  ],
+  [CONTROL_IMAGE]: [
+    { digest: LAYER("a"), size: 30e6 },
+    { digest: LAYER("d"), size: 60e6 },
+    { digest: LAYER("1"), size: 12e6 },
+  ],
+};
+
+/** The manifest's `layers`: by image digest, then platform. The amd64 sizes
+ *  differ, so a total from the wrong platform shows. */
+const LAYERS = Object.fromEntries(
+  Object.entries(ARM64).map(([image, layers]) => [
+    image.split("@")[1],
+    { "linux/arm64": layers, "linux/amd64": layers.map(({ digest, size }) => ({ digest, size: size * 2 })) },
+  ]),
+);
+
+/** Docker's short name for a layer: the first 12 hex digits of its digest. */
+const short = (digest: string) => digest.slice(7, 19);
+
+/**
+ * What Docker's stream says for one image: each layer the box has as
+ * "Already exists", the others downloading three at a time in quarters, each
+ * with its size said only once it starts, then extracted in order.
+ */
+function* docker(image: string, exists: string[]): Generator<PullMessage> {
+  const layers = ARM64[image] ?? [];
+  yield { status: `Pulling from ${image.replace(/[:@].*$/, "")}`, id: "x" };
+  const todo = layers.filter(({ digest }) => !exists.includes(digest));
+  for (const { digest } of layers) {
+    yield { status: exists.includes(digest) ? "Already exists" : "Pulling fs layer", id: short(digest), progressDetail: {} };
+  }
+  for (const { digest } of todo.slice(3)) yield { status: "Waiting", id: short(digest), progressDetail: {} };
+  const active = todo.slice(0, 3);
+  const queue = todo.slice(3);
+  const got = new Map<string, number>();
+  while (active.length) {
+    for (const layer of [...active]) {
+      const current = Math.min(layer.size, (got.get(layer.digest) ?? 0) + layer.size / 4);
+      got.set(layer.digest, current);
+      yield { status: "Downloading", id: short(layer.digest), progressDetail: { current, total: layer.size } };
+      if (current < layer.size) continue;
+      yield { status: "Verifying Checksum", id: short(layer.digest), progressDetail: {} };
+      yield { status: "Download complete", id: short(layer.digest), progressDetail: {} };
+      active.splice(active.indexOf(layer), 1);
+      const next = queue.shift();
+      if (next) active.push(next);
+    }
+  }
+  for (const { digest, size } of todo) {
+    yield { status: "Extracting", id: short(digest), progressDetail: { current: size, total: size } };
+    yield { status: "Pull complete", id: short(digest), progressDetail: {} };
+  }
+  yield { status: `Digest: ${image.split("@")[1]}` };
+  yield { status: `Status: Downloaded newer image for ${image}` };
+}
+
+/** The stream of each image of a run, in the order the run pulls them: the
+ *  box has traefik, and control's `d` was downloaded earlier in the run. */
+function layers(image: string): Iterable<PullMessage> {
+  if (image === TRAEFIK_IMAGE) return docker(image, [LAYER("a"), LAYER("f")]);
+  if (image === CONTROL_IMAGE) return docker(image, [LAYER("a"), LAYER("d")]);
+  return docker(image, [LAYER("a")]);
 }
 
 /**
@@ -87,6 +160,8 @@ function box(
     files?: Record<string, string>;
     /** What the Engine API streams for a pull, `layers()` where not given. */
     stream?: (image: string) => Iterable<PullMessage>;
+    /** Whether the downloaded manifest lists each image's layers. */
+    layers?: boolean;
     /** Milliseconds the clock moves on with each message of a pull. */
     tick?: number;
     /** Ids `docker ps` lists whose container is gone by the time
@@ -117,8 +192,9 @@ function box(
       if (options.fail && line.includes(options.fail)) throw new Error(`${options.fail} failed`);
       if (line.endsWith("config --images")) {
         const stack = args.find((a) => a.endsWith(".yaml"))!.split("/").at(-2);
-        return `ghcr.io/rails49/${stack}:x@${DIGEST(7)}\ntraefik:v3.7@${DIGEST(8)}\n`;
+        return `${stack === "control" ? CONTROL_IMAGE : `ghcr.io/rails49/${stack}:x@${DIGEST(7)}`}\n${TRAEFIK_IMAGE}\n`;
       }
+      if (line === "version --format {{.Server.Os}}/{{.Server.Arch}}") return "linux/arm64\n";
       if (line === "ps -aq") return "a\nb\nc\nd\n";
       if (args[0] === "inspect") {
         const missing = args.slice(1).filter((id) => options.gone?.includes(id));
@@ -136,6 +212,7 @@ function box(
           { Repository: "ghcr.io/rails49/control", Tag: "0a1b2c3", Digest: "<none>", ID: "sha256:older-local" },
           { Repository: "traefik", Tag: "<none>", Digest: DIGEST(1), ID: "sha256:older-traefik" },
           { Repository: "traefik", Tag: "<none>", Digest: DIGEST(6), ID: "sha256:old-traefik" },
+          { Repository: "traefik", Tag: "<none>", Digest: DIGEST(8), ID: "sha256:new-traefik" },
           { Repository: "eclipse-temurin", Tag: "21", Digest: DIGEST(2), ID: "sha256:other" },
         ]
           .map((image) => JSON.stringify(image))
@@ -154,7 +231,9 @@ function box(
     download: async (url, path) => {
       asked.push(`download ${url} ${path}`);
       if (options.fail && url.includes(options.fail)) throw new Error("GitHub answered 404");
-      if (url.endsWith("manifest.json")) files[path] = JSON.stringify(manifest(NEW, 3));
+      if (url.endsWith("manifest.json")) {
+        files[path] = JSON.stringify({ ...manifest(NEW, 3), ...(options.layers ? { layers: LAYERS } : {}) });
+      }
     },
     unpack: async (archive, dir) => void asked.push(`unpack ${archive} ${dir}`),
     rename: async (from, to) => {
@@ -224,7 +303,7 @@ describe("an update that passes", () => {
       `${CONTROL(NEW)} config --images`,
       `pull ghcr.io/rails49/installation:x@${DIGEST(7)}`,
       `pull traefik:v3.7@${DIGEST(8)}`,
-      `pull ghcr.io/rails49/control:x@${DIGEST(7)}`,
+      `pull ${CONTROL_IMAGE}`,
       `pull traefik:v3.7@${DIGEST(8)}`,
       // JMRI is built on the box from a stock image.
       `${JMRI(NEW)} build --pull`,
@@ -367,27 +446,24 @@ describe("pulling the images", () => {
   it("shows the image, its place among every image of every declared stack, and its bytes rising to its total", async () => {
     const { io, writes } = box({ tick: 1000 });
     await run("update", OLD, NEW, ENV, io);
-    const control = pulls(writes).filter(([image]) => image === `ghcr.io/rails49/control:x@${DIGEST(7)}`);
+    const control = pulls(writes).filter(([image]) => image === CONTROL_IMAGE);
     expect(control.map(([, index, count]) => [index, count])).toContainEqual([3, 4]);
     expect(control.map(([, , , current, total]) => [current, total])).toEqual([
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [200, 600],
-      [400, 600],
-      [600, 600],
-      [600, 600],
-      [800, 1000],
-      [1000, 1000],
-      [1000, 1000],
-      [1000, 1000],
-      [1000, 1000],
-      [1000, 1000],
-      [1000, 1000],
-      [1000, 1000],
+      ...Array(4).fill([0, 0]),
+      [3e6, 12e6],
+      [6e6, 12e6],
+      [9e6, 12e6],
+      ...Array(7).fill([12e6, 12e6]),
     ]);
-    expect(pulls(writes).map(([image, index]) => `${index} ${image}`)).toContain(`4 traefik:v3.7@${DIGEST(8)}`);
+    // Three layers at once, each said only once it starts: the image's total
+    // grows during its pull, and the bytes never go down.
+    const installation = pulls(writes).filter(([image]) => image === INSTALLATION_IMAGE);
+    const totals = [...new Set(installation.map(([, , , , total]) => total))];
+    expect(totals).toEqual([0, 40e6, 60e6, 120e6, 128e6]);
+    const currents = installation.map(([, , , current]) => current as number);
+    expect(currents).toEqual([...currents].sort((a, b) => a - b));
+    expect(currents.at(-1)).toBe(128e6);
+    expect(pulls(writes).map(([image, index]) => `${index} ${image}`)).toContain(`4 ${TRAEFIK_IMAGE}`);
   });
 
   it("says each stack's step beside it, and nothing of a pull once the pulls are done", async () => {
@@ -418,7 +494,7 @@ describe("pulling the images", () => {
       stream: (image) =>
         image.startsWith("ghcr.io/rails49/control")
           ? [{ status: "Pulling from rails49/control", id: "x" }, { error: "manifest unknown", errorDetail: { message: "manifest unknown" } }]
-          : layers(),
+          : layers(image),
     });
     await run("update", OLD, NEW, ENV, io);
     expect(asked.some((line) => line.includes(" up -d"))).toBe(false);
@@ -426,6 +502,70 @@ describe("pulling the images", () => {
       passed: false,
       failure: `Could not pull control's images for release ${NEW}: manifest unknown.`,
     });
+  });
+});
+
+describe("counting the run's bytes from the manifest's layers", () => {
+  /** The run's bytes each write of the progress file showed while it pulled. */
+  const shown = (writes: Box["writes"]) =>
+    writes.flatMap(({ progress: { pull } }) => (pull ? [(pull as { run: { current: number; total: number } | null }).run] : []));
+
+  /** The distinct layers of the images the run pulls, for linux/arm64, less
+   *  those of traefik, which the box has. */
+  const expected = (() => {
+    const had = new Set(ARM64[TRAEFIK_IMAGE]!.map(({ digest }) => digest));
+    const layers = new Map(
+      [INSTALLATION_IMAGE, CONTROL_IMAGE].flatMap((image) => ARM64[image]!).map((layer) => [layer.digest, layer.size]),
+    );
+    return [...layers].filter(([digest]) => !had.has(digest)).reduce((sum, [, size]) => sum + size, 0);
+  })();
+
+  it("totals the distinct layers of every image it pulls, for the box's platform, less those of images on the box", async () => {
+    const { io, asked, writes } = box({ layers: true, tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    expect(expected).toBe(140e6);
+    const bytes = shown(writes);
+    expect(bytes.length).toBeGreaterThan(10);
+    expect(new Set(bytes.map((b) => b?.total))).toEqual(new Set([140e6]));
+    expect(bytes.at(-1)).toEqual({ current: 140e6, total: 140e6 });
+    // Asked once, before the first pull.
+    const first = asked.findIndex((line) => line.startsWith("pull "));
+    expect(asked.indexOf("version --format {{.Server.Os}}/{{.Server.Arch}}")).toBeLessThan(first);
+  });
+
+  it("never shows fewer bytes downloaded, nor a smaller total, than before", async () => {
+    const { io, writes } = box({ layers: true, tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const bytes = shown(writes);
+    for (const [i, b] of bytes.entries()) {
+      if (i === 0) continue;
+      expect(b!.current).toBeGreaterThanOrEqual(bytes[i - 1]!.current);
+      expect(b!.total).toBeGreaterThanOrEqual(bytes[i - 1]!.total);
+    }
+  });
+
+  it("keeps the image's own bytes, so a page from an older release still reads them", async () => {
+    const { io, writes } = box({ layers: true, tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    const last = writes.filter(({ progress }) => progress.pull).at(-1)!.progress.pull;
+    expect(last).toMatchObject({ image: TRAEFIK_IMAGE, index: 4, count: 4, current: 0, total: 0 });
+  });
+
+  it("takes off the total a layer the stream says the box has, of which the run downloaded nothing", async () => {
+    const { io, writes } = box({
+      layers: true,
+      tick: 1000,
+      stream: (image) => (image === CONTROL_IMAGE ? docker(image, [LAYER("a"), LAYER("d"), LAYER("1")]) : layers(image)),
+    });
+    await run("update", OLD, NEW, ENV, io);
+    expect(shown(writes).at(-1)).toEqual({ current: 128e6, total: 128e6 });
+  });
+
+  it("counts nothing for the run where the manifest lists no layers, as a release before them", async () => {
+    const { io, asked, writes } = box({ tick: 1000 });
+    await run("update", OLD, NEW, ENV, io);
+    expect(new Set(shown(writes))).toEqual(new Set([null]));
+    expect(asked).not.toContain("version --format {{.Server.Os}}/{{.Server.Arch}}");
   });
 });
 
