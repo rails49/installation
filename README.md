@@ -387,7 +387,9 @@ and `POST /box/prereleases` answer once `box` has written it, not once the
 `installation-box` image has pulled, so the page they send the browser back
 to already shows the download
 ([#125](https://github.com/rails49/installation/issues/125)). While it runs the status page says "New release <release> is available.
-Downloaded 300 MB of 1.6 GB." and follows it as it follows an update. A
+Downloaded 300 MB of 1.6 GB.", with the update's bar of the bytes under it
+([#130](https://github.com/rails49/installation/issues/130)), and follows it
+as it follows an update. A
 failed download says "Could not download <release>: <reason> The box tries
 again at its next check.", and the next check, daily or pressed, does; Docker
 keeps the layers it has. One refused for room says "Not enough free disk to

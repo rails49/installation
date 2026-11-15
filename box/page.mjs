@@ -176,7 +176,7 @@ function release({ release, update, back, download }, railroad) {
       : `Checked at ${when(update.checked)}.`;
   return [
     row(runs),
-    ...(latest ? [row(latest, offer)] : []),
+    ...(latest ? [row(latest, [...offer, ...bar(update, download)])] : []),
     ...(back ? [row("", [`<form method="post" action="/box/back"><button>Revert to ${escape(back)}</button></form>`])] : []),
     ...(railroad && (offer.length || back) ? [RESTARTS] : []),
     row(check, [
@@ -212,6 +212,20 @@ function available(update, download) {
     return `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
   }
   return `Could not download ${latest}: ${escape(ours.failure ?? "it stopped.")} The box tries again at its next check.`;
+}
+
+/**
+ * While a newer release downloads, #118's bar of its bytes downloaded of
+ * their total, under what the page says of it (#130).
+ *
+ * @param {Status["update"]} update
+ * @param {Status["download"]} download
+ * @returns {string[]}
+ */
+function bar(update, download) {
+  if (!update.available || download?.release !== update.latest || download.downloaded || !download.running || !download.bytes?.total) return [];
+  const { current, total } = download.bytes;
+  return [`<progress value="${current}" max="${total}">${size(current)} of ${size(total)}</progress>`];
 }
 
 /**

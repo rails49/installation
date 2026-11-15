@@ -141,7 +141,8 @@ function outline(html: string) {
 /** Each row of a group, as `[what it says, its buttons]`. */
 function rows(html: string) {
   return [...html.matchAll(/<div class="row">([\s\S]*?)<\/div>/g)].map(([, row]) => [
-    text(row!.replace(/<form[\s\S]*?<\/form>/g, "")),
+    // A bar's own text is for a browser that draws no bar.
+    text(row!.replace(/<form[\s\S]*?<\/form>|<progress[\s\S]*?<\/progress>/g, "")),
     [...row!.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map(([, button]) => button),
   ]);
 }
@@ -321,11 +322,16 @@ describe("downloading a release", () => {
     const html = with_(DOWNLOADING);
     expect(release(html)[1]).toEqual(["New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.", []]);
     expect(html).not.toContain('action="/box/update"');
+    // Under the text, #118's bar of the bytes downloaded of the total (#130).
+    expect(group(html, "Release")).toContain(
+      '<p>New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.</p><progress value="300000000" max="1600000000">300 MB of 1.6 GB</progress></div>',
+    );
     expect(html).toContain('<script type="module" src="/box/follow.js"></script>');
     expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
     // The setup stays, since the railroad runs on.
     expect(outline(html)).toContain("Stacks to run");
     expect(release(with_({ ...DOWNLOADING, bytes: null }))[1]![0]).toBe("New release 2026.11.1 is available. Downloading it.");
+    expect(group(with_({ ...DOWNLOADING, bytes: null }), "Release")).not.toContain("<progress");
   });
 
   it("once downloaded, offers the update, and says the railroad stops while its stacks restart", () => {
@@ -333,6 +339,7 @@ describe("downloading a release", () => {
     expect(release(html)[1]).toEqual(["New release 2026.11.1 is available.", ["Update to 2026.11.1"]]);
     expect(group(html, "Release")).toContain(RESTARTS);
     expect(html).not.toContain("/box/follow.js");
+    expect(group(html, "Release")).not.toContain("<progress");
   });
 
   it("offers no update to a release not yet downloaded, or to an older one downloaded", () => {
