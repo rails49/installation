@@ -1,5 +1,5 @@
 // What the status page shows (#65 decision 16), gathered from the docker CLI,
-// the Engine API's container stats, the box's files under /var/lib/rails49
+// the Engine API's container stats and image inspect, the box's files under /var/lib/rails49
 // and /proc/meminfo, the disk, the door's certificate and DNS. Each of those
 // is handed in as `io`, so this reads nothing itself.
 // A failure is said in a sentence in `failures`, and a stack on a local build
@@ -14,6 +14,7 @@
  *   certificate: (name: string) => Promise<{ valid_from: string, valid_to: string, error: string | null }>,
  *   resolve: (name: string) => Promise<string[]>,
  *   stats: (id: string) => Promise<Stats | null>,
+ *   image: (id: string) => Promise<{ Size: number } | null>,
  *   now: () => Date,
  * }} Io
  *
@@ -22,7 +23,8 @@
  * the door presents for a name, with `error` saying why it is not valid.
  * `resolve` is the addresses a name resolves to, and throws where it does not.
  * `stats` is what the Engine API's one-shot stats say of a container, or null
- * where it says nothing.
+ * where it says nothing. `image` is what the Engine API's image inspect says
+ * of an image, its unpacked size, or null where it says nothing.
  */
 
 /**
@@ -218,6 +220,13 @@ export async function status(env, io) {
 
   const containers = await inspected(io.docker);
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
+  // Each image's unpacked size, asked once however many stacks run it.
+  /** @type {Map<string, Promise<number>>} */
+  const sizes = new Map();
+  const size = (/** @type {string} */ id) => {
+    if (!sizes.has(id)) sizes.set(id, io.image(id).then((image) => image?.Size ?? 0));
+    return /** @type {Promise<number>} */ (sizes.get(id));
+  };
 
   const stacks = await Promise.all(declared(env.BOX_UIS).map(async ({ stack, project }) => {
     const own = containers.filter((c) => c.Config.Labels?.["com.docker.compose.project"] === project);
@@ -243,7 +252,11 @@ export async function status(env, io) {
       return usage - (more.inactive_file ?? more.total_inactive_file ?? 0);
     });
     const memory = running.length ? used.reduce((a, b) => a + b, 0) : null;
-    return { stack, state, commit, local_build, memory };
+    // What the distinct images its containers run take unpacked. A layer
+    // shared with another stack counts in each (#119).
+    const images = [...new Set(own.map((c) => c.Image))];
+    const disk = own.length ? (await Promise.all(images.map(size))).reduce((a, b) => a + b, 0) : null;
+    return { stack, state, commit, local_build, memory, disk };
   }));
 
   /** @type {{ checked?: string | null, succeeded?: string | null, latest?: string | null, prerelease?: boolean }} */

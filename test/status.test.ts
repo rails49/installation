@@ -13,10 +13,11 @@ const COMMIT = "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f";
 const RELEASED = "8f7e6d5c4b3a29180716253443526170819a0b1c";
 
 /** One container as `docker inspect` writes it, the fields read here. */
-function container(name: string, project: string, state = "running", revision = COMMIT) {
+function container(name: string, project: string, state = "running", revision = COMMIT, image = `sha256:${name}`) {
   return {
     Id: `${name}-id`,
     Name: `/${name}`,
+    Image: image,
     State: { Status: state },
     Config: {
       Labels: {
@@ -84,6 +85,7 @@ function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: 
     }),
     resolve: async () => ["192.168.1.20"],
     stats: async () => null,
+    image: async () => null,
     now: () => new Date("2026-11-12T10:00:00Z"),
     ...facts,
   };
@@ -96,8 +98,8 @@ describe("the stacks", () => {
   it("are the installation and one per declared label, each with its state and commit", async () => {
     const { stacks } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
     expect(stacks).toEqual([
-      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: 0 },
-      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: 0 },
+      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: 0, disk: 0 },
+      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: 0, disk: 0 },
     ]);
   });
 });
@@ -153,6 +155,54 @@ describe("memory", () => {
     );
     expect(asked.sort()).toEqual(["installation-box-1-id", "installation-door-1-id", "installation-page-1-id"]);
     expect(stacks[1]!.memory).toBeNull();
+  });
+});
+
+describe("each stack's disk", () => {
+  /** What the Engine API's image inspect says of each image's unpacked size. */
+  const sizes: Record<string, number> = {
+    "sha256:door": 180e6,
+    "sha256:page": 25e6,
+    "sha256:box": 160e6,
+    "sha256:store": 1.2e9,
+    "sha256:broker": 25e6,
+  };
+  const image: Io["image"] = async (id) => (id in sizes ? { Size: sizes[id]! } : null);
+  const CONTAINERS = [
+    container("installation-door-1", "installation", "running", "", "sha256:door"),
+    container("installation-page-1", "installation", "running", COMMIT, "sha256:page"),
+    container("installation-box-1", "installation", "running", COMMIT, "sha256:box"),
+    container("tc49-store-1", "tc49", "running", COMMIT, "sha256:store"),
+    container("tc49-broker-1", "tc49", "exited", COMMIT, "sha256:broker"),
+  ];
+
+  it("is the sum of the unpacked sizes of the images its containers run, running or not", async () => {
+    const { stacks } = await status(NAMED, io({ containers: CONTAINERS, image }));
+    expect(stacks.map((s) => [s.stack, s.disk])).toEqual([
+      ["installation", 365e6],
+      ["control", 1.225e9],
+    ]);
+  });
+
+  it("counts an image two containers of a stack run once, and in each stack that runs it", async () => {
+    const containers = [
+      container("installation-door-1", "installation", "running", "", "sha256:page"),
+      container("installation-page-1", "installation", "running", COMMIT, "sha256:page"),
+      container("tc49-store-1", "tc49", "running", COMMIT, "sha256:page"),
+    ];
+    const { stacks } = await status(NAMED, io({ containers, image }));
+    expect(stacks.map((s) => s.disk)).toEqual([25e6, 25e6]);
+  });
+
+  it("is none for a stack with no containers", async () => {
+    const { stacks } = await status(NAMED, io({ containers: CONTAINERS.slice(0, 3), image }));
+    expect(stacks[1]!.disk).toBeNull();
+  });
+
+  it("leaves out an image the Engine API says nothing of", async () => {
+    const containers = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "running", COMMIT, "sha256:gone")];
+    const { stacks } = await status(NAMED, io({ containers, image }));
+    expect(stacks[1]!.disk).toBe(1.2e9);
   });
 });
 
@@ -237,7 +287,7 @@ describe("a stack on a local build", () => {
   it("is never JMRI, which is built on the box and in no release", async () => {
     const containers = [...CONTAINERS, container("jmri-jmri-1", "jmri", "running", "")];
     const { stacks, notes } = await status({ ...NAMED, BOX_UIS: "control jmri" }, io({ containers }));
-    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: 0 });
+    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: 0, disk: 0 });
     expect(notes).toHaveLength(1);
   });
 });
@@ -254,7 +304,7 @@ describe("a stack that is not running", () => {
     const exited = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "exited")];
     expect((await status(NAMED, io({ containers: exited }))).failures).toEqual(["control is stopped."]);
     const missing = await status({ ...NAMED, BOX_UIS: "control dccex" }, io());
-    expect(missing.stacks[2]).toEqual({ stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null });
+    expect(missing.stacks[2]).toEqual({ stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null, disk: null });
     expect(missing.failures).toEqual(["dccex is stopped."]);
   });
 
