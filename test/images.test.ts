@@ -46,6 +46,15 @@ describe("the images workflow", () => {
     expect(build.with["build-args"]).toBe("INSTALLATION_COMMIT=${{ inputs.commit }}");
   });
 
+  it("caches each image's layers in GHCR, one cache per architecture (rails49/.github#80)", () => {
+    const build = workflow.jobs.build.steps.find(
+      (step: Node) => step.uses?.startsWith("docker/build-push-action@"),
+    );
+    const ref = "type=registry,ref=${{ env.IMAGE }}:buildcache-${{ runner.arch }}";
+    expect(build.with["cache-from"]).toBe(ref);
+    expect(build.with["cache-to"]).toBe(`${ref},mode=max`);
+  });
+
   it("builds on an amd64 runner and an arm64 runner", () => {
     expect(workflow.jobs.build.strategy.matrix.runner).toEqual([
       "ubuntu-24.04",
