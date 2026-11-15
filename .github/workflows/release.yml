@@ -180,6 +180,10 @@ jobs:
         run: |
           jq -n --arg release "$RELEASE" --slurpfile stacks stacks.json --slurpfile stock stock.json \
             '{release: $release, stacks: $stacks[0], stock: $stock[0]}' > manifest.json
+          # Each pinned image's layers, so a box counts a run's bytes (#118).
+          scripts/layers.sh manifest.json > layers.json
+          jq --slurpfile layers layers.json '.layers = $layers[0]' manifest.json > manifest.next
+          mv manifest.next manifest.json
           cat manifest.json
           scripts/pin.sh manifest.json files
           tar -czf box-files.tar.gz -C files .
