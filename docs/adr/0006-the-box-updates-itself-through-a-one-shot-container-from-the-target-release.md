@@ -7,6 +7,10 @@ Docker socket.*
 decision 20): `box` also mounts `/etc/rails49` read-write and the box's `/dev`
 read-only, at `/host/dev`.*
 
+*Extended by [#121](https://github.com/rails49/installation/issues/121): the
+one-shot container also downloads a newer release, as `rails49-download`
+with the action `download`, while the box keeps running its current one.*
+
 Resolves [#65](https://github.com/rails49/installation/issues/65) decision 22.
 First run on a 2018 Mac mini (Ubuntu 26.04) and a Raspberry Pi 4 in
 [#67](https://github.com/rails49/installation/issues/67)'s acceptance, on

@@ -63,6 +63,13 @@ Moving every stack the box declares to another release, on a press. The box
 checks for a new release by itself and never installs one by itself; see [#65](https://github.com/rails49/installation/issues/65).
 _Avoid_: upgrade, deploy (what `deploy.sh` does)
 
+**Downloading a release**:
+Fetching a release's files and images while the box keeps running its
+current release, so that updating to it only restarts the stacks. The box
+does it by itself once a check finds a newer release; see
+[#121](https://github.com/rails49/installation/issues/121).
+_Avoid_: pre-pull, staging, prefetch
+
 **Going back**:
 Returning the box to the release it ran before the last update. There is one
 step back, and only to a release; see [#65](https://github.com/rails49/installation/issues/65).
