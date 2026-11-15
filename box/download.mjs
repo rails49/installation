@@ -1,8 +1,8 @@
 // Downloading a release (#121): fetching a newer release's files and images
 // while the box keeps running its current release, so that updating to it
 // only restarts the stacks. `begin()` is what `box` does after a check and
-// as it starts: where the last check named a release newer than both the one
-// the box runs and the one it has downloaded, it starts the one-shot
+// as it starts: where the last check named a release newer than the one the
+// box runs and not the one it has downloaded (#126), it starts the one-shot
 // container `rails49-download` from that release's `installation-box` image,
 // as ADR-0006 starts `rails49-update`. `run()` is what that container does,
 // run as
@@ -189,10 +189,11 @@ export function isDownloaded(latest, download) {
 
 /**
  * The release to download now, or null: the one the last check named, where
- * it is newer than the one the box runs and than the one it has downloaded or
- * is downloading. A download of it that stopped before it finished, as at a
- * reboot, carries on. One that failed is tried again only after a check that
- * came after it.
+ * it is newer than the one the box runs and not the one it has downloaded or
+ * is downloading. The downloaded release follows the check: one the check no
+ * longer names, newer or older, goes as this one downloads (#126). A download
+ * of it that stopped before it finished, as at a reboot, carries on. One that
+ * failed is tried again only after a check that came after it.
  *
  * @param {(path: string) => Promise<string | null>} read
  * @returns {Promise<string | null>}
@@ -205,8 +206,7 @@ export async function wanted(read) {
   if (latest === null || (runs !== null && !older(runs, latest))) return null;
   /** @type {Download | null} */
   const last = JSON.parse((await read(DOWNLOADING)) || "null");
-  if (last === null || older(last.release, latest)) return latest;
-  if (last.release !== latest) return null;
+  if (last === null || last.release !== latest) return latest;
   if (isDownloaded(latest, last)) return (await read(manifestPath(latest))) === null ? latest : null;
   if (last.finished !== null && !(check.checked && check.checked > last.finished)) return null;
   return latest;

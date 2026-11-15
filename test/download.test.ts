@@ -215,6 +215,18 @@ describe("the release downloaded before", () => {
     expect([...dirs].sort()).toEqual([BACK, OLD, NEW]);
   });
 
+  it("goes before the pulls where it is newer than the one the check names, as a pre-release once pre-releases go off (#126)", async () => {
+    const PRE = "2026.11.3";
+    const { io, asked, dirs, files } = box();
+    dirs.delete(STALE);
+    dirs.add(PRE);
+    files[`${RELEASES}/${PRE}/manifest.json`] = JSON.stringify({ ...manifest(PRE, 4), stock: { "traefik:v3.7": DIGEST(3) } });
+    await run(OLD, NEW, ENV, io);
+    expect(asked.filter((line) => line.startsWith("image rm"))).toEqual([`image rm ghcr.io/rails49/control@${DIGEST(5)}`]);
+    expect(asked.indexOf(`remove ${RELEASES}/${PRE}`)).toBeLessThan(asked.indexOf(`pull ${BOX_IMAGE}`));
+    expect([...dirs].sort()).toEqual([BACK, OLD, NEW]);
+  });
+
   it("is all that goes: with no other release on the box, no image does", async () => {
     const { io, asked, dirs } = box();
     dirs.delete(STALE);
@@ -273,12 +285,25 @@ describe("the release the box downloads", () => {
     expect(await wanted(read({ [RECORD]: RECORDED }))).toBeNull();
   });
 
-  it("is newer than the one it downloaded", async () => {
+  it("is not the one it downloaded, newer or older: the downloaded release follows the check (#126)", async () => {
     const base = { [RECORD]: RECORDED, [CHECK]: at(NEW) };
     expect(await wanted(read({ ...base, [DOWNLOADING]: got({ release: STALE, downloaded: true }) }))).toBe(NEW);
-    expect(await wanted(read({ ...base, [DOWNLOADING]: got({ release: "2026.12.0", downloaded: true }) }))).toBeNull();
+    expect(await wanted(read({ ...base, [DOWNLOADING]: got({ release: "2026.12.0", downloaded: true }) }))).toBe(NEW);
     const done = got({ downloaded: true, finished: "2026-11-15T09:30:00.000Z" });
     expect(await wanted(read({ ...base, [DOWNLOADING]: done, [`${RELEASES}/${NEW}/manifest.json`]: "{}" }))).toBeNull();
+  });
+
+  it("is the full release a check finds once pre-releases go off, after a newer pre-release was downloaded (#126)", async () => {
+    // The box runs 2026.11.1 and downloaded pre-release 2026.11.3; the check
+    // now finds full release 2026.11.2.
+    const PRE = "2026.11.3";
+    const files = {
+      [RECORD]: `2026-11-10T09:00:00Z  -  ->  ${STALE}  passed\n`,
+      [CHECK]: at(NEW, "2026-11-16T10:00:00.000Z"),
+      [DOWNLOADING]: got({ release: PRE, downloaded: true, finished: "2026-11-15T09:30:00.000Z" }),
+      [`${RELEASES}/${PRE}/manifest.json`]: "{}",
+    };
+    expect(await wanted(read(files))).toBe(NEW);
   });
 
   it("is the one it was downloading, which carries on after a reboot", async () => {
