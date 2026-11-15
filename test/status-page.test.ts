@@ -326,7 +326,7 @@ describe("downloading a release", () => {
     expect(group(html, "Release")).toContain(
       '<p>New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.</p><progress value="300000000" max="1600000000">300 MB of 1.6 GB</progress></div>',
     );
-    expect(html).toContain('<script type="module" src="/box/follow.js"></script>');
+    expect(html).toContain('<script type="module" src="/box/follow.js" data-follows="download"></script>');
     expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
     // The setup stays, since the railroad runs on.
     expect(outline(html)).toContain("Stacks to run");
@@ -566,7 +566,7 @@ describe("while an update, going back or applying runs", () => {
     expect(html).not.toMatch(/action="\/box\/(update|back|check|prereleases|setup)"/);
     expect(outline(html)).toEqual(["Errors", "Notes", "Release and setup", "Release", "Status", "Stacks", "Box", "Docker"]);
     expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
-    expect(html).toContain('<script type="module" src="/box/follow.js"></script>');
+    expect(html).toContain('<script type="module" src="/box/follow.js" data-follows="run"></script>');
     expect(page).not.toContain('http-equiv="refresh"');
     expect(page).not.toContain("/box/follow.js");
   });

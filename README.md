@@ -311,7 +311,11 @@ What it is doing is in `/var/lib/rails49/update.json`, which the status page
 shows while it runs. The page swaps in what changed every 2 seconds, says so
 while `box` is restarting, and reloads once when the run ends; without script
 it reloads every 5 seconds
-([#117](https://github.com/rails49/installation/issues/117)). It holds the
+([#117](https://github.com/rails49/installation/issues/117)). It never
+replaces a form the fetched page also has, so what someone has typed into the
+setup during a download stays, and the end of a download swaps in the page
+instead of reloading it
+([#130](https://github.com/rails49/installation/issues/130)). It holds the
 step in a sentence, `step`, and while an image is pulled `pull`: the image, its place
 among every image the run pulls, and the bytes downloaded of its total; and
 `pull.run`, the run's bytes downloaded and its total. Before the first pull,
