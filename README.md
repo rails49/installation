@@ -392,7 +392,7 @@ and `POST /box/prereleases` answer once `box` has written it, not once the
 to already shows the download
 ([#125](https://github.com/rails49/installation/issues/125)). The download
 runs from the moment `box` starts it, through the pull of its
-`installation-box` image, and a start while it runs starts nothing
+`installation-box` image
 ([#132](https://github.com/rails49/installation/issues/132)). While it runs the status page says "New release <release> is available.
 Downloaded 300 MB of 1.6 GB.", with the update's bar of the bytes under it
 ([#130](https://github.com/rails49/installation/issues/130)), and follows it
