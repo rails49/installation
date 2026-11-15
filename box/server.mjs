@@ -301,8 +301,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   };
 
   // Starts downloading the release the last check found, where there is one
-  // to download. A failure goes to the log, and is tried again after the
-  // next check.
+  // to download. A failure goes to the log and, as the download's, to the
+  // page (#124), and is tried again after the next check.
   const download = async () => {
     try {
       await begin(env, startIo);

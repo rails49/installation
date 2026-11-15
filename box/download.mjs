@@ -201,6 +201,10 @@ export async function wanted(read) {
  * download runs already, or while the box updates, goes back or applies the
  * setup. The release's manifest comes from GitHub, for its box image.
  *
+ * It writes `DOWNLOADING` before its first step that can fail, and a step
+ * that fails before the container starts is the download's failure there, as
+ * one inside the container is (#124); it then throws, for the log.
+ *
  * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
  * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
  * @returns {Promise<string | null>}
@@ -210,27 +214,49 @@ export async function begin(env, io) {
   if (to === null) return null;
   if ((await stateOf(CONTAINER, io.docker)) === "running" || (await updater(io.docker)) === "running") return null;
   const from = (await currentRelease(io.read)) ?? "-";
-  const image =
-    (await boxImage(to, io.read)) ??
-    (await (async () => {
-      const answer = await io.fetch(`${DOWNLOAD}/${to}/manifest.json`, { signal: AbortSignal.timeout(30_000) });
-      if (!answer.ok) throw new Error(`could not read release ${to}'s manifest: GitHub answered ${answer.status}`);
-      const { commit, images } = (await answer.json()).stacks.installation;
-      return `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
-    })());
-  const started = await oneShot(CONTAINER, image, [], ["node", "/box/update.mjs", "download", from, to], env, io, () =>
-    io.write(
-      DOWNLOADING,
-      text({
-        release: to,
-        started: io.now().toISOString(),
-        finished: null,
-        downloaded: false,
-        failure: null,
-        disk: null,
-        bytes: null,
-      }),
-    ),
+  /** @type {Download} */
+  const state = {
+    release: to,
+    started: io.now().toISOString(),
+    finished: null,
+    downloaded: false,
+    failure: null,
+    disk: null,
+    bytes: null,
+  };
+  await io.write(DOWNLOADING, text(state));
+  try {
+    const image = (await boxImage(to, io.read)) ?? (await fetchedBoxImage(to, io.fetch));
+    const command = ["node", "/box/update.mjs", "download", from, to];
+    const started = await oneShot(CONTAINER, image, [], command, env, io, async () => {}).catch((error) => {
+      throw new Failure(`Could not start ${CONTAINER}: ${sentence(error)}`);
+    });
+    return started ? to : null;
+  } catch (error) {
+    state.failure = error instanceof Failure ? error.message : sentence(error);
+    state.finished = io.now().toISOString();
+    await io.write(DOWNLOADING, text(state));
+    throw new Error(state.failure);
+  }
+}
+
+/**
+ * The box image of a release not on the box, from its manifest on GitHub.
+ *
+ * @param {string} release
+ * @param {(url: string, init?: RequestInit) => Promise<Response>} fetch
+ */
+async function fetchedBoxImage(release, fetch) {
+  const answer = await fetch(`${DOWNLOAD}/${release}/manifest.json`, { signal: AbortSignal.timeout(30_000) }).catch(
+    (error) => {
+      throw new Failure(`Could not read release ${release}'s manifest from GitHub: ${sentence(error)}`);
+    },
   );
-  return started ? to : null;
+  if (!answer.ok) throw new Failure(`GitHub answered ${answer.status} for release ${release}'s manifest.`);
+  /** @type {{ stacks: { installation: { commit: string, images: Record<string, string> } } }} */
+  const manifest = await answer.json().catch((error) => {
+    throw new Failure(`Could not read release ${release}'s manifest from GitHub: ${sentence(error)}`);
+  });
+  const { commit, images } = manifest.stacks.installation;
+  return `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
 }

@@ -294,7 +294,7 @@ describe("the release the box downloads", () => {
 });
 
 describe("starting a download", () => {
-  function starting(options: { update?: string; download?: string } = {}) {
+  function starting(options: { update?: string; download?: string; fails?: "manifest" | "pull" | "create" } = {}) {
     const asked: string[] = [];
     const files: Record<string, string> = {
       [RECORD]: `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n`,
@@ -306,6 +306,10 @@ describe("starting a download", () => {
         if (args[0] === "ps") {
           return args.includes("name=^rails49-update$") ? (options.update ?? "") : (options.download ?? "");
         }
+        if (options.fails === "pull" && (args[0] === "pull" || args[1] === "inspect")) {
+          throw new Error("Error response from daemon: toomanyrequests");
+        }
+        if (options.fails === "create" && args[0] === "create") throw new Error("Error response from daemon: no space left on device");
         return "";
       },
       read: async (path: string) => files[path] ?? null,
@@ -316,6 +320,7 @@ describe("starting a download", () => {
       now: () => new Date("2026-11-15T10:00:00Z"),
       fetch: async (url: string) => {
         asked.push(`fetch ${url}`);
+        if (options.fails === "manifest") return new Response("Not Found", { status: 404 });
         return new Response(JSON.stringify(manifest(NEW, 7)));
       },
     };
@@ -328,6 +333,7 @@ describe("starting a download", () => {
     expect(asked).toEqual([
       "ps -a --filter name=^rails49-download$ --format {{.State}}",
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
+      `write ${DOWNLOADING}`,
       `fetch https://github.com/rails49/installation/releases/download/${NEW}/manifest.json`,
       `image inspect ${BOX_IMAGE}`,
       "ps -a --filter name=^rails49-download$ --format {{.State}}",
@@ -340,10 +346,32 @@ describe("starting a download", () => {
         "-e BOX_DOMAIN= -e BOX_UIS=control jmri",
         `${BOX_IMAGE} node /box/update.mjs download ${OLD} ${NEW}`,
       ].join(" "),
-      `write ${DOWNLOADING}`,
       "start rails49-download",
     ]);
-    expect(JSON.parse(files[DOWNLOADING]!)).toMatchObject({ release: NEW, finished: null, downloaded: false });
+    expect(JSON.parse(files[DOWNLOADING]!)).toMatchObject({ release: NEW, finished: null, downloaded: false, failure: null });
+  });
+
+  // #124: a failure before the container starts is the download's, as one inside it is.
+  it.each([
+    ["manifest", "GitHub answered 404 for release 2026.11.2's manifest."],
+    ["pull", "Could not start rails49-download: Error response from daemon: toomanyrequests."],
+    ["create", "Could not start rails49-download: Error response from daemon: no space left on device."],
+  ] as const)("records a failing %s as the download's failure, and says so", async (fails, failure) => {
+    const { io, asked, files } = starting({ fails });
+    await expect(begin(ENV, io)).rejects.toThrow(failure);
+    expect(asked.some((line) => line.startsWith("start"))).toBe(false);
+    expect(JSON.parse(files[DOWNLOADING]!)).toEqual({
+      release: NEW,
+      started: "2026-11-15T10:00:00.000Z",
+      finished: "2026-11-15T10:00:00.000Z",
+      downloaded: false,
+      failure,
+      disk: null,
+      bytes: null,
+    });
+    // The next check tries again.
+    files[CHECK] = JSON.stringify({ latest: NEW, checked: "2026-11-15T11:00:00.000Z" });
+    expect(await wanted(io.read)).toBe(NEW);
   });
 
   it("starts none while one runs, or while the box updates, goes back or applies the setup", async () => {
