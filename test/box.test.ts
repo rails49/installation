@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { beginDownload, starting } from "../box/download.mjs";
+import { beginDownload, offered, starting } from "../box/download.mjs";
 import { handle, tick, zone } from "../box/server.mjs";
 import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
@@ -61,6 +61,7 @@ function box(pid1: string, refusal: string | null = null) {
     applied: [] as string[],
     turnOff: () => void counted.turnedOff++,
     status: async () => STATUS,
+    update: async (): Promise<string | null> => null,
     check: async () => {
       counted.checked++;
       counted.checkedWith.push(counted.env);
@@ -108,7 +109,7 @@ describe("GET /box", () => {
   it("answers yes where PID 1 is systemd", async () => {
     const answer = await ask(box("systemd"), "GET", "/box");
     expect(answer.status).toBe(200);
-    expect(JSON.parse(String(answer.body))).toEqual({ can_turn_off: true });
+    expect(JSON.parse(String(answer.body))).toEqual({ can_turn_off: true, update: null });
   });
 
   it("answers the same with a query string", async () => {
@@ -120,7 +121,7 @@ describe("GET /box", () => {
     for (const pid1 of ["init", "tini", "node", ""]) {
       const answer = await ask(box(pid1), "GET", "/box");
       expect(answer.status, pid1).toBe(200);
-      expect(JSON.parse(String(answer.body)), pid1).toEqual({ can_turn_off: false });
+      expect(JSON.parse(String(answer.body)), pid1).toEqual({ can_turn_off: false, update: null });
     }
   });
 
@@ -141,7 +142,7 @@ describe("GET /box", () => {
       if (accept !== undefined) headers.accept = accept;
       const answer = await ask(box("systemd"), "GET", "/box", headers);
       expect(answer.status, accept).toBe(200);
-      expect(JSON.parse(String(answer.body)), accept).toEqual({ can_turn_off: true });
+      expect(JSON.parse(String(answer.body)), accept).toEqual({ can_turn_off: true, update: null });
       expect(answer.headers, accept).toEqual({ vary: "accept" });
     }
   });
@@ -149,6 +150,113 @@ describe("GET /box", () => {
   it("refuses a page on another origin before sending it anywhere", async () => {
     const headers = { host: HOST, origin: "https://evil.example", accept: "text/html" };
     expect((await ask(box("systemd"), "GET", "/box", headers)).status).toBe(403);
+  });
+});
+
+describe("GET /box, the update it answers (#147)", () => {
+  const CHECKED = "2026-11-15T02:00:00.000Z";
+  const RUNS = "2026-11-10T09:00:00Z  -  ->  2026.11.0  passed\n";
+  const DOWNLOADED = { release: "2026.11.1", started: CHECKED, finished: CHECKED, downloaded: true, failure: null, disk: null, bytes: null };
+  /** An update, going back or applying the setup that runs. */
+  const running = (action: string) => ({ action, from: "2026.11.0", to: "2026.11.1", started: CHECKED, step: "Starting.", finished: null, passed: null, failure: null });
+
+  /** A box with these files under /var/lib/rails49, whose `rails49-update`
+   *  runs where `update.json` has not finished, unless `stopped`, and whose
+   *  `rails49-download` runs where `download.json` has not. */
+  function boxWith(files: Record<string, unknown>, stopped = false) {
+    const text = Object.fromEntries(
+      Object.entries(files).map(([name, value]) => [`/var/lib/rails49/${name}`, typeof value === "string" ? value : JSON.stringify(value)]),
+    );
+    const read = async (path: string) => text[path] ?? null;
+    const container = (name: string, file: string) => ({
+      Id: name,
+      Name: `/${name}`,
+      Image: "sha256:box",
+      State: { Status: !stopped && files[file] && (files[file] as { finished: string | null }).finished === null ? "running" : "exited" },
+      Config: { Labels: null },
+    });
+    const containers = [container("rails49-update", "update.json"), container("rails49-download", "download.json")];
+    const docker = async (args: string[]) => {
+      if (args[0] === "ps") return containers.map((c) => `${c.Id}\n`).join("");
+      if (args[0] === "inspect") return JSON.stringify(containers);
+      if (args[0] === "info") return JSON.stringify({ ServerVersion: "29.1.3", LoggingDriver: "local" });
+      throw new Error(`docker ${args.join(" ")}`);
+    };
+    return {
+      ...box("systemd"),
+      update: () => offered(read),
+      status: async () => ({
+        ...(await status({ BOX_DOMAIN: "", BOX_UIS: "", hostname: "box" }, {
+          docker,
+          read,
+          disk: async () => ({ free: 20e9, total: 64e9 }),
+          address: async () => "192.0.2.20",
+          certificate: async () => ({ valid_from: "", valid_to: "", error: null }),
+          resolve: async () => [],
+          stats: async () => null,
+          size: async () => null,
+          starting: () => false,
+          now: () => new Date("2026-11-15T10:00:00Z"),
+        })),
+        setup: { uis: [], devices: [] },
+      }),
+    };
+  }
+
+  /** What `GET /box` answers for `update`, and whether the page offers
+   *  "Update to" for it. `stopped` is as for `boxWith`. */
+  async function answers(files: Record<string, unknown>, stopped = false) {
+    const on = boxWith(files, stopped);
+    const get = async (url: string) => String((await handle({ method: "GET", url, headers: { host: HOST } }, on)).body);
+    const json = JSON.parse(await get("/box"));
+    const page = await get("/box/");
+    return { update: json.update, offers: page.match(/<button>Update to (?:pre-release )?(\S+)<\/button>/)?.[1] ?? null };
+  }
+
+  it("is the release the page offers \"Update to\" for", async () => {
+    const files = { "deploys/installation": RUNS, "check.json": { checked: CHECKED, succeeded: CHECKED, latest: "2026.11.1" }, "download.json": DOWNLOADED };
+    expect(await answers(files)).toEqual({ update: "2026.11.1", offers: "2026.11.1" });
+    // On a box on no release yet, and after an update that finished.
+    expect(await answers({ ...files, "deploys/installation": "" })).toEqual({ update: "2026.11.1", offers: "2026.11.1" });
+    const failed = { ...running("update"), finished: CHECKED, passed: false, failure: "The update failed." };
+    expect(await answers({ ...files, "update.json": failed })).toEqual({ update: "2026.11.1", offers: "2026.11.1" });
+  });
+
+  it("is null where the page offers no update", async () => {
+    const check = { checked: CHECKED, succeeded: CHECKED, latest: "2026.11.1" };
+    const cases: Record<string, Record<string, unknown>> = {
+      "never checked": { "deploys/installation": RUNS },
+      "no newer release": { "deploys/installation": RUNS, "check.json": { ...check, latest: "2026.11.0" }, "download.json": { ...DOWNLOADED, release: "2026.11.0" } },
+      "an older release": { "deploys/installation": RUNS, "check.json": { ...check, latest: "2026.10.2" }, "download.json": { ...DOWNLOADED, release: "2026.10.2" } },
+      "not downloaded at all": { "deploys/installation": RUNS, "check.json": check },
+      "still downloading": { "deploys/installation": RUNS, "check.json": check, "download.json": { ...DOWNLOADED, finished: null, downloaded: false } },
+      "a download that failed": { "deploys/installation": RUNS, "check.json": check, "download.json": { ...DOWNLOADED, downloaded: false, failure: "no room" } },
+      "another release downloaded": { "deploys/installation": RUNS, "check.json": check, "download.json": { ...DOWNLOADED, release: "2026.11.2" } },
+    };
+    for (const action of ["update", "back", "apply"]) {
+      cases[`while ${action} runs`] = { "deploys/installation": RUNS, "check.json": check, "download.json": DOWNLOADED, "update.json": running(action) };
+    }
+    for (const [said, files] of Object.entries(cases)) {
+      expect(await answers(files), said).toEqual({ update: null, offers: null });
+    }
+  });
+
+  it("is null after a run that stopped before it finished, where the page offers the update again", async () => {
+    // Read from files alone, the run goes on until the next one (#147).
+    const files = {
+      "deploys/installation": RUNS,
+      "check.json": { checked: CHECKED, succeeded: CHECKED, latest: "2026.11.1" },
+      "download.json": DOWNLOADED,
+      "update.json": running("update"),
+    };
+    expect(await answers(files, true)).toEqual({ update: null, offers: "2026.11.1" });
+  });
+
+  it("is null, with can_turn_off, where a file it reads is half written", async () => {
+    const on = { ...box("systemd"), update: () => offered(async () => '{"action": "upd') };
+    const answer = await ask(on, "GET", "/box");
+    expect(answer.status).toBe(200);
+    expect(JSON.parse(String(answer.body))).toEqual({ can_turn_off: true, update: null });
   });
 });
 

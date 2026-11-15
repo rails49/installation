@@ -139,10 +139,18 @@ colours. The band is
 
 The `box` service answers two requests on every name and every UI port the door
 serves. `GET /box` says whether this box can be turned off from here, as
-`{"can_turn_off": true}` or `false`; a browser asking for HTML there, someone
-who typed the status page's address without its slash, is sent to `/box/`. `POST /box/off` answers `202` and turns it
-off, or answers `409` where it cannot. A UI makes the requests — `control` has
-the button; the page has none. A request from a page on another origin is refused
+`"can_turn_off": true` or `false`, and in `"update"` the release the
+[status page](#the-status-page) offers "Update to" for, or `null`: with no
+newer release, one not downloaded yet, or while an update, going back or
+applying the setup runs
+([#147](https://github.com/rails49/installation/issues/147)). It reads only
+the box's files for that, so after a run that stopped before it finished, as
+at a reboot, it answers `null` while the page offers the update again, until
+the next run. A browser asking for HTML at `GET /box`, someone who typed the
+status page's address without its slash, is sent to `/box/`. `POST /box/off`
+answers `202` and turns it off, or answers `409` where it cannot. A UI makes
+the requests — `control` has the button; the page has none. A request from a
+page on another origin is refused
 ([ADR-0005](docs/adr/0005-the-installation-turns-the-box-off.md)).
 
 On a Mac with Docker Desktop the answer is no: PID 1 there is Docker's virtual

@@ -1,7 +1,7 @@
 // The box's own requests, served on every name the door serves: whether this
-// box can be turned off from here, and turning it off (ADR-0005); the status
-// page at `/box/`, the status it shows at `/box/status`, a check for a new
-// release, the log bundle (#65 decisions 5 to 7), starting an update or
+// box can be turned off from here, with the update the status page offers
+// (#147), and turning it off (ADR-0005); the status page at `/box/`, the
+// status it shows at `/box/status`, a check for a new release, the log bundle (#65 decisions 5 to 7), starting an update or
 // going back (decisions 8 to 10, `update.mjs`), applying the setup of
 // stacks and devices (#69 decisions 10 to 15, `setup.mjs`), offering
 // pre-releases (#105), and downloading a newer release in the background
@@ -29,7 +29,7 @@ import { promisify } from "node:util";
 
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
-import { beginDownload, starting } from "./download.mjs";
+import { beginDownload, offered, starting } from "./download.mjs";
 import { render } from "./page.mjs";
 import { apply, form, offerDownload, offerPrereleases } from "./setup.mjs";
 import { CHECK, downloads, message, prereleases, status } from "./status.mjs";
@@ -60,8 +60,9 @@ const ASSETS = {
 /**
  * The answer to one request. `box.pid1` is the name of the box's PID 1, and
  * `box.turnOff` is called once a `POST /box/off` has been accepted.
- * `box.status` gathers what the status page shows, `box.check` asks GitHub
- * for the latest release, and `box.bundle` packs the log bundle.
+ * `box.update` is the release the status page offers "Update to" for, or
+ * null (#147). `box.status` gathers what the status page shows, `box.check`
+ * asks GitHub for the latest release, and `box.bundle` packs the log bundle.
  * `box.start` starts an update or going back, and `box.apply` applies the
  * setup the page posted as its form's body; each says why it will not.
  * `box.prereleases` writes whether the check takes pre-releases.
@@ -77,7 +78,7 @@ const ASSETS = {
  * and to `download.json` (#124).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -106,7 +107,7 @@ export async function handle(request, box) {
     return {
       status: 200,
       type: "application/json",
-      body: JSON.stringify({ can_turn_off: canTurnOff }),
+      body: JSON.stringify({ can_turn_off: canTurnOff, update: await box.update().catch(offerless) }),
       headers: { vary: "accept" },
     };
   }
@@ -202,6 +203,14 @@ export async function tick(box) {
  */
 function sameOrigin(origin, host) {
   return origin === undefined || (URL.parse(origin)?.host || null) === host;
+}
+
+/** No update, where the files it is decided from cannot be read, as while an
+ *  update writes `update.json`. The failure goes to the log.
+ *  @param {unknown} error */
+function offerless(error) {
+  console.error(`reading the update the page offers: ${message(error)}`);
+  return null;
 }
 
 function refused() {
@@ -377,6 +386,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
           }),
         ),
       status: async () => ({ ...(await status(env, statusIo)), setup: await form(setupIo) }),
+      update: () => offered(read),
       check: () => check(checkIo),
       download,
       bundle: async () => {
