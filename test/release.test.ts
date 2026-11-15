@@ -327,6 +327,20 @@ describe("the release workflow", () => {
     expect(step.run).toMatch(/scripts\/layers\.sh manifest\.json[\s\S]*\.layers = [\s\S]*scripts\/pin\.sh manifest\.json/);
   });
 
+  it("deletes the old releases and their tags last, after the release is published", () => {
+    const steps: Node[] = workflow.jobs.release.steps;
+    const publish = steps.findIndex((step) => step.run?.includes("gh release create"));
+    const last = steps[steps.length - 1];
+    expect(steps.length - 1).toBeGreaterThan(publish);
+    expect(last.run).toMatch(/gh release list[^\n]*--json tagName,isPrerelease,isDraft[\s\S]*scripts\/old-releases\.sh/);
+    expect(last.run).toContain("gh release delete");
+    expect(last.run).toContain("--cleanup-tag --yes");
+    // As the app, which holds Contents write; the job's token was refused a tag (#76).
+    expect(last.env.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+    const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    expect(checkout.with["sparse-checkout"]).toContain("scripts/old-releases.sh");
+  });
+
   it("runs no curl with both -f and --fail-with-body", () => {
     // The runners' curl 8.5 refuses the pair; run 43238469782's check failed on it.
     const runs = Object.values<Node>(workflow.jobs).flatMap((job) =>
