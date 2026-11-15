@@ -13,6 +13,7 @@ import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
 
 const HOST = "control.example.org";
+const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
 
 /** The status a box answers with, as `status()` would gather it. */
 const STATUS = {
@@ -371,7 +372,6 @@ describe("POST /box/check", () => {
 });
 
 describe("POST /box/prereleases", () => {
-  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
 
   it("writes BOX_PRERELEASES into box.env, keeping every other line, checks, and sends the browser back", async () => {
     const on = box("systemd");
@@ -397,7 +397,6 @@ describe("POST /box/prereleases", () => {
 });
 
 describe("on a box that downloads only on a press (#141)", () => {
-  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
   const off = () => {
     const on = box("systemd");
     on.env += "BOX_DOWNLOAD=no\n";
@@ -446,7 +445,6 @@ describe("the hourly tick, also as box starts", () => {
 });
 
 describe("POST /box/download", () => {
-  const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
   /** A box that counts the downloads it starts, with no check before them. */
   const counting = () => {
     const on = box("systemd");
