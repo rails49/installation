@@ -802,7 +802,9 @@ and applied, and pass `scripts/probe.sh`
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
 a pre-release". A box with pre-releases off is never offered a pre-release,
-so this step is what offers it to every other box. A pre-release
+so this step is what offers it to every other box. In the same edit, replace
+the first line of the notes, "Pre-release. Not offered to boxes until it is
+marked as a full release.", with what the hand check covered. A pre-release
 that fails the hand check is never marked.
 
 ## Working on this
