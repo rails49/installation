@@ -64,9 +64,20 @@ const EVERY = 1000;
  *
  * The image being pulled, its place among every image the run pulls, and
  * the bytes downloaded of its total, summed over the layers whose size the
- * stream has said.
+ * stream has said. `run` is the bytes downloaded of every image the run
+ * pulls, of the run's total, or null where the manifest lists no layers
+ * (#118). A page from an older release reads only the rest.
  *
- * @typedef {{ image: string, index: number, count: number, current: number, total: number }} Pull
+ * @typedef {{ image: string, index: number, count: number, current: number, total: number, run?: Bytes | null }} Pull
+ *
+ * @typedef {{ current: number, total: number }} Bytes
+ *
+ * One layer of an image, as the manifest's `layers` lists it: its digest and
+ * compressed size. The manifest lists them by the image's digest, then by
+ * platform, `linux/amd64` and `linux/arm64`.
+ *
+ * @typedef {{ digest: string, size: number }} Layer
+ * @typedef {Record<string, Record<string, Layer[] | undefined> | undefined>} Layers
  */
 
 /**
@@ -217,6 +228,7 @@ export async function run(action, from, to, env, io) {
       images.set(stack, listed.split("\n").filter(Boolean));
     }
     const count = [...images.values()].flat().length;
+    const bytes = await tally([...images.values()].flat(), to, io);
     let index = 0;
     for (const stack of stacks) {
       const step = `Pulling ${stack.stack}'s images.`;
@@ -229,7 +241,7 @@ export async function run(action, from, to, env, io) {
         await progress("pull", step);
         for (const image of images.get(stack) ?? []) {
           index += 1;
-          await pull(image, index, count, io, async (pulled) => {
+          await pull(image, index, count, bytes, io, async (pulled) => {
             if (io.now().getTime() - written >= EVERY) await progress("pull", step, { pull: pulled });
           });
         }
@@ -295,15 +307,86 @@ export async function run(action, from, to, env, io) {
 }
 
 /**
+ * The layers a run downloads, each by the first 12 hex digits of its digest,
+ * as Docker's stream names it, with the bytes downloaded of its size; or null
+ * where the release's manifest lists no layers for an image the box does not
+ * have. Every layer of every image the run pulls counts once, for the box's
+ * platform, but those of the images already on the box (#118).
+ *
+ * @typedef {Map<string, { size: number, current: number, gone: boolean }>} Tally
+ *
+ * @param {string[]} images
+ * @param {string} release
+ * @param {Io} io
+ * @returns {Promise<Tally | null>}
+ */
+async function tally(images, release, io) {
+  /** @type {{ layers?: Layers }} */
+  const manifest = JSON.parse((await io.read(manifestPath(release))) ?? "{}");
+  const layers = manifest.layers;
+  if (!layers) return null;
+  const platform = (await io.docker(["version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"])).trim();
+  const listed = await io.docker(["image", "ls", "--digests", "--no-trunc", "--format", "{{json .}}"]);
+  const have = new Set(
+    listed
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => /** @type {{ Repository: string, Digest: string }} */ (JSON.parse(line)))
+      .map(({ Repository, Digest }) => `${Repository}@${Digest}`),
+  );
+  /** @param {string} image */
+  const digest = (image) => image.split("@")[1] ?? "";
+  /** @param {string} image */
+  const of = (image) => (digest(image) ? layers[digest(image)]?.[platform] : undefined);
+  /** @param {string} image */
+  const there = (image) => have.has(`${repository({ image })}@${digest(image)}`);
+  const pulled = images.filter((image) => !there(image));
+  if (pulled.some((image) => !of(image))) return null;
+  const had = new Set(images.filter(there).flatMap((image) => (of(image) ?? []).map((layer) => layer.digest)));
+  /** @type {Tally} */
+  const tally = new Map();
+  for (const image of pulled) {
+    for (const { digest, size } of of(image) ?? []) {
+      if (!had.has(digest)) tally.set(digest.replace(/^sha256:/, "").slice(0, 12), { size, current: 0, gone: false });
+    }
+  }
+  return tally;
+}
+
+/** The bytes the run has downloaded, of its total.
+ *  @param {Tally} tally @returns {Bytes} */
+function counted(tally) {
+  let current = 0;
+  let total = 0;
+  for (const layer of tally.values()) {
+    if (layer.gone) continue;
+    current += layer.current;
+    total += layer.size;
+  }
+  return { current, total };
+}
+
+/** The image without its tag and digest.
+ *  @param {{ image: string }} pull */
+function repository({ image }) {
+  return image.replace(/@.*$/, "").replace(/:[^/:]*$/, "");
+}
+
+/**
  * Pulls one image, and hands `report` how far it has got at its start and at
  * each message of the stream. A layer's bytes count once the stream has said
  * its size, and all of them once it says the layer is downloaded. A layer the
  * box already has counts none.
  *
- * @param {string} image @param {number} index @param {number} count @param {Io} io
+ * The run's bytes are counted in `bytes` the same way, over the layers it
+ * counts, and none goes down. A layer the stream says the box already has,
+ * of which this run downloaded nothing, comes off the run's total.
+ *
+ * @param {string} image @param {number} index @param {number} count
+ * @param {Tally | null} bytes @param {Io} io
  * @param {(pull: Pull) => Promise<void>} report
  */
-async function pull(image, index, count, io, report) {
+async function pull(image, index, count, bytes, io, report) {
   /** @type {Map<string, { current: number, total: number }>} */
   const layers = new Map();
   const sum = () => {
@@ -313,7 +396,7 @@ async function pull(image, index, count, io, report) {
       current += layer.current;
       total += layer.total;
     }
-    return { image, index, count, current, total };
+    return { image, index, count, current, total, run: bytes && counted(bytes) };
   };
   await report(sum());
   for await (const message of io.pull(image)) {
@@ -324,6 +407,16 @@ async function pull(image, index, count, io, report) {
     }
     const layer = id === undefined ? undefined : layers.get(id);
     if (layer && status === "Download complete") layer.current = layer.total;
+    const ours = id === undefined ? undefined : bytes?.get(id);
+    if (ours) {
+      if (status === "Downloading" && progressDetail?.current !== undefined) {
+        ours.current = Math.max(ours.current, Math.min(progressDetail.current, ours.size));
+      } else if (status === "Download complete" || status === "Pull complete") {
+        ours.current = ours.size;
+      } else if (status === "Already exists" && ours.current === 0) {
+        ours.gone = true;
+      }
+    }
     await report(sum());
   }
 }
