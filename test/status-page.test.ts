@@ -428,6 +428,9 @@ describe("downloading a release", () => {
     expect(off({ downloaded: false, disk: { keeps: 1e9, free: 0.9e9 }, failure: "Stopped." })![0]).toBe(
       "Stopped downloading 2026.11.1: 0.9 GB is free, and the box keeps 1 GB free. Check for update tries again.",
     );
+    expect(off({ downloaded: false, disk: { needs: 1.6e9, free: 0.9e9 }, failure: "Not enough." })![0]).toBe(
+      "Not enough free disk to download 2026.11.1: it needs 1.6 GB, 0.9 GB is free. Check for update tries again.",
+    );
   });
 
   it("names a pre-release as a pre-release", () => {

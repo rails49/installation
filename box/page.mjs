@@ -220,7 +220,8 @@ function available(update, download) {
     return `Stopped downloading ${latest}: ${gb(ours.disk.free)} is free, and the box keeps ${ours.disk.keeps / 1e9} GB free. ${again}`;
   }
   if (ours.disk) {
-    return `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
+    const room = `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
+    return update.download ? room : `${room} ${again}`;
   }
   return `Could not download ${latest}: ${escape(ours.failure ?? "it stopped.")} ${again}`;
 }
