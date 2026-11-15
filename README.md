@@ -365,8 +365,9 @@ Ubuntu Server or Raspberry Pi OS, on the network the box will serve:
 curl -fsSL https://rails49.org/install | sudo sh
 ```
 
-That installs the latest release. Another, a pre-release included, is
-installed by its own `install.sh`, named with its number:
+That installs the latest release. Another that GitHub still keeps (see
+[Making a release](#making-a-release)), a pre-release included, is installed
+by its own `install.sh`, named with its number:
 
 ```bash
 curl -fsSL https://github.com/rails49/installation/releases/download/2026.11.5/install.sh | sudo sh -s -- --release 2026.11.5
@@ -696,6 +697,14 @@ op read "op://rails49/rails49-release/credential" |
   gh secret set RELEASE_APP_PRIVATE_KEY --repo rails49/installation
 ```
 
+Then, as the same app, it deletes every release GitHub no longer needs to
+keep, with its tag: all but the latest 5 full releases and the pre-releases
+newer than the latest full one, latest by number. `scripts/old-releases.sh`
+names them. A box needs none of the others: it keeps the files of the release
+it runs and of the one to go back to on its own disk. The images stay in
+ghcr, as public packages that cost nothing to store
+([#120](https://github.com/rails49/installation/issues/120)).
+
 **2. Check it by hand.** On a 2018 Mac mini with Ubuntu 26.04 and a Raspberry
 Pi 4, which are installed already, turn on "Pre-releases" on the status page
 and press "Update to pre-release <number>". Run trains on it for as long as it
@@ -730,8 +739,8 @@ each over the status, the check for a new release, the log bundle and the
 status page `box` renders, one over the compose files as data and the door's
 script, one over what a deploy builds and refuses, one over what the install
 script does to a box, in the stock image `box` is built on, one over the images
-workflow as data, and one over the release's number and its pinned box
-files. Nothing in it needs a box or a secret, and it builds no image.
+workflow as data, and one over the release's number, its pinned box
+files and the releases it deletes. Nothing in it needs a box or a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and
 `installation-box` at one commit, for amd64 and arm64, and pushes them to

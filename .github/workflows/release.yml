@@ -309,11 +309,16 @@ jobs:
   # The tag on the installation's commit, and the pre-release carrying the
   # manifest, with each runner's Docker Engine version, the archive and the
   # install script. Both are made with the rails49-release app's token, not
-  # the job's (#76).
+  # the job's (#76). Then the releases a box no longer needs are deleted with
+  # their tags, as the same app, which holds Contents write (#120).
   release:
     needs: [plan, files, check]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/old-releases.sh
+          sparse-checkout-cone-mode: false
       - id: app
         uses: actions/create-github-app-token@v3
         with:
@@ -343,3 +348,16 @@ jobs:
           gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --target "$COMMIT" \
             --prerelease --title "$RELEASE" --notes "$notes" \
             manifest.json release/box-files.tar.gz release/install.sh
+      # The latest 5 full releases and the pre-releases newer than the latest
+      # full one stay. A box keeps the release it runs and the one to go back
+      # to on its own disk, and the images stay in ghcr (#120).
+      - name: Delete the releases a box no longer needs
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --limit 1000 |
+            scripts/old-releases.sh |
+            while read -r old; do
+              echo "deleting $old"
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
