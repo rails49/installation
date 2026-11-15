@@ -369,6 +369,16 @@ describe("downloading a release", () => {
     }
   });
 
+  // 2026.11.8's container exited before it could write a failure.
+  it("whose container stopped before it finished says so, and that the box tries again", () => {
+    const stopped = with_({ ...DOWNLOADING, running: false });
+    expect(release(stopped)[1]).toEqual([
+      "Could not download 2026.11.1: it stopped before it finished. Its log is in the log bundle. The box tries again at its next check.",
+      [],
+    ]);
+    expect(group(stopped, "Release")).not.toContain("<progress");
+  });
+
   it("refused for want of room says what it needs and what is free", () => {
     const full = with_({
       downloaded: false,

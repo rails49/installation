@@ -399,7 +399,10 @@ Downloaded 300 MB of 1.6 GB.", with the update's bar of the bytes under it
 as it follows an update. A
 failed download says "Could not download <release>: <reason> The box tries
 again at its next check.", and the next check, daily or pressed, does; Docker
-keeps the layers it has. One refused for room says "Not enough free disk to
+keeps the layers it has. One whose container stopped before it finished, and
+so wrote no reason, says "Could not download <release>: it stopped before it
+finished. Its log is in the log bundle. The box tries again at its next
+check." One refused for room says "Not enough free disk to
 download <release>: it needs 1.6 GB, 0.9 GB is free." One stopped between
 pulls says "Stopped downloading <release>: 0.9 GB is free, and the box keeps
 1 GB free. The box tries again at its next check." For a pre-release,
