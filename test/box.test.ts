@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { beginDownload, starting } from "../box/download.mjs";
-import { handle, tick } from "../box/server.mjs";
+import { handle, tick, zone } from "../box/server.mjs";
 import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
 
@@ -441,6 +441,18 @@ describe("the hourly tick, also as box starts", () => {
       await tick(on);
       expect([on.checked, on.downloads]).toEqual([checked, 0]);
     }
+  });
+});
+
+describe("the box's time zone (#144)", () => {
+  it("is the name the host's /etc/localtime links to under zoneinfo", () => {
+    expect(zone("/usr/share/zoneinfo/Europe/Zurich\n")).toBe("Europe/Zurich");
+    expect(zone("../usr/share/zoneinfo/America/Los_Angeles")).toBe("America/Los_Angeles");
+  });
+
+  it("is none where the link names no zone", () => {
+    expect(zone("")).toBeNull();
+    expect(zone("/etc/somewhere")).toBeNull();
   });
 });
 
