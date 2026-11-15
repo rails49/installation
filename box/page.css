@@ -67,6 +67,9 @@ legend {
 
 .row p { flex: 1 1 12rem; }
 
+/* The download's bar, under its sentence (#130). */
+.row progress { flex-basis: 100%; }
+
 .dot {
   border-radius: 50%;
   display: inline-block;
