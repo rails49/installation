@@ -252,6 +252,64 @@ describe("the layers the manifest records", () => {
   });
 });
 
+/** `scripts/old-releases.sh` over `gh release list --json tagName,isPrerelease,isDraft`,
+ *  each release a `[tag, kind]`. Returns the tags it prints, one per line. */
+function oldReleases(releases: [string, "full" | "pre" | "draft"][]) {
+  const list = releases.map(([tagName, kind]) => ({
+    tagName,
+    isPrerelease: kind === "pre",
+    isDraft: kind === "draft",
+  }));
+  const run = spawnSync("bash", [script("old-releases.sh")], {
+    input: JSON.stringify(list),
+    encoding: "utf8",
+  });
+  expect(run.stderr).toBe("");
+  expect(run.status).toBe(0);
+  return run.stdout.split("\n").filter(Boolean);
+}
+
+describe("the releases GitHub keeps", () => {
+  it("are the latest 5 full releases, by number", () => {
+    const full = ["2026.9.0", "2026.10.0", "2026.10.1", "2026.11.0", "2026.11.2", "2026.11.10", "2026.12.0"];
+    // Listed newest first by date, as gh does, and not in number order.
+    const releases = full.map((tag) => [tag, "full"] as [string, "full"]).reverse();
+    expect(oldReleases(releases).sort()).toEqual(["2026.10.0", "2026.9.0"]);
+  });
+
+  it("and every pre-release newer than the latest full one", () => {
+    const releases: [string, "full" | "pre"][] = [
+      ["2026.11.4", "pre"],
+      ["2026.11.3", "pre"],
+      ["2026.11.2", "full"],
+      ["2026.11.1", "pre"],
+      ["2026.11.0", "full"],
+      ["2026.10.9", "pre"],
+    ];
+    expect(oldReleases(releases).sort()).toEqual(["2026.10.9", "2026.11.1"]);
+  });
+
+  it("keep every pre-release while there is no full release", () => {
+    expect(oldReleases([["2026.11.1", "pre"], ["2026.11.0", "pre"]])).toEqual([]);
+  });
+
+  it("leave drafts and tags that are not release numbers alone", () => {
+    const releases: [string, "full" | "pre" | "draft"][] = [
+      ["2026.12.1", "draft"],
+      ["v1.0", "full"],
+      ...["2026.11.0", "2026.11.1", "2026.11.2", "2026.11.3", "2026.11.4", "2026.11.5"].map(
+        (tag) => [tag, "full"] as [string, "full"],
+      ),
+      ["2026.10.0", "draft"],
+    ];
+    expect(oldReleases(releases)).toEqual(["2026.11.0"]);
+  });
+
+  it("are all there are when there are no more", () => {
+    expect(oldReleases([])).toEqual([]);
+  });
+});
+
 describe("the release workflow", () => {
   const workflow = parse(readFileSync(new URL(".github/workflows/release.yml", root), "utf8"));
 
