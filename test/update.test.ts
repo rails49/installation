@@ -780,13 +780,24 @@ describe("an update that fails", () => {
 describe("starting one", () => {
   /** What `start()` is handed: the box's docker CLI, files and GitHub. */
   function starting(
-    options: { state?: string; record?: string; latest?: string | null; missing?: boolean; named?: string } = {},
+    options: {
+      state?: string;
+      record?: string;
+      latest?: string | null;
+      missing?: boolean;
+      named?: string;
+      /** What `download.json` says, `NEW` downloaded where not given. */
+      download?: object | null;
+    } = {},
   ) {
     const asked: string[] = [];
+    const download = options.download === undefined ? { release: NEW, downloaded: true } : options.download;
     const files: Record<string, string> = {
       [RECORD]: options.record ?? `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n`,
       [`${RELEASES}/${OLD}/manifest.json`]: JSON.stringify(manifest(OLD, 1)),
+      [`${RELEASES}/${NEW}/manifest.json`]: JSON.stringify(manifest(NEW, 3)),
       "/var/lib/rails49/check.json": JSON.stringify({ latest: options.latest === undefined ? NEW : options.latest }),
+      ...(download ? { "/var/lib/rails49/download.json": JSON.stringify(download) } : {}),
     };
     return {
       asked,
@@ -807,10 +818,6 @@ describe("starting one", () => {
           files[path] = text;
         },
         now: () => new Date("2026-11-12T10:00:00Z"),
-        fetch: async (url: string) => {
-          asked.push(`fetch ${url}`);
-          return new Response(JSON.stringify(manifest(NEW, 3)));
-        },
       },
     };
   }
@@ -824,12 +831,11 @@ describe("starting one", () => {
     "--add-host box.local:192.168.1.20",
   ].join(" ");
 
-  it("runs rails49-update from the new release's box image, with the socket, to the latest release", async () => {
+  it("runs rails49-update from the downloaded release's box image, with the socket, to the latest release", async () => {
     const { io, asked } = starting();
     expect(await start("update", ENV, io)).toBeNull();
     expect(asked).toEqual([
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
-      "fetch https://github.com/rails49/installation/releases/download/2026.11.1/manifest.json",
       `image inspect ghcr.io/rails49/installation-box:inst3@${DIGEST(4)}`,
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
       `${CREATE} ghcr.io/rails49/installation-box:inst3@${DIGEST(4)} node /box/update.mjs update ${OLD} ${NEW}`,
@@ -851,7 +857,6 @@ describe("starting one", () => {
   it("applies the setup with the box image of the release the box runs, for the stacks it is handed", async () => {
     const { io, asked } = starting();
     expect(await start("apply", { ...ENV, BOX_UIS: "control dccex" }, io)).toBeNull();
-    expect(asked.some((line) => line.startsWith("fetch"))).toBe(false);
     expect(asked.at(-3)).toBe(
       `${CREATE.replace("BOX_UIS=control jmri", "BOX_UIS=control dccex")} ghcr.io/rails49/installation-box:inst1@${DIGEST(2)} node /box/update.mjs apply ${OLD} ${OLD}`,
     );
@@ -916,7 +921,7 @@ describe("starting one", () => {
     const { io, asked } = starting({ missing: true, state: "exited\n" });
     expect(await start("update", ENV, io)).toBeNull();
     const image = `ghcr.io/rails49/installation-box:inst3@${DIGEST(4)}`;
-    expect(asked.slice(2, 6)).toEqual([
+    expect(asked.slice(1, 5)).toEqual([
       `image inspect ${image}`,
       `pull ${image}`,
       "ps -a --filter name=^rails49-update$ --format {{.State}}",
@@ -946,6 +951,13 @@ describe("starting one", () => {
       "This box runs 2026.11.0, newer than the latest release, 2026.10.9.",
     );
     expect(await start("back", ENV, starting().io)).toBe("There is no release to go back to.");
+    expect(await start("update", ENV, starting({ download: null }).io)).toBe("Release 2026.11.1 is not downloaded yet.");
+    expect(
+      await start("update", ENV, starting({ download: { release: NEW, downloaded: false, finished: null } }).io),
+    ).toBe("Release 2026.11.1 is not downloaded yet.");
+    expect(
+      await start("update", ENV, starting({ download: { release: "2026.11.2", downloaded: true } }).io),
+    ).toBe("Release 2026.11.1 is not downloaded yet.");
     expect(await start("apply", ENV, starting({ record: "" }).io)).toBe(
       "This box runs no release yet, so there is none to apply the setup at.",
     );

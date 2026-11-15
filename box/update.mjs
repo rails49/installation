@@ -1,11 +1,12 @@
-// Updating the box and going back (#65 decisions 8 to 12), and applying the
-// setup at the release the box runs (#69 decisions 14 and 15). `start()` is
+// Updating the box and going back (#65 decisions 8 to 12), applying the
+// setup at the release the box runs (#69 decisions 14 and 15), and downloading
+// a release, whose run is in `download.mjs` (#121). `start()` is
 // what `box` does on a press: it starts the one-shot container
 // `rails49-update` from the target release's `installation-box` image, with
 // the socket, in no compose project. `run()` is what that container does,
 // run as
 //
-//     node /box/update.mjs <update|back|apply> <from> <to>
+//     node /box/update.mjs <update|back|apply|download> <from> <to>
 //
 // It brings the release's box files to `/var/lib/rails49/releases/<to>/`,
 // pulls every image of every declared stack through the Engine API, and only
@@ -24,7 +25,7 @@
 import { execFile } from "node:child_process";
 import { request } from "node:http";
 import { createInterface } from "node:readline";
-import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, rm, statfs, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 
@@ -33,6 +34,7 @@ import {
   CHECK,
   currentRelease,
   declared,
+  DOWNLOADING,
   inspected,
   manifestPath,
   message,
@@ -44,7 +46,7 @@ import {
   STACKS,
 } from "./status.mjs";
 
-const DOWNLOAD = "https://github.com/rails49/installation/releases/download";
+export const DOWNLOAD = "https://github.com/rails49/installation/releases/download";
 const CONTAINER = "rails49-update";
 const WAIT = 60_000;
 /** The least time between two writes of the progress file while it pulls. */
@@ -170,20 +172,8 @@ export async function run(action, from, to, env, io) {
   };
 
   const stacks = declared(env.BOX_UIS);
-  const dir = `${RELEASES}/${to}`;
-  /** The stack's compose files, and its HTTPS routers only with a box name
-   *  (#92). @param {(typeof stacks)[number]} stack */
-  const files = (stack) => [...stack.files, ...(env.BOX_DOMAIN && stack.https ? [stack.https] : [])];
   /** @param {(typeof stacks)[number]} stack @param {string[]} args */
-  const compose = (stack, args) =>
-    io.docker([
-      "compose",
-      "--env-file",
-      "/etc/rails49/box.env",
-      ...(stack.env ? ["--env-file", `/etc/rails49/${stack.env}`] : []),
-      ...files(stack).flatMap((file) => ["-f", `${dir}/${file}`]),
-      ...args,
-    ]);
+  const compose = (stack, args) => composed(stack, to, env, io.docker, args);
 
   /** @type {string | null} */
   let failure = null;
@@ -307,6 +297,29 @@ export async function run(action, from, to, env, io) {
 }
 
 /**
+ * The docker compose command for one stack of a release, from that release's
+ * box files: with `box.env` and the stack's own settings, its compose files,
+ * and its HTTPS routers only with a box name (#92).
+ *
+ * @param {(typeof STACKS)[number]} stack
+ * @param {string} release
+ * @param {{ BOX_DOMAIN: string }} env
+ * @param {Io["docker"]} docker
+ * @param {string[]} args
+ */
+export function composed(stack, release, env, docker, args) {
+  const files = [...stack.files, ...(env.BOX_DOMAIN && stack.https ? [stack.https] : [])];
+  return docker([
+    "compose",
+    "--env-file",
+    "/etc/rails49/box.env",
+    ...(stack.env ? ["--env-file", `/etc/rails49/${stack.env}`] : []),
+    ...files.flatMap((file) => ["-f", `${RELEASES}/${release}/${file}`]),
+    ...args,
+  ]);
+}
+
+/**
  * The layers a run downloads, each by the first 12 hex digits of its digest,
  * as Docker's stream names it, with the bytes downloaded of its size; or null
  * where the release's manifest lists no layers for an image the box does not
@@ -317,10 +330,10 @@ export async function run(action, from, to, env, io) {
  *
  * @param {string[]} images
  * @param {string} release
- * @param {Io} io
+ * @param {Pick<Io, "docker" | "read">} io
  * @returns {Promise<Tally | null>}
  */
-async function tally(images, release, io) {
+export async function tally(images, release, io) {
   /** @type {{ layers?: Layers }} */
   const manifest = JSON.parse((await io.read(manifestPath(release))) ?? "{}");
   const layers = manifest.layers;
@@ -355,7 +368,7 @@ async function tally(images, release, io) {
 
 /** The bytes the run has downloaded, of its total.
  *  @param {Tally} tally @returns {Bytes} */
-function counted(tally) {
+export function counted(tally) {
   let current = 0;
   let total = 0;
   for (const layer of tally.values()) {
@@ -383,10 +396,10 @@ function repository({ image }) {
  * of which this run downloaded nothing, comes off the run's total.
  *
  * @param {string} image @param {number} index @param {number} count
- * @param {Tally | null} bytes @param {Io} io
+ * @param {Tally | null} bytes @param {Pick<Io, "pull">} io
  * @param {(pull: Pull) => Promise<void>} report
  */
-async function pull(image, index, count, bytes, io, report) {
+export async function pull(image, index, count, bytes, io, report) {
   /** @type {Map<string, { current: number, total: number }>} */
   const layers = new Map();
   const sum = () => {
@@ -426,9 +439,9 @@ async function pull(image, index, count, bytes, io, report) {
  * that only gets the release's name once all of it is there.
  *
  * @param {string} release
- * @param {Io} io
+ * @param {Pick<Io, "remove" | "download" | "unpack" | "rename">} io
  */
-async function download(release, io) {
+export async function download(release, io) {
   const part = `${RELEASES}/${release}.part`;
   await io.remove(part);
   await io.download(`${DOWNLOAD}/${release}/manifest.json`, `${part}/manifest.json`);
@@ -461,21 +474,19 @@ function own(all, stacks) {
 }
 
 /**
- * Decision 12: every rails49 image and pinned stock image that neither kept
- * release uses goes, except the images the stacks ran before this update,
- * which are one step back. A local build two steps back goes with the rest.
- * Other images are left alone, and so are the files of the kept releases.
+ * Every image the releases' manifests pin, as `<repository>@<digest>`, and
+ * the repositories of their stock images. A release whose files are not on
+ * the box pins none.
  *
- * @param {string[]} keep the releases kept
- * @param {Set<string>} ran the IDs of the images the stacks ran before
- * @param {Io} io
+ * @param {string[]} releases
+ * @param {Pick<Io, "read">} io
  */
-async function prune(keep, ran, io) {
+export async function pinned(releases, io) {
   /** @type {Set<string>} */
   const used = new Set();
   /** @type {Set<string>} */
   const stock = new Set();
-  for (const release of keep) {
+  for (const release of releases) {
     /** @type {{ stacks: Record<string, { images: Record<string, string> }>, stock: Record<string, string> }} */
     const manifest = JSON.parse((await io.read(manifestPath(release))) ?? "{}");
     for (const { images } of Object.values(manifest.stacks ?? {})) {
@@ -487,6 +498,21 @@ async function prune(keep, ran, io) {
       used.add(`${repository}@${digest}`);
     }
   }
+  return { used, stock };
+}
+
+/**
+ * Decision 12: every rails49 image and pinned stock image that neither kept
+ * release uses goes, except the images the stacks ran before this update,
+ * which are one step back. A local build two steps back goes with the rest.
+ * Other images are left alone, and so are the files of the kept releases.
+ *
+ * @param {string[]} keep the releases kept
+ * @param {Set<string>} ran the IDs of the images the stacks ran before
+ * @param {Io} io
+ */
+async function prune(keep, ran, io) {
+  const { used, stock } = await pinned(keep, io);
 
   const listed = await io.docker(["image", "ls", "--digests", "--no-trunc", "--format", "{{json .}}"]);
   for (const line of listed.split("\n").filter(Boolean)) {
@@ -515,7 +541,13 @@ export const BUSY = "The box is already updating, going back or applying the set
  *  empty where there is none.
  *  @param {Io["docker"]} docker */
 export async function updater(docker) {
-  return (await docker(["ps", "-a", "--filter", `name=^${CONTAINER}$`, "--format", "{{.State}}"])).trim();
+  return stateOf(CONTAINER, docker);
+}
+
+/** The state of the container named `name`, empty where there is none.
+ *  @param {string} name @param {Io["docker"]} docker */
+export async function stateOf(name, docker) {
+  return (await docker(["ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.State}}"])).trim();
 }
 
 /**
@@ -524,21 +556,20 @@ export async function updater(docker) {
  * why not. `install.sh` starts it the same way on a new box. Nothing it runs takes anything from the request: the release is
  * the latest the last check found, the one the record says the box ran
  * before, or the one it runs. `env.BOX_UIS` is what the container brings up.
+ * An update is to a release the box has downloaded (#121), so its files are
+ * on the box.
  *
  * @param {"update" | "back" | "apply"} action
  * @param {Omit<Env, "address"> & { address: string | null }} env
- * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
+ * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"] }} io
  * @returns {Promise<string | null>}
  */
 export async function start(action, env, io) {
-  let state = await updater(io.docker);
-  if (state === "running") return BUSY;
+  if ((await updater(io.docker)) === "running") return BUSY;
 
   const from = (await currentRelease(io.read)) ?? "-";
   /** @type {string | null} */
   let to;
-  /** @type {{ stacks: { installation: { commit: string, images: Record<string, string> } } }} */
-  let manifest;
   if (action === "update") {
     const text = await io.read(CHECK);
     /** @type {string | null} */
@@ -546,31 +577,76 @@ export async function start(action, env, io) {
     if (!latest || latest === from) return "This box runs the latest release.";
     if (from !== "-" && older(latest, from)) return `This box runs ${from}, newer than the latest release, ${latest}.`;
     to = latest;
-    const answer = await io.fetch(`${DOWNLOAD}/${to}/manifest.json`, { signal: AbortSignal.timeout(30_000) });
-    if (!answer.ok) return `Could not read release ${to}'s manifest: GitHub answered ${answer.status}.`;
-    manifest = /** @type {typeof manifest} */ (await answer.json());
+    /** @type {{ release?: string, downloaded?: boolean } | null} */
+    const got = JSON.parse((await io.read(DOWNLOADING)) || "null");
+    if (got?.release !== to || !got.downloaded) return `Release ${to} is not downloaded yet.`;
   } else {
     to = action === "back" ? await backTo(io.read) : await currentRelease(io.read);
     if (to === null) return action === "back" ? "There is no release to go back to." : NO_RELEASE;
-    manifest = JSON.parse((await io.read(manifestPath(to))) ?? "null");
-    if (manifest === null) return `Release ${to}'s files are not on this box.`;
   }
-  const { commit, images } = manifest.stacks.installation;
-  const image = `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
+  const image = await boxImage(to, io.read);
+  if (image === null) return `Release ${to}'s files are not on this box.`;
 
-  // Pulled before the state is read again, so the name is taken just after.
-  await io.docker(["image", "inspect", image]).catch(() => io.docker(["pull", image]));
-  state = await updater(io.docker);
-  if (state === "running") return BUSY;
-  if (state) await io.docker(["rm", CONTAINER]);
   // The probe asks for `<hostname>.local`, which nothing in a container
   // resolves, so it is named here.
   const host = env.address ? ["--add-host", `${env.hostname}.local:${env.address}`] : [];
+  const started = await oneShot(
+    CONTAINER,
+    image,
+    ["-e", `BOX_HOSTNAME=${env.hostname}`, "-e", `BOX_ADDRESS=${env.address ?? ""}`, ...host],
+    ["node", "/box/update.mjs", action, from, to],
+    env,
+    io,
+    // The page reads this file while the container runs, so the last run's
+    // progress is replaced before it starts.
+    () =>
+      io.write(
+        PROGRESS,
+        progressText({ action, from, to, started: io.now().toISOString(), step: "Starting.", pull: null }, null),
+      ),
+  );
+  return started ? null : BUSY;
+}
+
+/** A release's `installation-box` image, from its manifest on the box, or
+ *  null where its files are not on the box.
+ *  @param {string} release @param {Io["read"]} read */
+export async function boxImage(release, read) {
+  /** @type {{ stacks: { installation: { commit: string, images: Record<string, string> } } } | null} */
+  const manifest = JSON.parse((await read(manifestPath(release))) || "null");
+  if (manifest === null) return null;
+  const { commit, images } = manifest.stacks.installation;
+  return `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
+}
+
+/**
+ * Starts the one-shot container `name` from `image` with the Docker socket,
+ * `/etc/rails49` read-only and `/var/lib/rails49`, in no compose project, and
+ * `BOX_DOMAIN` and `BOX_UIS` set; `more` is more of `docker create`'s options,
+ * and `command` what the container runs. The image is pulled first where the box does not
+ * have it, and the container of the last one is removed. `starting` writes
+ * what the page reads before the container starts. Answers false, starting
+ * nothing, where one runs, or another start took the name first.
+ *
+ * @param {string} name
+ * @param {string} image
+ * @param {string[]} more
+ * @param {string[]} command
+ * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
+ * @param {{ docker: Io["docker"] }} io
+ * @param {() => Promise<void>} starting
+ */
+export async function oneShot(name, image, more, command, env, io, starting) {
+  // Pulled before the state is read, so the name is taken just after.
+  await io.docker(["image", "inspect", image]).catch(() => io.docker(["pull", image]));
+  const state = await stateOf(name, io.docker);
+  if (state === "running") return false;
+  if (state) await io.docker(["rm", name]);
   try {
     await io.docker([
       "create",
       "--name",
-      CONTAINER,
+      name,
       "-v",
       "/var/run/docker.sock:/var/run/docker.sock",
       "-v",
@@ -581,36 +657,23 @@ export async function start(action, env, io) {
       `BOX_DOMAIN=${env.BOX_DOMAIN}`,
       "-e",
       `BOX_UIS=${env.BOX_UIS}`,
-      "-e",
-      `BOX_HOSTNAME=${env.hostname}`,
-      "-e",
-      `BOX_ADDRESS=${env.address ?? ""}`,
-      ...host,
+      ...more,
       image,
-      "node",
-      "/box/update.mjs",
-      action,
-      from,
-      to,
+      ...command,
     ]);
   } catch (error) {
-    // Another start took the name first. It runs, and its progress stays.
-    if (message(error).includes("is already in use")) return BUSY;
+    // Another start took the name first. It runs, and what it wrote stays.
+    if (message(error).includes("is already in use")) return false;
     throw error;
   }
-  // The page reads this file while the container runs, so the last run's
-  // progress is replaced before it starts.
-  await io.write(
-    PROGRESS,
-    progressText({ action, from, to, started: io.now().toISOString(), step: "Starting.", pull: null }, null),
-  );
-  await io.docker(["start", CONTAINER]);
-  return null;
+  await starting();
+  await io.docker(["start", name]);
+  return true;
 }
 
 /** An error's message as the end of a sentence.
  *  @param {unknown} error */
-function sentence(error) {
+export function sentence(error) {
   return `${message(error).trim().replace(/\.$/, "")}.`;
 }
 
@@ -679,8 +742,8 @@ export async function read(path) {
 // Running, only when run rather than imported.
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   const [action, from, to] = process.argv.slice(2);
-  if (!["update", "back", "apply"].includes(action ?? "") || !from || !to) {
-    console.error("usage: node /box/update.mjs <update|back|apply> <from> <to>");
+  if (!["update", "back", "apply", "download"].includes(action ?? "") || !from || !to) {
+    console.error("usage: node /box/update.mjs <update|back|apply|download> <from> <to>");
     process.exit(2);
   }
   const env = {
@@ -689,7 +752,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     hostname: process.env.BOX_HOSTNAME ?? "",
     address: process.env.BOX_ADDRESS ?? "",
   };
-  await run(/** @type {"update" | "back" | "apply"} */ (action), from, to, env, {
+  /** @type {Io} */
+  const io = {
     docker,
     pull: pullImage,
     download: async (url, path) => {
@@ -717,5 +781,16 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => new Date(),
-  });
+  };
+  if (action === "download") {
+    // The file system Docker keeps its images on, as `box` reads it.
+    const free = async () => {
+      const disk = await statfs("/");
+      return disk.bavail * disk.bsize;
+    };
+    const { run: downloading } = await import("./download.mjs");
+    await downloading(from, to, env, { ...io, free });
+  } else {
+    await run(/** @type {"update" | "back" | "apply"} */ (action), from, to, env, io);
+  }
 }
