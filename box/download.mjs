@@ -175,6 +175,19 @@ async function drop(keep, io) {
 }
 
 /**
+ * Whether the check's latest release is downloaded: `download`, what
+ * `DOWNLOADING` holds, names it and has downloaded it. The page's "Update to"
+ * offer, `start("update")` and `wanted()` each ask this (#126).
+ *
+ * @param {string | null | undefined} latest
+ * @param {{ release?: string, downloaded?: boolean } | null | undefined} download
+ * @returns {boolean}
+ */
+export function isDownloaded(latest, download) {
+  return Boolean(latest) && download?.release === latest && download?.downloaded === true;
+}
+
+/**
  * The release to download now, or null: the one the last check named, where
  * it is newer than the one the box runs and than the one it has downloaded or
  * is downloading. A download of it that stopped before it finished, as at a
@@ -194,7 +207,7 @@ export async function wanted(read) {
   const last = JSON.parse((await read(DOWNLOADING)) || "null");
   if (last === null || older(last.release, latest)) return latest;
   if (last.release !== latest) return null;
-  if (last.downloaded) return (await read(manifestPath(latest))) === null ? latest : null;
+  if (isDownloaded(latest, last)) return (await read(manifestPath(latest))) === null ? latest : null;
   if (last.finished !== null && !(check.checked && check.checked > last.finished)) return null;
   return latest;
 }

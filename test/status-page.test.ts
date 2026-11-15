@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 
 import { render } from "../box/page.mjs";
-import type { Pull } from "../box/update.mjs";
+import { older } from "../box/status.mjs";
+import { start, type Pull } from "../box/update.mjs";
 
 const STATUS = {
   name: "example.org",
@@ -627,5 +628,70 @@ describe("while an update, going back or applying runs", () => {
       ": traefik, image 1 of 10, 12 MB of 48 MB.</p>",
     );
     expect(pulling(null, "Pulling jmri's images.")).toContain('<p class="updating">Updating to 2026.11.5: Pulling jmri\'s images.</p>');
+  });
+});
+
+describe("the update the page offers (#126)", () => {
+  const RECORD = "/var/lib/rails49/deploys/installation";
+  const DIGEST = `sha256:${"4".repeat(64)}`;
+  const manifest = JSON.stringify({ stacks: { installation: { commit: "inst4", images: { "installation-box": DIGEST } } } });
+  const ENV = { BOX_DOMAIN: "example.org", BOX_UIS: "control jmri", hostname: "box", address: "192.168.1.20" };
+
+  /** Whether `start("update")` accepts on a box that runs `runs`, whose
+   *  last check found `latest`, and whose `download.json` holds `download`:
+   *  its files are on the box where it is downloaded. */
+  async function accepts(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
+    const files: Record<string, string> = {
+      ...(runs ? { [RECORD]: `2026-11-10T09:00:00Z  -  ->  ${runs}  passed\n`, [`/var/lib/rails49/releases/${runs}/manifest.json`]: manifest } : {}),
+      "/var/lib/rails49/check.json": JSON.stringify({ latest }),
+      ...(download ? { "/var/lib/rails49/download.json": JSON.stringify(download) } : {}),
+      ...(download?.downloaded ? { [`/var/lib/rails49/releases/${download.release}/manifest.json`]: manifest } : {}),
+    };
+    const io = {
+      docker: async () => "",
+      read: async (path: string) => files[path] ?? null,
+      write: async (path: string, text: string) => void (files[path] = text),
+      now: () => new Date("2026-11-16T10:00:00Z"),
+    };
+    return (await start("update", ENV, io)) === null;
+  }
+
+  /** Whether the page offers "Update to" for the same box, as `status()`
+   *  says of it. */
+  function offers(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
+    const html = render({
+      ...STATUS,
+      release: runs,
+      update: {
+        ...STATUS.update,
+        latest,
+        available: latest !== null && (runs === null || older(runs, latest)),
+        newer: latest !== null && runs !== null && older(latest, runs),
+      },
+      download: download && { ...STATUS.download, ...download },
+    });
+    return html.includes('action="/box/update"');
+  }
+
+  it("exactly when start(\"update\") accepts, also with a newer pre-release downloaded than the check names", async () => {
+    const out = ["2026.11.1", "2026.11.2", "2026.11.3"];
+    const releases = [null, ...out];
+    const downloads = [null, ...out.flatMap((release) => [{ release, downloaded: true }, { release, downloaded: false }])];
+    let offered = 0;
+    for (const runs of releases) {
+      for (const latest of releases) {
+        for (const download of downloads) {
+          const said = `runs ${runs}, latest ${latest}, downloaded ${JSON.stringify(download)}`;
+          const offer = offers(runs, latest, download);
+          expect(offer, said).toBe(await accepts(runs, latest, download));
+          if (offer) offered += 1;
+        }
+      }
+    }
+    expect(offered).toBeGreaterThan(0);
+    // The issue's box: on 2026.11.1, with pre-release 2026.11.3 downloaded,
+    // offered nothing until 2026.11.2 is downloaded.
+    expect(offers("2026.11.1", "2026.11.2", { release: "2026.11.3", downloaded: true })).toBe(false);
+    expect(offers("2026.11.1", "2026.11.2", { release: "2026.11.2", downloaded: true })).toBe(true);
   });
 });
