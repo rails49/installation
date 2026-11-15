@@ -1,5 +1,5 @@
 // What the status page shows (#65 decision 16), gathered from the docker CLI,
-// the Engine API's container stats and image inspect, the box's files under /var/lib/rails49
+// the Engine API's container stats and container inspect, the box's files under /var/lib/rails49
 // and /proc/meminfo, the disk, the door's certificate and DNS. Each of those
 // is handed in as `io`, so this reads nothing itself.
 // A failure is said in a sentence in `failures`, and a stack on a local build
@@ -14,7 +14,7 @@
  *   certificate: (name: string) => Promise<{ valid_from: string, valid_to: string, error: string | null }>,
  *   resolve: (name: string) => Promise<string[]>,
  *   stats: (id: string) => Promise<Stats | null>,
- *   image: (id: string) => Promise<{ Size: number } | null>,
+ *   size: (id: string) => Promise<{ SizeRootFs: number, SizeRw: number } | null>,
  *   starting: () => boolean,
  *   now: () => Date,
  * }} Io
@@ -24,8 +24,10 @@
  * the door presents for a name, with `error` saying why it is not valid.
  * `resolve` is the addresses a name resolves to, and throws where it does not.
  * `stats` is what the Engine API's one-shot stats say of a container, or null
- * where it says nothing. `image` is what the Engine API's image inspect says
- * of an image, its unpacked size, or null where it says nothing.
+ * where it says nothing. `size` is what the Engine API's container inspect
+ * says of a container's size: `SizeRootFs`, its image's unpacked layers and
+ * its writable layer, and `SizeRw`, the writable layer alone. Null where it
+ * says nothing.
  * `starting` is whether `box` is starting `rails49-download`, as its box
  * image pulls (#132).
  */
@@ -228,12 +230,14 @@ export async function status(env, io) {
   const starting = io.starting();
   const containers = await inspected(io.docker);
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
-  // Each image's unpacked size, asked once however many stacks run it.
+  // Each image's unpacked size, from one container that runs it, so it holds
+  // when Docker no longer has the image (#138). Asked once however many
+  // stacks run it.
   /** @type {Map<string, Promise<number>>} */
   const sizes = new Map();
-  const size = (/** @type {string} */ id) => {
-    if (!sizes.has(id)) sizes.set(id, io.image(id).then((image) => image?.Size ?? 0));
-    return /** @type {Promise<number>} */ (sizes.get(id));
+  const size = (/** @type {Container} */ c) => {
+    if (!sizes.has(c.Image)) sizes.set(c.Image, io.size(c.Id).then((s) => (s ? s.SizeRootFs - s.SizeRw : 0)));
+    return /** @type {Promise<number>} */ (sizes.get(c.Image));
   };
 
   const stacks = await Promise.all(declared(env.BOX_UIS).map(async ({ stack, project }) => {
@@ -262,7 +266,7 @@ export async function status(env, io) {
     const memory = running.length ? used.reduce((a, b) => a + b, 0) : null;
     // What the distinct images its containers run take unpacked. A layer
     // shared with another stack counts in each (#119).
-    const images = [...new Set(own.map((c) => c.Image))];
+    const images = [...new Map(own.map((c) => [c.Image, c])).values()];
     const disk = own.length ? (await Promise.all(images.map(size))).reduce((a, b) => a + b, 0) : null;
     return { stack, state, commit, local_build, memory, disk };
   }));

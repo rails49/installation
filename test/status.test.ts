@@ -85,7 +85,7 @@ function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: 
     }),
     resolve: async () => ["192.168.1.20"],
     stats: async () => null,
-    image: async () => null,
+    size: async () => null,
     starting: () => false,
     now: () => new Date("2026-11-12T10:00:00Z"),
     ...facts,
@@ -160,15 +160,17 @@ describe("memory", () => {
 });
 
 describe("each stack's disk", () => {
-  /** What the Engine API's image inspect says of each image's unpacked size. */
-  const sizes: Record<string, number> = {
-    "sha256:door": 180e6,
-    "sha256:page": 25e6,
-    "sha256:box": 160e6,
-    "sha256:store": 1.2e9,
-    "sha256:broker": 25e6,
+  /** What the Engine API's container inspect says of each container's size:
+   *  its root file system, the image's unpacked layers with the container's
+   *  writable layer on top, and that writable layer. */
+  const sizes: Record<string, { SizeRootFs: number; SizeRw: number }> = {
+    "installation-door-1-id": { SizeRootFs: 180e6 + 1e3, SizeRw: 1e3 },
+    "installation-page-1-id": { SizeRootFs: 25e6 + 2e3, SizeRw: 2e3 },
+    "installation-box-1-id": { SizeRootFs: 160e6, SizeRw: 0 },
+    "tc49-store-1-id": { SizeRootFs: 1.2e9 + 20e3, SizeRw: 20e3 },
+    "tc49-broker-1-id": { SizeRootFs: 25e6 + 8e3, SizeRw: 8e3 },
   };
-  const image: Io["image"] = async (id) => (id in sizes ? { Size: sizes[id]! } : null);
+  const size: Io["size"] = async (id) => sizes[id] ?? null;
   const CONTAINERS = [
     container("installation-door-1", "installation", "running", "", "sha256:door"),
     container("installation-page-1", "installation", "running", COMMIT, "sha256:page"),
@@ -178,7 +180,7 @@ describe("each stack's disk", () => {
   ];
 
   it("is the sum of the unpacked sizes of the images its containers run, running or not", async () => {
-    const { stacks } = await status(NAMED, io({ containers: CONTAINERS, image }));
+    const { stacks } = await status(NAMED, io({ containers: CONTAINERS, size }));
     expect(stacks.map((s) => [s.stack, s.disk])).toEqual([
       ["installation", 365e6],
       ["control", 1.225e9],
@@ -191,19 +193,22 @@ describe("each stack's disk", () => {
       container("installation-page-1", "installation", "running", COMMIT, "sha256:page"),
       container("tc49-store-1", "tc49", "running", COMMIT, "sha256:page"),
     ];
-    const { stacks } = await status(NAMED, io({ containers, image }));
+    const page = { SizeRootFs: 25e6 + 2e3, SizeRw: 2e3 };
+    const { stacks } = await status(NAMED, io({ containers, size: async () => page }));
     expect(stacks.map((s) => s.disk)).toEqual([25e6, 25e6]);
   });
 
   it("is none for a stack with no containers", async () => {
-    const { stacks } = await status(NAMED, io({ containers: CONTAINERS.slice(0, 3), image }));
+    const { stacks } = await status(NAMED, io({ containers: CONTAINERS.slice(0, 3), size }));
     expect(stacks[1]!.disk).toBeNull();
   });
 
-  it("leaves out an image the Engine API says nothing of", async () => {
+  // #138: JMRI showed 0 MB. Its container ran an image Docker no longer had,
+  // and image inspect said nothing of it.
+  it("counts an image Docker no longer has, from the container that runs it", async () => {
     const containers = [...CONTAINERS.slice(0, 4), container("tc49-broker-1", "tc49", "running", COMMIT, "sha256:gone")];
-    const { stacks } = await status(NAMED, io({ containers, image }));
-    expect(stacks[1]!.disk).toBe(1.2e9);
+    const { stacks } = await status(NAMED, io({ containers, size }));
+    expect(stacks[1]!.disk).toBe(1.225e9);
   });
 });
 

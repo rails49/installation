@@ -170,10 +170,14 @@ and "Status", with the stacks, the box and Docker. It shows:
   what its running containers use, from the Engine API's one-shot container
   stats, less their inactive file cache, as `docker stats` says it. Memory
   is in whole megabytes of 2^20 bytes. A stack's disk is the sum of the
-  unpacked sizes the Engine API's image inspect gives for the distinct images
-  its containers run, running or not, in megabytes like memory, and blank for
-  a stack with no containers. A layer shared between stacks counts in each
-  stack that uses it, so the column does not add up to the disk used
+  unpacked sizes of the distinct images its containers run, running or not,
+  in megabytes like memory, and blank for a stack with no containers. An
+  image's unpacked size is `SizeRootFs` less `SizeRw` in the Engine API's
+  container inspect of one container that runs it, so it holds when Docker
+  no longer has the image; a container's writable layer is not counted
+  ([#138](https://github.com/rails49/installation/issues/138)). A layer
+  shared between stacks counts in each stack that uses it, so the column
+  does not add up to the disk used
   ([#119](https://github.com/rails49/installation/issues/119)). The commit,
   or "n/a" where there is none, is the `org.opencontainers.image.revision`
   of the stack's images. A stack whose commit is not the release's runs a
