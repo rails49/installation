@@ -190,9 +190,15 @@ and "Status", with the stacks, the box and Docker. It shows:
   none.
 - Whether a newer release is out, and when the box last checked. The box asks
   GitHub for `rails49/installation`'s latest release, which is never a
-  pre-release, once a day, and on "Check for update". Offline it says it could not
-  check, and when the last check succeeded. What it found is kept in
-  `/var/lib/rails49/check.json`. A newer release it found is downloaded in
+  pre-release, at 2:00 each night, and on "Check for update". `box` asks every
+  hour whether a check has succeeded since the last 2:00, so a box that runs
+  overnight checks between 2:00 and 3:00, one that was off checks when it
+  starts, and one offline tries every hour until a check succeeds. 2:00 is in
+  the host's time zone, which `box` reads from where the host's
+  `/etc/localtime` links to as it starts; a host whose link names no zone
+  gives UTC ([#144](https://github.com/rails49/installation/issues/144)).
+  Offline it says it could not check, and when the last check succeeded. What
+  it found is kept in `/var/lib/rails49/check.json`. A newer release it found is downloaded in
   the background, and the page says how far that has got (see
   [Downloading a release](#downloading-a-release)).
 - Beside "Check for update", whether pre-releases are offered: "Pre-releases: on" or

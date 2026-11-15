@@ -19,7 +19,7 @@
 // door, which asks it about every UI's websocket and write paths
 // (rails49/.github#69).
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, statfs, writeFile } from "node:fs/promises";
@@ -163,10 +163,21 @@ export async function handle(request, box) {
 }
 
 /**
- * Asked every hour, and as `box` starts: checks when a day has passed since
- * the last check that succeeded, and downloads what the last check found, so
- * a download a reboot stopped carries on. A box that downloads only after a
- * press of "Check for update" downloads nothing here (#141).
+ * The time zone `readlink /etc/localtime` names on the host, as
+ * `Europe/Zurich`, or null where it names none. The box's clock is in it, so
+ * the daily check runs at 2:00 there (#144).
+ *
+ * @param {string} link
+ */
+export function zone(link) {
+  return link.trim().split("/zoneinfo/")[1] || null;
+}
+
+/**
+ * Asked every hour, and as `box` starts: checks when none has succeeded since
+ * the last 2:00 on the box's clock (#144), and downloads what the last check
+ * found, so a download a reboot stopped carries on. A box that downloads only
+ * after a press of "Check for update" downloads nothing here (#141).
  *
  * @param {{ due: () => Promise<boolean>, check: () => Promise<void>, download: () => Promise<void>, automatic: () => Promise<boolean> }} box
  */
@@ -282,6 +293,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   // On a Mac this is the PID 1 of Docker Desktop's virtual machine, which is
   // not systemd, so the box there answers no.
   const pid1 = readFileSync("/proc/1/comm", "utf8").trim();
+  // The host's time zone, before anything reads the clock.
+  try {
+    const link = execFileSync("nsenter", ["-t", "1", "-m", "--", "readlink", "/etc/localtime"], { encoding: "utf8" });
+    const name = zone(link);
+    if (name) process.env.TZ = name;
+  } catch (error) {
+    console.error(`reading the host's time zone: ${message(error)}`);
+  }
   const env = {
     BOX_DOMAIN: process.env.BOX_DOMAIN ?? "",
     BOX_UIS: process.env.BOX_UIS ?? "",

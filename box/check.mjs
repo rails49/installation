@@ -10,8 +10,6 @@ export const LATEST = "https://api.github.com/repos/rails49/installation/release
 /** Every release, pre-releases included, up to 100. */
 export const RELEASES = "https://api.github.com/repos/rails49/installation/releases?per_page=100";
 
-const DAY = 24 * 60 * 60 * 1000;
-
 /**
  * @typedef {{ checked: string | null, succeeded: string | null, latest: string | null, prerelease: boolean }} State
  *
@@ -59,11 +57,16 @@ function newest(releases) {
   return releases.filter((release) => !release.draft).sort((a, b) => (older(a.tag_name, b.tag_name) ? 1 : -1))[0];
 }
 
-/** Whether a day has passed since the last check that succeeded.
+/** Whether no check has succeeded since the last 2:00 on the box's clock
+ *  (#144). A box that missed 2:00, off or offline, is due at once.
  *  @param {Io} io */
 export async function due(io) {
   const { succeeded } = await saved(io);
-  return succeeded === null || io.now().getTime() - Date.parse(succeeded) >= DAY;
+  const now = io.now();
+  const two = new Date(now);
+  two.setHours(2, 0, 0, 0);
+  if (two > now) two.setDate(two.getDate() - 1);
+  return succeeded === null || Date.parse(succeeded) < two.getTime();
 }
 
 /** @param {Io} io
