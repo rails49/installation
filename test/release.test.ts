@@ -164,6 +164,94 @@ describe("pinning the box files", () => {
   });
 });
 
+/**
+ * `scripts/layers.sh <manifest>` with a `docker` on the PATH that answers
+ * `buildx imagetools inspect --raw <ref>` from `registry`, each ref and the
+ * JSON the registry holds for it.
+ */
+function layered(registry: Record<string, object>) {
+  const scratch = mkdtempSync(join(tmpdir(), "layers-"));
+  try {
+    const name = (ref: string) => ref.replace(/[/:@]/g, "_");
+    mkdirSync(join(scratch, "bin"));
+    writeFileSync(
+      join(scratch, "bin", "docker"),
+      `#!/usr/bin/env bash\nf="${scratch}/$(printf %s "\${@: -1}" | tr '/:@' '___').json"\n[ -f "$f" ] || { echo "no such image: \${@: -1}" >&2; exit 1; }\ncat "$f"\n`,
+      { mode: 0o755 },
+    );
+    for (const [ref, json] of Object.entries(registry)) writeFileSync(join(scratch, `${name(ref)}.json`), JSON.stringify(json));
+    writeFileSync(join(scratch, "manifest.json"), JSON.stringify(manifest));
+    const run = spawnSync("bash", [script("layers.sh"), join(scratch, "manifest.json")], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${join(scratch, "bin")}:${process.env.PATH}` },
+    });
+    return { status: run.status, err: run.stderr, layers: run.status === 0 ? JSON.parse(run.stdout) : null };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+describe("the layers the manifest records", () => {
+  /** An index of an amd64 and an arm64 variant, and an attestation. */
+  const index = (amd64: string, arm64: string) => ({
+    manifests: [
+      { digest: amd64, platform: { os: "linux", architecture: "amd64" } },
+      { digest: arm64, platform: { os: "linux", architecture: "arm64", variant: "v8" } },
+      { digest: digest("0"), platform: { os: "unknown", architecture: "unknown" } },
+    ],
+  });
+  /** A variant's manifest, with its layers as `[digest, size]`. */
+  const variant = (...layers: [string, number][]) => ({
+    config: { digest: digest("9"), size: 1 },
+    layers: layers.map(([d, size]) => ({ mediaType: "application/vnd.oci.image.layer.v1.tar+gzip", digest: d, size })),
+  });
+  /** Every image of `manifest`, each an index whose variants share layer `3`. */
+  const registry = () => {
+    const images = [
+      ...Object.values(manifest.stacks).flatMap(({ images }) =>
+        Object.entries(images).map(([image, d]) => [`ghcr.io/rails49/${image}`, d] as const),
+      ),
+      ...Object.entries(manifest.stock),
+    ];
+    return Object.fromEntries(
+      images.flatMap(([ref, d], i) => {
+        const amd64 = `sha256:${String(i).padStart(64, "a")}`;
+        const arm64 = `sha256:${String(i).padStart(64, "b")}`;
+        return [
+          [`${ref}@${d}`, index(amd64, arm64)],
+          [`${ref}@${amd64}`, variant([digest("3"), 100], [digest("4"), 200 + i])],
+          [`${ref}@${arm64}`, variant([digest("3"), 90], [digest("5"), 300 + i])],
+        ];
+      }),
+    );
+  };
+
+  it("lists each pinned image's linux/amd64 and linux/arm64 layers by digest and size, keyed by the image's digest", () => {
+    const { status, err, layers } = layered(registry());
+    expect(err).toBe("");
+    expect(status).toBe(0);
+    const digests = [...Object.values(manifest.stacks).flatMap(({ images }) => Object.values(images)), ...Object.values(manifest.stock)];
+    expect(Object.keys(layers).sort()).toEqual(digests.sort());
+    expect(layers[digest("a")]).toEqual({
+      "linux/amd64": [
+        { digest: digest("3"), size: 100 },
+        { digest: digest("4"), size: 202 },
+      ],
+      "linux/arm64": [
+        { digest: digest("3"), size: 90 },
+        { digest: digest("5"), size: 302 },
+      ],
+    });
+  });
+
+  it("fails where the registry does not answer for an image", () => {
+    const { [`traefik:v3.7@${digest("f")}`]: _, ...rest } = registry();
+    const { status, err } = layered(rest);
+    expect(status).not.toBe(0);
+    expect(err).toContain(`no such image: traefik:v3.7@${digest("f")}`);
+  });
+});
+
 describe("the release workflow", () => {
   const workflow = parse(readFileSync(new URL(".github/workflows/release.yml", root), "utf8"));
 
@@ -174,6 +262,11 @@ describe("the release workflow", () => {
       JSON.stringify(job.steps ?? []).includes("gh release create"),
     );
     expect(tagging.map(([name]) => name)).toEqual(["release"]);
+  });
+
+  it("records each pinned image's layers in the manifest", () => {
+    const step = workflow.jobs.files.steps.find((step: Node) => step.name === "The manifest and the archive");
+    expect(step.run).toMatch(/scripts\/layers\.sh manifest\.json[\s\S]*\.layers = [\s\S]*scripts\/pin\.sh manifest\.json/);
   });
 
   it("runs no curl with both -f and --fail-with-body", () => {

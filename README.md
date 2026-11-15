@@ -654,7 +654,11 @@ next one this month. The workflow calls each stack's `images.yml` from the
 head of that stack's `main`, handed the commit, and each pushes its images or
 finds them already pushed. It writes `manifest.json`: the release number;
 each stack's commit and the digest of each of its images; and the digest of
-every stock image a compose file starts or a Dockerfile builds on. It writes
+every stock image a compose file starts or a Dockerfile builds on; and, in
+`layers`, for each of those images by its digest, the layers of its
+linux/amd64 and linux/arm64 variants, each by digest and compressed size,
+which a box sums to count the bytes an update pulls
+([#118](https://github.com/rails49/installation/issues/118)). It writes
 `box-files.tar.gz`: one directory per stack holding its box files, with every
 `image:` pinned to its digest in the manifest. A box needs no clone and no git
 to run them.
