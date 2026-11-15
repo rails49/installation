@@ -33,6 +33,16 @@ const STATUS = {
   certificate: { expires: "2027-01-30T00:00:00.000Z", valid: true },
   resolves: { addresses: ["192.168.1.20"], to_this_box: true },
   updating: null,
+  download: {
+    release: "2026.11.1",
+    started: "2026-11-12T08:01:00.000Z",
+    finished: "2026-11-12T08:20:00.000Z" as string | null,
+    downloaded: true,
+    failure: null as string | null,
+    disk: null as { needs: number; free: number } | null,
+    bytes: { current: 1.6e9, total: 1.6e9 } as { current: number; total: number } | null,
+    running: false,
+  },
   back: "2026.10.2",
   failures: ["control is restarting.", "A <script> & more."],
   notes: ["control runs a local build of `1c3f69b`, not release 2026.11.0."],
@@ -74,7 +84,7 @@ const UPDATING = {
 };
 
 /** What the page says before a press while a declared stack runs. */
-const KEEPS = "<p>The railroad keeps running while the new images download. It stops while its stacks restart.</p>";
+const RESTARTS = "<p>The railroad stops while its stacks restart.</p>";
 
 /** STATUS on a box where no container of a declared stack runs but the
  *  installation's, which serves the page. */
@@ -210,7 +220,7 @@ describe("the release group", () => {
   it("says the release the box runs, what is out with the update to it, going back, and the last check", () => {
     expect(release(page)).toEqual([
       ["This box runs release 2026.11.0.", []],
-      ["Release 2026.11.1 is out.", ["Update to 2026.11.1"]],
+      ["New release 2026.11.1 is available.", ["Update to 2026.11.1"]],
       ["", ["Revert to 2026.10.2"]],
       ["Checked at 2026-11-12 08:00 UTC.", ["Check for update", "Pre-releases: off"]],
     ]);
@@ -259,15 +269,19 @@ describe("the release group", () => {
   });
 
   it("names a pre-release that is out, and the update to it, as a pre-release", () => {
-    const pre = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.2", prerelease: true, prereleases: true } });
-    expect(release(pre)[1]).toEqual(["Pre-release 2026.11.2 is out.", ["Update to pre-release 2026.11.2"]]);
+    const pre = render({
+      ...STATUS,
+      update: { ...STATUS.update, latest: "2026.11.2", prerelease: true, prereleases: true },
+      download: { ...STATUS.download, release: "2026.11.2" },
+    });
+    expect(release(pre)[1]).toEqual(["New pre-release 2026.11.2 is available.", ["Update to pre-release 2026.11.2"]]);
     expect(pre).toContain('<form method="post" action="/box/update"><button>Update to pre-release 2026.11.2</button></form>');
   });
 
   it("updates by a POST to /box/update and goes back by a POST to /box/back, then says when the railroad stops", () => {
     const update = page.indexOf('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
     const back = page.indexOf('<form method="post" action="/box/back"><button>Revert to 2026.10.2</button></form>');
-    const stops = group(page, "Release").indexOf(KEEPS);
+    const stops = group(page, "Release").indexOf(RESTARTS);
     expect(update).toBeGreaterThan(-1);
     expect(back).toBeGreaterThan(update);
     expect(stops).toBeGreaterThan(group(page, "Release").indexOf("Revert to"));
@@ -282,17 +296,73 @@ describe("the release group", () => {
   it("says nothing of the railroad stopping where no declared stack runs", () => {
     const idle = render(IDLE);
     expect(idle).toContain('<form method="post" action="/box/update"><button>Update to 2026.11.1</button></form>');
-    expect(idle).not.toContain("The railroad keeps running");
-    expect(render({ ...STATUS, stacks: STATUS.stacks.slice(0, 1) })).not.toContain("The railroad keeps running");
+    expect(idle).not.toContain("The railroad stops");
+    expect(render({ ...STATUS, stacks: STATUS.stacks.slice(0, 1) })).not.toContain("The railroad stops");
     // One stack running is enough.
     const one = render({ ...IDLE, stacks: [...IDLE.stacks.slice(0, 2), STATUS.stacks[2]!] });
-    expect(group(one, "Release")).toContain(KEEPS);
+    expect(group(one, "Release")).toContain(RESTARTS);
   });
 
   it("offers going back alone when there is no newer release", () => {
     const latest = render({ ...STATUS, update: { ...STATUS.update, latest: "2026.11.0", available: false } });
     expect(latest).not.toContain('action="/box/update"');
     expect(latest).toContain('<form method="post" action="/box/back"><button>Revert to 2026.10.2</button></form>');
+  });
+});
+
+describe("downloading a release", () => {
+  const release = (html: string) => rows(group(html, "Release"));
+  const DOWNLOADING = { ...STATUS.download, finished: null, downloaded: false, bytes: { current: 300e6, total: 1.6e9 }, running: true };
+  const with_ = (download: Partial<typeof STATUS.download> | null) =>
+    render({ ...STATUS, download: download && { ...STATUS.download, ...download } });
+
+  it("while it runs, says how far it has got, offers no update, and follows it in place", () => {
+    const html = with_(DOWNLOADING);
+    expect(release(html)[1]).toEqual(["New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.", []]);
+    expect(html).not.toContain('action="/box/update"');
+    expect(html).toContain('<script type="module" src="/box/follow.js"></script>');
+    expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
+    // The setup stays, since the railroad runs on.
+    expect(outline(html)).toContain("Stacks to run");
+    expect(release(with_({ ...DOWNLOADING, bytes: null }))[1]![0]).toBe("New release 2026.11.1 is available. Downloading it.");
+  });
+
+  it("once downloaded, offers the update, and says the railroad stops while its stacks restart", () => {
+    const html = with_({});
+    expect(release(html)[1]).toEqual(["New release 2026.11.1 is available.", ["Update to 2026.11.1"]]);
+    expect(group(html, "Release")).toContain(RESTARTS);
+    expect(html).not.toContain("/box/follow.js");
+  });
+
+  it("offers no update to a release not yet downloaded, or to an older one downloaded", () => {
+    expect(release(with_(null))[1]).toEqual(["New release 2026.11.1 is available.", []]);
+    expect(release(with_({ release: "2026.11.0" }))[1]).toEqual(["New release 2026.11.1 is available.", []]);
+  });
+
+  it("that failed says why, and that the box tries again at its next check", () => {
+    const failed = with_({ downloaded: false, failure: "Could not pull ghcr.io/rails49/control:x: toomanyrequests." });
+    expect(release(failed)[1]).toEqual([
+      "Could not download 2026.11.1: Could not pull ghcr.io/rails49/control:x: toomanyrequests. The box tries again at its next check.",
+      [],
+    ]);
+  });
+
+  it("refused for want of room says what it needs and what is free", () => {
+    const full = with_({
+      downloaded: false,
+      disk: { needs: 1.6e9, free: 0.9e9 },
+      failure: "Not enough free disk to download 2026.11.1: it needs 1.6 GB, 0.9 GB is free.",
+    });
+    expect(release(full)[1]).toEqual(["Not enough free disk to download 2026.11.1: it needs 1.6 GB, 0.9 GB is free.", []]);
+  });
+
+  it("names a pre-release as a pre-release", () => {
+    const html = render({
+      ...STATUS,
+      update: { ...STATUS.update, prerelease: true, prereleases: true },
+      download: DOWNLOADING,
+    });
+    expect(release(html)[1]![0]).toBe("New pre-release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.");
   });
 });
 
