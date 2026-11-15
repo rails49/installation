@@ -224,6 +224,24 @@ export async function wanted(read) {
 }
 
 /**
+ * The `begin()` in flight: `named` settles once it has written `DOWNLOADING`
+ * or has ended, and `written` says it has written it. Every caller of
+ * `begin()` is in `box` (#132).
+ *
+ * @type {{ named: Promise<void>, written: boolean } | null}
+ */
+let flight = null;
+
+/**
+ * Whether a `begin()` has named its release in `DOWNLOADING` and not yet
+ * ended: from then until `rails49-download` starts, as the release's box
+ * image pulls, the download runs (#132).
+ */
+export function starting() {
+  return flight?.written ?? false;
+}
+
+/**
  * Starts `rails49-download` for the release `wanted()` names, and answers
  * it; or answers null and starts nothing, where there is none, where a
  * download runs already, or while the box updates, goes back or applies the
@@ -234,12 +252,43 @@ export async function wanted(read) {
  * one inside the container is (#124); it then throws, for the log. `begun`
  * is called once `DOWNLOADING` names the release, before the image pulls.
  *
+ * A `begin()` while another is in flight starts nothing and leaves
+ * `DOWNLOADING` alone. It answers null once the other has written it (#132).
+ *
  * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
  * @param {StartIo} io
  * @param {() => void} [begun]
  * @returns {Promise<string | null>}
  */
 export async function begin(env, io, begun = () => {}) {
+  if (flight) {
+    await flight.named;
+    return null;
+  }
+  let named = () => {};
+  const mine = { named: new Promise((resolve) => (named = /** @type {() => void} */ (resolve))), written: false };
+  flight = mine;
+  try {
+    return await launch(env, io, () => {
+      mine.written = true;
+      named();
+      begun();
+    });
+  } finally {
+    flight = null;
+    named();
+  }
+}
+
+/**
+ * `begin()` with none in flight.
+ *
+ * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
+ * @param {StartIo} io
+ * @param {() => void} begun
+ * @returns {Promise<string | null>}
+ */
+async function launch(env, io, begun) {
   const to = await wanted(io.read);
   if (to === null) return null;
   if ((await stateOf(CONTAINER, io.docker)) === "running" || (await updater(io.docker)) === "running") return null;

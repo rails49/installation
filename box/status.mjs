@@ -15,6 +15,7 @@
  *   resolve: (name: string) => Promise<string[]>,
  *   stats: (id: string) => Promise<Stats | null>,
  *   image: (id: string) => Promise<{ Size: number } | null>,
+ *   starting: () => boolean,
  *   now: () => Date,
  * }} Io
  *
@@ -25,6 +26,8 @@
  * `stats` is what the Engine API's one-shot stats say of a container, or null
  * where it says nothing. `image` is what the Engine API's image inspect says
  * of an image, its unpacked size, or null where it says nothing.
+ * `starting` is whether `box` is starting `rails49-download`, as its box
+ * image pulls (#132).
  */
 
 /**
@@ -305,13 +308,14 @@ export async function status(env, io) {
   }
   const back = await backTo(io.read);
 
-  // Downloading the newest release, from its file, and whether its container
-  // runs (#121). What it did is said on the page beside the release, and is
-  // no failure of the box's.
+  // Downloading the newest release, from its file, and whether it runs: while
+  // `box` starts its container or the container runs (#121, #132). What it
+  // did is said on the page beside the release, and is no failure of the
+  // box's.
   /** @type {import("./download.mjs").Download | null} */
   const downloaded = parse(await io.read(DOWNLOADING));
   const downloader = containers.find((c) => c.Name === "/rails49-download");
-  const download = downloaded && { ...downloaded, running: downloader?.State.Status === "running" };
+  const download = downloaded && { ...downloaded, running: io.starting() || downloader?.State.Status === "running" };
 
   const disk = await io.disk();
   if (disk.free < disk.total / 10) failures.push(`The disk has ${gb(disk.free)} free of ${gb(disk.total)}.`);

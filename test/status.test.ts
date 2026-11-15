@@ -86,6 +86,7 @@ function io(facts: Partial<Io> & { files?: Record<string, string>; containers?: 
     resolve: async () => ["192.168.1.20"],
     stats: async () => null,
     image: async () => null,
+    starting: () => false,
     now: () => new Date("2026-11-12T10:00:00Z"),
     ...facts,
   };
@@ -690,6 +691,17 @@ describe("downloading a release", () => {
       running: true,
     });
     expect((await status(NAMED, io({ files }))).download).toMatchObject({ running: false });
+  });
+
+  // #132: from the moment box starts it, through the pull of its box image.
+  it("runs while box starts it, before its container does", async () => {
+    const files = { [DOWNLOADING]: JSON.stringify({ ...download, bytes: null }) };
+    expect((await status(NAMED, io({ files, starting: () => true }))).download).toMatchObject({ running: true });
+  });
+
+  it("does not run where box is not starting it and its container does not run, though it has not finished", async () => {
+    const files = { [DOWNLOADING]: JSON.stringify(download) };
+    expect((await status(NAMED, io({ files, starting: () => false }))).download).toMatchObject({ running: false });
   });
 
   it("is no failure of the box's, nor is a download that failed", async () => {

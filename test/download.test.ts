@@ -358,8 +358,11 @@ describe("the release the box downloads", () => {
 });
 
 describe("starting a download", () => {
-  function starting(options: { update?: string; download?: string; fails?: "manifest" | "pull" | "create" } = {}) {
+  function starting(
+    options: { update?: string; download?: string; fails?: "manifest" | "pull" | "create"; pulled?: Promise<unknown> } = {},
+  ) {
     const asked: string[] = [];
+    let clock = Date.parse("2026-11-15T10:00:00Z");
     const files: Record<string, string> = {
       [RECORD]: `2026-11-10T09:00:00Z  -  ->  ${OLD}  passed\n`,
       [CHECK]: JSON.stringify({ latest: NEW, checked: "2026-11-15T10:00:00.000Z" }),
@@ -374,6 +377,8 @@ describe("starting a download", () => {
           throw new Error("Error response from daemon: toomanyrequests");
         }
         if (options.fails === "create" && args[0] === "create") throw new Error("Error response from daemon: no space left on device");
+        if (options.pulled && args[1] === "inspect") throw new Error("No such image");
+        if (options.pulled && args[0] === "pull") await options.pulled;
         return "";
       },
       read: async (path: string) => files[path] ?? null,
@@ -381,14 +386,14 @@ describe("starting a download", () => {
         asked.push(`write ${path}`);
         files[path] = text;
       },
-      now: () => new Date("2026-11-15T10:00:00Z"),
+      now: () => new Date(clock),
       fetch: async (url: string) => {
         asked.push(`fetch ${url}`);
         if (options.fails === "manifest") return new Response("Not Found", { status: 404 });
         return new Response(JSON.stringify(manifest(NEW, 7)));
       },
     };
-    return { io, asked, files };
+    return { io, asked, files, tick: (ms: number) => void (clock += ms) };
   }
 
   it("runs rails49-download from the new release's box image, with the socket, and says so first", async () => {
@@ -459,6 +464,20 @@ describe("starting a download", () => {
       expect(await begin(ENV, io)).toBeNull();
       expect(asked.some((line) => line.startsWith("create"))).toBe(false);
     }
+  });
+
+  // #132: a second press, or the hourly check, while the box image pulls.
+  it("starts none while another start's box image pulls, and leaves download.json as that one wrote it", async () => {
+    let pulled = () => {};
+    const { io, asked, files, tick } = starting({ pulled: new Promise<void>((resolve) => (pulled = resolve)) });
+    const first = begin(ENV, io);
+    await vi.waitFor(() => expect(asked).toContain(`pull ${BOX_IMAGE}`));
+    tick(60_000);
+    expect(await begin(ENV, io)).toBeNull();
+    pulled();
+    expect(await first).toBe(NEW);
+    expect(asked.filter((line) => line.startsWith("create"))).toHaveLength(1);
+    expect(JSON.parse(files[DOWNLOADING]!)).toMatchObject({ started: "2026-11-15T10:00:00.000Z", finished: null });
   });
 
   it("starts none where there is nothing newer to download", async () => {
