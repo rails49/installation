@@ -368,12 +368,16 @@ container, and the railroad operates as normal
 3. Totals the bytes to download from the manifest's `layers`, as `pull.run`
    does. With less than that plus 1 GB free on the disk, it pulls nothing.
 4. Pulls every image of every declared stack, as step 2 above. JMRI is built
-   by the update.
+   by the update. An image unpacks to two or three times its layers, and the
+   registry says not how much, so the box keeps 1 GB free during a download:
+   between pulls it reads free disk again, and below 1 GB it stops. The images
+   it has pulled stay, and the next check carries on from them
+   ([#129](https://github.com/rails49/installation/issues/129)).
 
 What it is doing is in `/var/lib/rails49/download.json`: `release`,
 `started`, `finished` (null while it runs), `downloaded`, `failure` in a
 sentence, `disk`, `{ needs, free }` where it did not download for want of
-room, and `bytes`, `{ current, total }`, null for a manifest with no `layers`.
+room or `{ keeps, free }` where it stopped for it between pulls, and `bytes`, `{ current, total }`, null for a manifest with no `layers`.
 `box` writes it before reading the release's manifest from GitHub, and a
 failure before the container starts, such as GitHub refusing the manifest or
 pulling the `installation-box` image or creating the container failing, is
@@ -387,7 +391,9 @@ Downloaded 300 MB of 1.6 GB." and follows it as it follows an update. A
 failed download says "Could not download <release>: <reason> The box tries
 again at its next check.", and the next check, daily or pressed, does; Docker
 keeps the layers it has. One refused for room says "Not enough free disk to
-download <release>: it needs 1.6 GB, 0.9 GB is free." For a pre-release,
+download <release>: it needs 1.6 GB, 0.9 GB is free." One stopped between
+pulls says "Stopped downloading <release>: 0.9 GB is free, and the box keeps
+1 GB free. The box tries again at its next check." For a pre-release,
 "release" reads "pre-release".
 
 ## A page on another origin
