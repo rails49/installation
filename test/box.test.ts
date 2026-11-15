@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { beginDownload } from "../box/download.mjs";
 import { handle } from "../box/server.mjs";
 import { offerPrereleases } from "../box/setup.mjs";
 
@@ -298,6 +299,41 @@ describe("POST /box/check", () => {
     const on = box("systemd");
     await ask(on, "POST", "/box/check");
     expect(on.downloads).toBe(1);
+  });
+
+  // #125: the press is answered while the new release's box image still pulls.
+  it("answers at once, while the download it started still pulls, and the page already names it", async () => {
+    const files: Record<string, string> = {
+      "/var/lib/rails49/deploys/installation": "2026-11-10T09:00:00Z  -  ->  2026.11.0  passed\n",
+    };
+    const digest = `sha256:${"7".repeat(64)}`;
+    const io = {
+      // The image is not on the box, and its pull does not finish.
+      docker: async (args: string[]) => {
+        if (args[0] === "image" && args[1] === "inspect") throw new Error("No such image");
+        if (args[0] === "pull") return await new Promise<string>(() => {});
+        return "";
+      },
+      read: async (path: string) => files[path] ?? null,
+      write: async (path: string, text: string) => void (files[path] = text),
+      now: () => new Date("2026-11-15T10:00:00Z"),
+      fetch: async () =>
+        new Response(JSON.stringify({ stacks: { installation: { commit: "inst7", images: { "installation-box": digest } } } })),
+    };
+    const on = {
+      ...box("systemd"),
+      check: async () => {
+        files["/var/lib/rails49/check.json"] = JSON.stringify({ latest: "2026.11.2", checked: "2026-11-15T10:00:00.000Z" });
+      },
+      download: () => beginDownload({ BOX_DOMAIN: "example.org", BOX_UIS: "control" }, io),
+    };
+    const answer = await handle({ method: "POST", url: "/box/check", headers: { host: HOST }, body: "" }, on);
+    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(JSON.parse(files["/var/lib/rails49/download.json"]!)).toMatchObject({
+      release: "2026.11.2",
+      finished: null,
+      failure: null,
+    });
   });
 
   it("is refused from a page on another origin, and checks nothing", async () => {
