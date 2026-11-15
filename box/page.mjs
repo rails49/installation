@@ -21,9 +21,13 @@ import { gb, STACKS, when } from "./status.mjs";
  *  whenever the page is served and is no railroad. */
 const RESTARTS = "<p>The railroad stops while its stacks restart.</p>";
 
-/** What the page loads while a run goes: the script that follows it in place,
- *  and for a browser that runs no script, a reload every 5 seconds (#117). */
-const FOLLOW = '\n<noscript><meta http-equiv="refresh" content="5"></noscript>\n<script type="module" src="/box/follow.js"></script>';
+/** What the page loads while a run or a download goes: the script that
+ *  follows it in place, told which of the two it follows, since only the end
+ *  of a run reloads the page (#130); and for a browser that runs no script, a
+ *  reload every 5 seconds (#117).
+ *  @param {"run" | "download"} what */
+const follow = (what) =>
+  `\n<noscript><meta http-equiv="refresh" content="5"></noscript>\n<script type="module" src="/box/follow.js" data-follows="${what}"></script>`;
 
 /** Each stack by the name the page gives it, in the order the page lists
  *  them. */
@@ -91,7 +95,7 @@ export function render(status, now = new Date()) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">${running || status.download?.running ? FOLLOW : ""}
+<meta name="viewport" content="width=device-width, initial-scale=1">${running ? follow("run") : status.download?.running ? follow("download") : ""}
 <title>Server (box) status &amp; updates: ${escape(status.name)}</title>
 <link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>
