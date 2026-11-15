@@ -2,7 +2,8 @@
 // answers (#65 decision 16), with updating and going back on a press
 // (decisions 2, 10 and 13), and the setup: the stacks the box runs and their
 // devices (#69 decisions 9 to 15). It loads look's stylesheet and bundle, its
-// own stylesheet and the script that ticks control from under `/box`. A
+// own stylesheet and the script that ticks control from under `/box`, and
+// while a run goes the script that follows it in place (#117). A
 // toggle beside "Check for update" has the check take pre-releases (#105).
 //
 // The failures come first. Then two parts of bordered groups: the release
@@ -17,6 +18,10 @@ import { gb, STACKS, when } from "./status.mjs";
  *  running (#96). The installation is left out, since it runs whenever the
  *  page is served and is no railroad. */
 const KEEPS = "<p>The railroad keeps running while the new images download. It stops while its stacks restart.</p>";
+
+/** What the page loads while a run goes: the script that follows it in place,
+ *  and for a browser that runs no script, a reload every 5 seconds (#117). */
+const FOLLOW = '\n<noscript><meta http-equiv="refresh" content="5"></noscript>\n<script type="module" src="/box/follow.js"></script>';
 
 /** Each stack by the name the page gives it, in the order the page lists
  *  them. */
@@ -63,8 +68,8 @@ export function render(status, now = new Date()) {
     })
     .join("\n");
 
-  // While one runs the page says what it is doing and reloads itself; the
-  // door and `box` are recreated on the way, so a reload may find neither.
+  // While one runs the page says what it is doing and follows it in place;
+  // the door and `box` are recreated on the way, so a fetch may find neither.
   const running = status.updating?.running ? status.updating : null;
   const tested = docker.tested.length ? `, release tested on ${docker.tested.map(escape).join(" and ")}` : "";
 
@@ -84,7 +89,7 @@ export function render(status, now = new Date()) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">${running ? '\n<meta http-equiv="refresh" content="5">' : ""}
+<meta name="viewport" content="width=device-width, initial-scale=1">${running ? FOLLOW : ""}
 <title>Server (box) status &amp; updates: ${escape(status.name)}</title>
 <link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>

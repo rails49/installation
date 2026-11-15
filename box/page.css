@@ -1,7 +1,7 @@
 /* The status page's own: the parts and their groups, each with a bold title
    and a light tint, the rows with their buttons, the table, the setup, the
-   items and the step list. The band is
-   look's. */
+   items, the step list, and the line that says the box has not answered.
+   The band is look's. */
 body {
   margin: 0;
   background: var(--sl-color-neutral-0);
@@ -79,7 +79,8 @@ legend {
 .dot.bad { background: var(--sl-color-danger-600); }
 .dot.off { background: var(--sl-color-neutral-400); }
 
-.updating { font-weight: var(--sl-font-weight-semibold); }
+.updating,
+.restarting { font-weight: var(--sl-font-weight-semibold); }
 
 .steps {
   list-style: none;
