@@ -66,7 +66,8 @@ const ASSETS = {
  * setup the page posted as its form's body; each says why it will not.
  * `box.prereleases` writes whether the check takes pre-releases.
  * `box.download` starts downloading the release a check found, where it is
- * newer than both the one the box runs and the one it has downloaded (#121).
+ * newer than the one the box runs and not the one it has downloaded (#121,
+ * #126).
  * It answers once `download.json` names the release, not once the release's
  * box image has pulled, so a press is answered at once and the page it loads
  * follows the download (#125). It does not reject: a failure goes to the log
