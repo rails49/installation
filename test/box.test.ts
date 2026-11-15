@@ -17,7 +17,7 @@ const STATUS = {
   name: "example.org",
   address: "192.168.1.20",
   release: null,
-  stacks: [{ stack: "installation", state: "running", commit: null, local_build: true, memory: 50e6 }],
+  stacks: [{ stack: "installation", state: "running", commit: null, local_build: true, memory: 50e6, disk: 365e6 }],
   update: {
     latest: null,
     prerelease: false,

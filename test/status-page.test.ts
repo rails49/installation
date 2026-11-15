@@ -13,9 +13,9 @@ const STATUS = {
   address: "192.168.1.20",
   release: "2026.11.0",
   stacks: [
-    { stack: "installation", state: "running", commit: "8f7e6d5c4b3a29180716253443526170819a0b1c", local_build: false, memory: 60 * 2 ** 20 },
-    { stack: "control", state: "restarting", commit: "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f", local_build: true, memory: 1200 * 2 ** 20 },
-    { stack: "jmri", state: "running", commit: null, local_build: false, memory: 480 * 2 ** 20 },
+    { stack: "installation", state: "running", commit: "8f7e6d5c4b3a29180716253443526170819a0b1c", local_build: false, memory: 60 * 2 ** 20, disk: 365e6 },
+    { stack: "control", state: "restarting", commit: "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f", local_build: true, memory: 1200 * 2 ** 20, disk: 1.2e9 },
+    { stack: "jmri", state: "running", commit: null, local_build: false, memory: 480 * 2 ** 20, disk: 650e6 },
   ],
   update: {
     latest: "2026.11.1",
@@ -308,8 +308,8 @@ describe("the status groups", () => {
       ...STATUS,
       stacks: [
         ...STATUS.stacks,
-        { stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null },
-        { stack: "occupancy-service", state: "running", commit: null, local_build: false, memory: 2500 * 2 ** 20 },
+        { stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null, disk: null },
+        { stack: "occupancy-service", state: "running", commit: null, local_build: false, memory: 2500 * 2 ** 20, disk: 30e6 },
       ],
     });
     expect(group(all, "Stacks")).toContain('<th>Stack</th><th>State</th><th class="number">Memory</th><th>Commit</th>');

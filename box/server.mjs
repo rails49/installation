@@ -224,6 +224,22 @@ function stats(id) {
   });
 }
 
+/** What the Engine API's image inspect says of an image, its unpacked size
+ *  among the rest, or null where it answers anything but 200.
+ *  @param {string} id
+ *  @returns {Promise<{ Size: number } | null>} */
+function image(id) {
+  return new Promise((resolve, reject) => {
+    request({ socketPath: "/var/run/docker.sock", path: `/images/${encodeURIComponent(id)}/json` }, async (answer) => {
+      let body = "";
+      for await (const chunk of answer) body += chunk;
+      resolve(answer.statusCode === 200 ? JSON.parse(body) : null);
+    })
+      .on("error", reject)
+      .end();
+  });
+}
+
 // Listening, only when run rather than imported by the tests.
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   // On a Mac this is the PID 1 of Docker Desktop's virtual machine, which is
@@ -254,6 +270,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     certificate,
     resolve: async (/** @type {string} */ name) => (await lookup(name, { all: true })).map((a) => a.address),
     stats,
+    image,
     now,
   };
   const startIo = { docker, read, write: writeFile, now, fetch };
