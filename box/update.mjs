@@ -29,6 +29,7 @@ import { appendFile, mkdir, readdir, readFile, rename, rm, statfs, writeFile } f
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 
+import { isDownloaded } from "./download.mjs";
 import {
   backTo,
   CHECK,
@@ -577,9 +578,7 @@ export async function start(action, env, io) {
     if (!latest || latest === from) return "This box runs the latest release.";
     if (from !== "-" && older(latest, from)) return `This box runs ${from}, newer than the latest release, ${latest}.`;
     to = latest;
-    /** @type {{ release?: string, downloaded?: boolean } | null} */
-    const got = JSON.parse((await io.read(DOWNLOADING)) || "null");
-    if (got?.release !== to || !got.downloaded) return `Release ${to} is not downloaded yet.`;
+    if (!isDownloaded(to, JSON.parse((await io.read(DOWNLOADING)) || "null"))) return `Release ${to} is not downloaded yet.`;
   } else {
     to = action === "back" ? await backTo(io.read) : await currentRelease(io.read);
     if (to === null) return action === "back" ? "There is no release to go back to." : NO_RELEASE;

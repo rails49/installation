@@ -10,6 +10,7 @@
 // The failures come first. Then two parts of bordered groups: the release
 // and the setup, and the status (#111).
 
+import { isDownloaded } from "./download.mjs";
 import { gb, STACKS, when } from "./status.mjs";
 
 /** @typedef {Awaited<ReturnType<typeof import("./status.mjs").status>> & { setup: Awaited<ReturnType<typeof import("./setup.mjs").form>> }} Status */
@@ -165,8 +166,8 @@ function release({ release, update, back, download }, railroad) {
         : update.latest
           ? "It is the latest release."
           : "No release is out yet.";
-  const offer = update.available && update.latest && download?.release === update.latest && download.downloaded
-    ? [`<form method="post" action="/box/update"><button>Update to ${update.prerelease ? "pre-release " : ""}${escape(update.latest)}</button></form>`]
+  const offer = update.available && isDownloaded(update.latest, download)
+    ? [`<form method="post" action="/box/update"><button>Update to ${update.prerelease ? "pre-release " : ""}${escape(update.latest ?? "")}</button></form>`]
     : [];
   const check = update.could_not_check
     ? `Could not check. ${update.succeeded ? `The last check that succeeded was at ${when(update.succeeded)}.` : "No check has succeeded yet."}`
