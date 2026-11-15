@@ -6,9 +6,9 @@
  * in, so a test needs no daemon and no box.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { begin, run, wanted, type Io } from "../box/download.mjs";
+import { begin, beginDownload, run, wanted, type Io } from "../box/download.mjs";
 import type { PullMessage } from "../box/update.mjs";
 
 const BACK = "2026.10.0";
@@ -372,6 +372,21 @@ describe("starting a download", () => {
     // The next check tries again.
     files[CHECK] = JSON.stringify({ latest: NEW, checked: "2026-11-15T11:00:00.000Z" });
     expect(await wanted(io.read)).toBe(NEW);
+  });
+
+  // #125: what box does after a check answers before the pull, and its failure behind that is not lost.
+  it("answers once the release is named, and records a failure after that as the download's", async () => {
+    const { io, files } = starting({ fails: "pull" });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await beginDownload(ENV, io);
+      expect(JSON.parse(files[DOWNLOADING]!)).toMatchObject({ release: NEW, finished: null, failure: null });
+      const failure = "Could not start rails49-download: Error response from daemon: toomanyrequests.";
+      await vi.waitFor(() => expect(JSON.parse(files[DOWNLOADING]!)).toMatchObject({ failure }));
+      expect(logged).toHaveBeenCalledWith(`downloading a new release: ${failure}`);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it("starts none while one runs, or while the box updates, goes back or applies the setup", async () => {

@@ -56,6 +56,10 @@ const EVERY = 1000;
  * @typedef {Pick<import("./update.mjs").Io, "docker" | "pull" | "download" | "unpack" | "rename" | "remove" | "list" | "read" | "write" | "now"> & { free: () => Promise<number> }} Io
  *
  * `free` is the bytes free on the file system Docker keeps its images on.
+ *
+ * @typedef {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} StartIo
+ *
+ * What `begin()` is handed: the release's manifest comes from GitHub.
  */
 
 /** A step that failed, said in a sentence. */
@@ -203,13 +207,15 @@ export async function wanted(read) {
  *
  * It writes `DOWNLOADING` before its first step that can fail, and a step
  * that fails before the container starts is the download's failure there, as
- * one inside the container is (#124); it then throws, for the log.
+ * one inside the container is (#124); it then throws, for the log. `begun`
+ * is called once `DOWNLOADING` names the release, before the image pulls.
  *
  * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
- * @param {{ docker: Io["docker"], read: Io["read"], write: Io["write"], now: Io["now"], fetch: (url: string, init?: RequestInit) => Promise<Response> }} io
+ * @param {StartIo} io
+ * @param {() => void} [begun]
  * @returns {Promise<string | null>}
  */
-export async function begin(env, io) {
+export async function begin(env, io, begun = () => {}) {
   const to = await wanted(io.read);
   if (to === null) return null;
   if ((await stateOf(CONTAINER, io.docker)) === "running" || (await updater(io.docker)) === "running") return null;
@@ -225,6 +231,7 @@ export async function begin(env, io) {
     bytes: null,
   };
   await io.write(DOWNLOADING, text(state));
+  begun();
   try {
     const image = (await boxImage(to, io.read)) ?? (await fetchedBoxImage(to, io.fetch));
     const command = ["node", "/box/update.mjs", "download", from, to];
@@ -238,6 +245,28 @@ export async function begin(env, io) {
     await io.write(DOWNLOADING, text(state));
     throw new Error(state.failure);
   }
+}
+
+/**
+ * What `box` does after a check: `begin()`, answered once `DOWNLOADING` names
+ * the release, or once there is none to download, while the release's box
+ * image may still pull (#125). A failure goes to the log, and `begin()` has
+ * recorded it in `DOWNLOADING` (#124); this never rejects.
+ *
+ * @param {{ BOX_DOMAIN: string, BOX_UIS: string }} env
+ * @param {StartIo} io
+ * @returns {Promise<void>}
+ */
+export function beginDownload(env, io) {
+  return new Promise((resolve) => {
+    begin(env, io, resolve).then(
+      () => resolve(),
+      (error) => {
+        console.error(`downloading a new release: ${message(error)}`);
+        resolve();
+      },
+    );
+  });
 }
 
 /**

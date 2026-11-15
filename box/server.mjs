@@ -29,7 +29,7 @@ import { promisify } from "node:util";
 
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
-import { begin } from "./download.mjs";
+import { beginDownload } from "./download.mjs";
 import { render } from "./page.mjs";
 import { apply, form, offerPrereleases } from "./setup.mjs";
 import { CHECK, message, prereleases, status } from "./status.mjs";
@@ -67,6 +67,10 @@ const ASSETS = {
  * `box.prereleases` writes whether the check takes pre-releases.
  * `box.download` starts downloading the release a check found, where it is
  * newer than both the one the box runs and the one it has downloaded (#121).
+ * It answers once `download.json` names the release, not once the release's
+ * box image has pulled, so a press is answered at once and the page it loads
+ * follows the download (#125). It does not reject: a failure goes to the log
+ * and to `download.json` (#124).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
  * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void> }} box
@@ -301,15 +305,10 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   };
 
   // Starts downloading the release the last check found, where there is one
-  // to download. A failure goes to the log and, as the download's, to the
-  // page (#124), and is tried again after the next check.
-  const download = async () => {
-    try {
-      await begin(env, startIo);
-    } catch (error) {
-      console.error(`downloading a new release: ${message(error)}`);
-    }
-  };
+  // to download, and answers before its box image pulls (#125). A failure
+  // goes to the log and, as the download's, to the page (#124), and is tried
+  // again after the next check.
+  const download = () => beginDownload(env, startIo);
   // Asked every hour, and as `box` starts: checks when a day has passed since
   // the last check that succeeded, and downloads what a check found, so a
   // download a reboot stopped carries on.
