@@ -218,8 +218,11 @@ export async function run(action, from, to, env, io) {
       });
       images.set(stack, listed.split("\n").filter(Boolean));
     }
-    const count = [...images.values()].flat().length;
     const bytes = await tally([...images.values()].flat(), to, io);
+    // Each image is pulled once, by the first stack that lists it.
+    const pulling = new Set(await toPull([...images.values()].flat(), io));
+    for (const [stack, listed] of images) images.set(stack, listed.filter((image) => pulling.delete(image)));
+    const count = [...images.values()].flat().length;
     let index = 0;
     for (const stack of stacks) {
       const step = `Pulling ${stack.stack}'s images.`;
@@ -321,6 +324,39 @@ export function composed(stack, release, env, docker, args) {
 }
 
 /**
+ * Whether the box has an image by the digest it is named with. One named by
+ * a tag alone it has not, since the tag can move.
+ *
+ * @param {Pick<Io, "docker">} io
+ * @returns {Promise<(image: string) => boolean>}
+ */
+async function held(io) {
+  const listed = await io.docker(["image", "ls", "--digests", "--no-trunc", "--format", "{{json .}}"]);
+  const have = new Set(
+    listed
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => /** @type {{ Repository: string, Digest: string }} */ (JSON.parse(line)))
+      .map(({ Repository, Digest }) => `${Repository}@${Digest}`),
+  );
+  return (image) => have.has(`${repository({ image })}@${image.split("@")[1] ?? ""}`);
+}
+
+/**
+ * The images of `images` a run pulls: each once, and none the box has by its
+ * digest. A pull of one the box has still asks the registry, for seconds
+ * (#136).
+ *
+ * @param {string[]} images
+ * @param {Pick<Io, "docker">} io
+ * @returns {Promise<string[]>}
+ */
+export async function toPull(images, io) {
+  const there = await held(io);
+  return [...new Set(images)].filter((image) => !there(image));
+}
+
+/**
  * The layers a run downloads, each by the first 12 hex digits of its digest,
  * as Docker's stream names it, with the bytes downloaded of its size; or null
  * where the release's manifest lists no layers for an image the box does not
@@ -340,20 +376,11 @@ export async function tally(images, release, io) {
   const layers = manifest.layers;
   if (!layers) return null;
   const platform = (await io.docker(["version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"])).trim();
-  const listed = await io.docker(["image", "ls", "--digests", "--no-trunc", "--format", "{{json .}}"]);
-  const have = new Set(
-    listed
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => /** @type {{ Repository: string, Digest: string }} */ (JSON.parse(line)))
-      .map(({ Repository, Digest }) => `${Repository}@${Digest}`),
-  );
+  const there = await held(io);
   /** @param {string} image */
   const digest = (image) => image.split("@")[1] ?? "";
   /** @param {string} image */
   const of = (image) => (digest(image) ? layers[digest(image)]?.[platform] : undefined);
-  /** @param {string} image */
-  const there = (image) => have.has(`${repository({ image })}@${digest(image)}`);
   const pulled = images.filter((image) => !there(image));
   if (pulled.some((image) => !of(image))) return null;
   const had = new Set(images.filter(there).flatMap((image) => (of(image) ?? []).map((layer) => layer.digest)));

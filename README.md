@@ -287,8 +287,11 @@ starts the container `rails49-update` from the target release's
 1. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
    into `/var/lib/rails49/releases/<release>/`, unless they are there already.
 2. Pulls every image of every declared stack through the Engine API
-   (`POST /images/create` on the socket), and builds JMRI. After a download
-   every image is on the box and this takes seconds. A failure here
+   (`POST /images/create` on the socket), and builds JMRI. It pulls each
+   image once, however many services name it, and skips one the box has by
+   its digest, which a pull would still ask the registry about
+   ([#136](https://github.com/rails49/installation/issues/136)). After a
+   download every image is on the box and this is the JMRI build. A failure here
    changes nothing on the box, and the railroad keeps running throughout.
 3. Brings the declared stacks up in order: the installation, control, dccex,
    JMRI, occupancy. Each is started with `--env-file /etc/rails49/box.env` and

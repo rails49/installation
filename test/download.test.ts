@@ -69,7 +69,16 @@ function* stream(image: string): Generator<PullMessage> {
  * image.
  */
 function box(
-  options: { free?: number | number[]; fail?: string; files?: Record<string, string>; layers?: boolean } = {},
+  options: {
+    free?: number | number[];
+    fail?: string;
+    files?: Record<string, string>;
+    layers?: boolean;
+    /** How many services list control's image, one line each. */
+    services?: number;
+    /** Images the box has besides those below, by their digest. */
+    has?: string[];
+  } = {},
 ) {
   // A list is free disk at each read, its last repeated.
   const frees = Array.isArray(options.free) ? [...options.free] : [options.free ?? 20e9];
@@ -91,7 +100,9 @@ function box(
       asked.push(line);
       if (options.fail && line.includes(options.fail)) throw new Error(`${options.fail} failed`);
       if (line.endsWith("config --images")) {
-        return line.includes("control/compose.yaml") ? `${CONTROL_IMAGE}\n` : `${BOX_IMAGE}\n${TRAEFIK_IMAGE}\n`;
+        return line.includes("control/compose.yaml")
+          ? `${CONTROL_IMAGE}\n`.repeat(options.services ?? 1)
+          : `${BOX_IMAGE}\n${TRAEFIK_IMAGE}\n`;
       }
       if (line === "version --format {{.Server.Os}}/{{.Server.Arch}}") return "linux/arm64\n";
       if (line === "ps -aq") return "a\nb\n";
@@ -107,6 +118,12 @@ function box(
           // STALE's box image, which a container runs.
           { Repository: "ghcr.io/rails49/installation-box", Tag: "<none>", Digest: DIGEST(4), ID: "sha256:old-box" },
           { Repository: "eclipse-temurin", Tag: "21", Digest: DIGEST(2), ID: "sha256:other" },
+          ...(options.has ?? []).map((image) => ({
+            Repository: image.replace(/@.*$/, "").replace(/:[^/:]*$/, ""),
+            Tag: "<none>",
+            Digest: image.split("@")[1],
+            ID: `sha256:has-${image.split("@")[1]}`,
+          })),
         ]
           .map((image) => JSON.stringify(image))
           .join("\n");
@@ -175,6 +192,15 @@ describe("a download that passes", () => {
     // recreated.
     expect(asked.some((line) => /\b(up|down|stop|start|build|restart|create)\b/.test(line) && !line.startsWith("pull"))).toBe(false);
     expect(asked.some((line) => line.includes("jmri"))).toBe(false);
+  });
+
+  // #136: a pull of an image the box has still asks the registry, for
+  // seconds, and `config --images` lists an image once per service.
+  it("pulls each image once, and none the box has by its digest", async () => {
+    const { io, asked, state } = box({ services: 6, has: [TRAEFIK_IMAGE] });
+    await run(OLD, NEW, ENV, io);
+    expect(asked.filter((line) => line.startsWith("pull"))).toEqual([`pull ${BOX_IMAGE}`, `pull ${CONTROL_IMAGE}`]);
+    expect(state()).toMatchObject({ downloaded: true, bytes: { current: 600e6, total: 600e6 } });
   });
 
   it("says it has downloaded the release, with every byte of the total", async () => {
