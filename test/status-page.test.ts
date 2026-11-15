@@ -347,6 +347,20 @@ describe("downloading a release", () => {
     ]);
   });
 
+  it("that failed before its container started says why too (#124)", () => {
+    for (const failure of [
+      "GitHub answered 404 for release 2026.11.1's manifest.",
+      "Could not start rails49-download: Error response from daemon: toomanyrequests.",
+      "Could not start rails49-download: Error response from daemon: no space left on device.",
+    ]) {
+      const failed = with_({ downloaded: false, failure, running: false });
+      expect(release(failed)[1]).toEqual([
+        `Could not download 2026.11.1: ${failure} The box tries again at its next check.`,
+        [],
+      ]);
+    }
+  });
+
   it("refused for want of room says what it needs and what is free", () => {
     const full = with_({
       downloaded: false,
