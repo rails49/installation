@@ -27,6 +27,7 @@ import {
   manifestPath,
   message,
   older,
+  PROGRESS,
   RELEASES,
 } from "./status.mjs";
 import { boxImage, composed, counted, download, DOWNLOAD, oneShot, pinned, pull, sentence, stateOf, tally, toPull, updater } from "./update.mjs";
@@ -197,6 +198,30 @@ async function drop(keep, io) {
  */
 export function isDownloaded(latest, download) {
   return Boolean(latest) && download?.release === latest && download?.downloaded === true;
+}
+
+/**
+ * The release the status page offers "Update to" for, or null: the one the
+ * last check named, where it is newer than the one the box runs and
+ * downloaded, and no update, going back or applying the setup runs. It reads
+ * files and runs no Docker command (#147), so it takes a run to be going
+ * until `update.json` says when it finished. After a run that stopped before
+ * it finished, as at a reboot, the page offers the update again and this
+ * answers null until the next run.
+ *
+ * @param {(path: string) => Promise<string | null>} read
+ * @returns {Promise<string | null>}
+ */
+export async function offered(read) {
+  /** @type {{ finished: string | null } | null} */
+  const progress = JSON.parse((await read(PROGRESS)) || "null");
+  if (progress !== null && progress.finished === null) return null;
+  /** @type {{ latest?: string | null }} */
+  const check = JSON.parse((await read(CHECK)) || "{}");
+  const latest = check.latest ?? null;
+  const runs = await currentRelease(read);
+  if (latest === null || (runs !== null && !older(runs, latest))) return null;
+  return isDownloaded(latest, JSON.parse((await read(DOWNLOADING)) || "null")) ? latest : null;
 }
 
 /**
