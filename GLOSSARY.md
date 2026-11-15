@@ -65,9 +65,8 @@ _Avoid_: upgrade, deploy (what `deploy.sh` does)
 
 **Downloading a release**:
 Fetching a release's files and images while the box keeps running its
-current release, so that updating to it only restarts the stacks. The box
-does it by itself once a check finds a newer release; see
-[#121](https://github.com/rails49/installation/issues/121).
+current release, so that updating to it only restarts the stacks; see
+[README](README.md#downloading-a-release).
 _Avoid_: pre-pull, staging, prefetch
 
 **Going back**:
