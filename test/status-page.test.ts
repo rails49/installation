@@ -479,7 +479,15 @@ describe("while an update, going back or applying runs", () => {
     ]);
   });
 
-  it("while it pulls, shows the images done of all of them, and the image by its last name with its bytes", () => {
+  it("while it pulls, shows the run's bytes downloaded of its total, in the bar and beside the image", () => {
+    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
+    const html = at("pull", { pull: { image, index: 6, count: 7, current: 300e6, total: 1.2e9, run: { current: 1.1e9, total: 1.6e9 } } });
+    expect(group(html, "Release")).toContain(
+      '<li class="current">Pull images <progress value="1100000000" max="1600000000">1.1 GB of 1.6 GB</progress> occupancy-service; 1.1 GB of 1.6 GB</li>',
+    );
+  });
+
+  it("from a run whose manifest lists no layers, shows the images done of all of them, and the image by its last name with its bytes", () => {
     const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
     const html = at("pull", { pull: { image, index: 6, count: 7, current: 300e6, total: 1.2e9 } });
     expect(group(html, "Release")).toContain(
