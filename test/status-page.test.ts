@@ -40,7 +40,7 @@ const STATUS = {
     finished: "2026-11-12T08:20:00.000Z" as string | null,
     downloaded: true,
     failure: null as string | null,
-    disk: null as { needs: number; free: number } | null,
+    disk: null as { needs: number; free: number } | { keeps: number; free: number } | null,
     bytes: { current: 1.6e9, total: 1.6e9 } as { current: number; total: number } | null,
     running: false,
   },
@@ -369,6 +369,18 @@ describe("downloading a release", () => {
       failure: "Not enough free disk to download 2026.11.1: it needs 1.6 GB, 0.9 GB is free.",
     });
     expect(release(full)[1]).toEqual(["Not enough free disk to download 2026.11.1: it needs 1.6 GB, 0.9 GB is free.", []]);
+  });
+
+  it("stopped for want of room between image pulls says what is free, what the box keeps, and that it tries again (#129)", () => {
+    const stopped = with_({
+      downloaded: false,
+      disk: { keeps: 1e9, free: 0.9e9 },
+      failure: "Stopped downloading 2026.11.1: 0.9 GB is free, and the box keeps 1 GB free.",
+    });
+    expect(release(stopped)[1]).toEqual([
+      "Stopped downloading 2026.11.1: 0.9 GB is free, and the box keeps 1 GB free. The box tries again at its next check.",
+      [],
+    ]);
   });
 
   it("names a pre-release as a pre-release", () => {

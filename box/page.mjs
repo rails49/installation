@@ -188,7 +188,9 @@ function release({ release, update, back, download }, railroad) {
 
 /**
  * What the page says of a newer release that is out: that it is available,
- * and how far downloading it has got, or why it is not downloaded (#121).
+ * and how far downloading it has got, or why it is not downloaded (#121):
+ * refused for want of room before it pulls, or stopped for it between pulls
+ * (#129).
  *
  * @param {Status["update"]} update
  * @param {Status["download"]} download
@@ -203,6 +205,9 @@ function available(update, download) {
     return ours.bytes?.total ? `${is} Downloaded ${size(ours.bytes.current)} of ${size(ours.bytes.total)}.` : `${is} Downloading it.`;
   }
   if (ours.finished === null) return is;
+  if (ours.disk && "keeps" in ours.disk) {
+    return `Stopped downloading ${latest}: ${gb(ours.disk.free)} is free, and the box keeps ${ours.disk.keeps / 1e9} GB free. The box tries again at its next check.`;
+  }
   if (ours.disk) {
     return `Not enough free disk to download ${latest}: it needs ${gb(ours.disk.needs)}, ${gb(ours.disk.free)} is free.`;
   }
