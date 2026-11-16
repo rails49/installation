@@ -268,13 +268,14 @@ export async function status(env, io) {
       const of = commit ? `of \`${commit.slice(0, 7)}\`` : "with no commit named";
       notes.push(`${stack} runs a local build ${of}${release ? `, not release ${release}` : ""}.`);
     }
-    // What the running containers use, as `docker stats` says it.
+    // What the running containers use, as `docker stats` says it. None where
+    // no container reports a usage, as where the kernel's memory controller is off.
     const running = own.filter((c) => c.State.Status === "running");
-    const used = (await Promise.all(running.map((c) => io.stats(c.Id)))).map((stats) => {
-      const { usage = 0, stats: more = {} } = stats?.memory_stats ?? {};
-      return usage - (more.inactive_file ?? more.total_inactive_file ?? 0);
+    const used = (await Promise.all(running.map((c) => io.stats(c.Id)))).flatMap((stats) => {
+      const { usage, stats: more = {} } = stats?.memory_stats ?? {};
+      return usage === undefined ? [] : [usage - (more.inactive_file ?? more.total_inactive_file ?? 0)];
     });
-    const memory = running.length ? used.reduce((a, b) => a + b, 0) : null;
+    const memory = used.length ? used.reduce((a, b) => a + b, 0) : null;
     // What the distinct images its containers run take unpacked. A layer
     // shared with another stack counts in each (#119).
     const images = [...new Map(own.map((c) => [c.Image, c])).values()];
