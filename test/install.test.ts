@@ -48,6 +48,7 @@ echo "1.1.1.1 via 192.168.1.1 dev eth0 src 192.168.1.20 uid 0"
   "apt-get": `#!/bin/sh
 echo "apt-get $*" >> /out/calls
 case " $* " in *" docker-ce "*) cp /stubs/docker /usr/local/bin/docker ;; esac
+case " $* " in *" avahi-daemon "*) mkdir -p /etc/avahi && cp /stubs/avahi-daemon.conf /etc/avahi/ ;; esac
 `,
   systemctl: `#!/bin/sh
 echo "systemctl $*" >> /out/calls
@@ -61,6 +62,16 @@ case $1 in
   run) cat /fixtures/update.json > /var/lib/rails49/update.json; echo 0123abcd ;;
   wait) echo 0 ;;
 esac
+`;
+
+/** The settings Debian's avahi-daemon ships, as far as \`install.sh\` changes them. */
+const AVAHI = `[server]
+use-ipv4=yes
+use-ipv6=yes
+
+[publish]
+#publish-aaaa-on-ipv4=yes
+#publish-a-on-ipv6=no
 `;
 
 const PASSED = { step: "Done.", passed: true, failure: null };
@@ -79,7 +90,7 @@ type Options = {
 
 /** Runs `install.sh` on a fresh box shaped by `before`. Returns its exit
  *  status and output, the stubs' calls, and every path it left under
- *  `/etc/rails49`, `/etc/docker` and `/var/lib/rails49` as
+ *  `/etc/rails49`, `/etc/docker`, `/etc/avahi` and `/var/lib/rails49` as
  *  `{ owner: "user:group mode", text }`, and `/boot/firmware/cmdline.txt`. */
 function installed({
   args = [],
@@ -100,6 +111,7 @@ function installed({
 
   for (const [name, text] of Object.entries(STUBS)) writeFileSync(join(stubs, "bin", name), text, { mode: 0o755 });
   writeFileSync(join(stubs, "docker"), DOCKER, { mode: 0o755 });
+  writeFileSync(join(stubs, "avahi-daemon.conf"), AVAHI);
   writeFileSync(join(scratch, "controllers"), controllers);
 
   writeFileSync(join(fixtures, "manifest.json"), `${JSON.stringify({ release: "2026.11.3" }, null, 2)}\n`);
@@ -125,7 +137,7 @@ function installed({
     `${user ? `su -s /bin/sh ${user} -c 'sh /install.sh "$@"' -- install.sh` : "sh /install.sh"} "$@" >/out/stdout 2>/out/stderr`,
     "echo $? > /out/status",
     "cp /boot/firmware/cmdline.txt /out/ 2>/dev/null || true",
-    `find /etc/rails49 /etc/docker /var/lib/rails49 2>/dev/null | sort | while read -r path; do
+    `find /etc/rails49 /etc/docker /etc/avahi /var/lib/rails49 2>/dev/null | sort | while read -r path; do
        printf '== %s %s\\n' "$path" "$(stat -c '%U:%G %a' "$path")"
        [ -d "$path" ] || cat "$path"
      done > /out/report`,
@@ -227,6 +239,13 @@ describe("installing a fresh box", () => {
     expect(run.calls.filter((call) => call.includes("docker-ce"))).toEqual([]);
   });
 
+  it("has avahi-daemon answer with the box's IPv4 address only, and restarts it", () => {
+    expect(run.files["/etc/avahi/avahi-daemon.conf"]?.text).toBe(
+      "[server]\nuse-ipv4=yes\nuse-ipv6=no\n\n[publish]\npublish-aaaa-on-ipv4=no\n#publish-a-on-ipv6=no\n",
+    );
+    expect(run.calls).toContain("systemctl restart avahi-daemon");
+  });
+
   it("downloads the latest full release and unpacks its box files", () => {
     expect(run.calls).toContain(
       "curl -fsSLI -o /dev/null -w %{url_effective} https://github.com/rails49/installation/releases/latest",
@@ -295,7 +314,7 @@ describe("installing", () => {
     expect(run.status).toBe(0);
     expect(run.files["/etc/docker/daemon.json"]!.text).toBe(daemon);
     expect(run.stdout).toContain("/etc/docker/daemon.json is there already");
-    expect(run.calls.filter((call) => call.startsWith("systemctl"))).toEqual([]);
+    expect(run.calls).not.toContain("systemctl restart docker");
   });
 
   it("installs Docker Engine from Docker's apt repository where there is none", () => {
