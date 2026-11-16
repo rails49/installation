@@ -243,12 +243,12 @@ export async function status(env, io) {
   containers.sort((a, b) => a.Name.localeCompare(b.Name));
   // Each image's unpacked size, from one container that runs it, so it holds
   // when Docker no longer has the image (#138). Asked once however many
-  // stacks run it.
-  /** @type {Map<string, Promise<number>>} */
+  // stacks run it. None where the Engine does not say.
+  /** @type {Map<string, Promise<number | null>>} */
   const sizes = new Map();
   const size = (/** @type {Container} */ c) => {
-    if (!sizes.has(c.Image)) sizes.set(c.Image, io.size(c.Id).then((s) => (s ? s.SizeRootFs - s.SizeRw : 0)));
-    return /** @type {Promise<number>} */ (sizes.get(c.Image));
+    if (!sizes.has(c.Image)) sizes.set(c.Image, io.size(c.Id).then((s) => (s ? s.SizeRootFs - s.SizeRw : null)));
+    return /** @type {Promise<number | null>} */ (sizes.get(c.Image));
   };
 
   const stacks = await Promise.all(declared(env.BOX_UIS).map(async ({ stack, project }) => {
@@ -277,9 +277,11 @@ export async function status(env, io) {
     });
     const memory = used.length ? used.reduce((a, b) => a + b, 0) : null;
     // What the distinct images its containers run take unpacked. A layer
-    // shared with another stack counts in each (#119).
+    // shared with another stack counts in each (#119). None where the Engine
+    // says the size of none of them.
     const images = [...new Map(own.map((c) => [c.Image, c])).values()];
-    const disk = own.length ? (await Promise.all(images.map(size))).reduce((a, b) => a + b, 0) : null;
+    const known = (await Promise.all(images.map(size))).filter((n) => n !== null);
+    const disk = known.length ? known.reduce((a, b) => a + b, 0) : null;
     return { stack, state, commit, local_build, memory, disk };
   }));
 

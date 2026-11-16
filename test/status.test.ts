@@ -99,8 +99,8 @@ describe("the stacks", () => {
   it("are the installation and one per declared label, each with its state and commit", async () => {
     const { stacks } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
     expect(stacks).toEqual([
-      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: null, disk: 0 },
-      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: null, disk: 0 },
+      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: null, disk: null },
+      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: null, disk: null },
     ]);
   });
 });
@@ -209,6 +209,11 @@ describe("each stack's disk", () => {
     expect(stacks[1]!.disk).toBeNull();
   });
 
+  it("is none for a stack whose containers' sizes the Engine does not say", async () => {
+    const { stacks } = await status(NAMED, io({ containers: CONTAINERS, size: async () => null }));
+    expect(stacks.map((s) => s.disk)).toEqual([null, null]);
+  });
+
   // #138: JMRI showed 0 MB. Its container ran an image Docker no longer had,
   // and image inspect said nothing of it.
   it("counts an image Docker no longer has, from the container that runs it", async () => {
@@ -299,7 +304,7 @@ describe("a stack on a local build", () => {
   it("is never JMRI, which is built on the box and in no release", async () => {
     const containers = [...CONTAINERS, container("jmri-jmri-1", "jmri", "running", "")];
     const { stacks, notes } = await status({ ...NAMED, BOX_UIS: "control jmri" }, io({ containers }));
-    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: null, disk: 0 });
+    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: null, disk: null });
     expect(notes).toHaveLength(1);
   });
 });
