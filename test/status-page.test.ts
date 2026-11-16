@@ -140,12 +140,15 @@ function outline(html: string) {
   return [...html.matchAll(/<h2>([^<]*)<\/h2>|<legend>([^<]*)<\/legend>/g)].map(([, h2, legend]) => h2 ?? legend);
 }
 
-/** Each row of a group, as `[what it says, its buttons]`. */
+/** Each row of a group, as `[what it says, its buttons and switches]`, as a
+ *  browser that runs script shows them. A switch reads "<label>: on" or "off". */
 function rows(html: string) {
   return [...html.matchAll(/<div class="row">([\s\S]*?)<\/div>/g)].map(([, row]) => [
     // A bar's own text is for a browser that draws no bar.
     text(row!.replace(/<form[\s\S]*?<\/form>|<progress[\s\S]*?<\/progress>/g, "")),
-    [...row!.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map(([, button]) => button),
+    [...row!.replace(/<noscript>[\s\S]*?<\/noscript>/g, "").matchAll(/<button[^>]*>([^<]*)<\/button>|<sl-switch( checked)?>([^<]*)<\/sl-switch>/g)].map(
+      ([, button, checked, label]) => button ?? `${label}: ${checked ? "on" : "off"}`,
+    ),
   ]);
 }
 
@@ -262,24 +265,34 @@ describe("the release group", () => {
     ]);
   });
 
-  it("checks now by a POST to /box/check, and switches pre-releases by a POST to /box/prereleases", () => {
+  it("checks now by a POST to /box/check, and switches pre-releases by a POST to /box/prereleases (#142)", () => {
     expect(page).toContain(
-      '<form method="post" action="/box/check"><button>Check for update</button></form><form method="post" action="/box/prereleases"><button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form>',
+      '<form method="post" action="/box/check"><button>Check for update</button></form><form method="post" action="/box/prereleases"><input type="hidden" name="prereleases" value="yes"><sl-switch>Pre-releases</sl-switch>',
     );
     const on = render({ ...STATUS, update: { ...STATUS.update, prereleases: true } });
     expect(on).toContain(
-      '<form method="post" action="/box/prereleases"><button name="prereleases" value="no" aria-pressed="true">Pre-releases: on</button></form>',
+      '<form method="post" action="/box/prereleases"><input type="hidden" name="prereleases" value="no"><sl-switch checked>Pre-releases</sl-switch>',
     );
   });
 
-  it("switches downloading by itself by a POST to /box/download, beside the pre-releases (#141)", () => {
+  it("switches downloading by itself by a POST to /box/download, beside the pre-releases (#141, #142)", () => {
     expect(page).toContain(
-      '<button name="prereleases" value="yes" aria-pressed="false">Pre-releases: off</button></form><form method="post" action="/box/download"><button name="download" value="no" aria-pressed="true">Download automatically: on</button></form>',
+      '</form><form method="post" action="/box/download"><input type="hidden" name="download" value="no"><sl-switch checked>Download automatically</sl-switch>',
     );
     const off = render({ ...STATUS, update: { ...STATUS.update, download: false } });
     expect(off).toContain(
-      '<form method="post" action="/box/download"><button name="download" value="yes" aria-pressed="false">Download automatically: off</button></form>',
+      '<form method="post" action="/box/download"><input type="hidden" name="download" value="yes"><sl-switch>Download automatically</sl-switch>',
     );
+  });
+
+  it("carries each switch as a button for a browser that runs no script, and loads the script that posts a change", () => {
+    expect(page).toContain(
+      '<sl-switch>Pre-releases</sl-switch><noscript><button aria-pressed="false">Pre-releases: off</button></noscript></form>',
+    );
+    expect(page).toContain(
+      '<sl-switch checked>Download automatically</sl-switch><noscript><button aria-pressed="true">Download automatically: on</button></noscript></form>',
+    );
+    expect(page).toContain('<script type="module" src="/box/switch.js"></script>');
   });
 
   it("names a pre-release that is out, and the update to it, as a pre-release", () => {

@@ -655,6 +655,13 @@ describe("GET /box/tick.js", () => {
   });
 });
 
+describe("GET /box/switch.js", () => {
+  it("serves the script that posts a switch's form", async () => {
+    const answer = await ask(box("systemd"), "GET", "/box/switch.js");
+    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
+  });
+});
+
 describe("GET /box/follow.js", () => {
   it("serves the script that follows a run", async () => {
     const answer = await ask(box("systemd"), "GET", "/box/follow.js");

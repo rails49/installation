@@ -201,6 +201,10 @@ select {
 
 button:hover { background: var(--sl-color-neutral-100); }
 
+/* A switch shows once the bundle defines it. A browser that runs no script
+   shows the button in its place (#142). */
+sl-switch:not(:defined) { display: none; }
+
 button[aria-pressed="true"] {
   background: var(--sl-color-primary-100);
   border-color: var(--sl-color-primary-600);
