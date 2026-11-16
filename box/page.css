@@ -190,20 +190,41 @@ form { display: inline; }
 
 button,
 select {
-  background: var(--sl-color-neutral-0);
   border: 1px solid var(--sl-color-neutral-300);
   border-radius: var(--sl-border-radius-medium);
-  color: inherit;
   cursor: pointer;
   font: inherit;
   padding: 0.125rem 0.75rem;
 }
 
-button:hover { background: var(--sl-color-neutral-100); }
+button {
+  background: var(--sl-color-primary-600);
+  border-color: var(--sl-color-primary-600);
+  color: var(--sl-color-neutral-0);
+}
+
+button:hover {
+  background: var(--sl-color-primary-700);
+  border-color: var(--sl-color-primary-700);
+}
+
+select {
+  background: var(--sl-color-neutral-0);
+  color: inherit;
+}
 
 /* A switch shows once the bundle defines it. A browser that runs no script
    shows the button in its place (#142). */
 sl-switch:not(:defined) { display: none; }
+
+/* The button in a switch's place is white when off, tinted when on. */
+button[aria-pressed] {
+  background: var(--sl-color-neutral-0);
+  border-color: var(--sl-color-neutral-300);
+  color: inherit;
+}
+
+button[aria-pressed="false"]:hover { background: var(--sl-color-neutral-100); }
 
 button[aria-pressed="true"] {
   background: var(--sl-color-primary-100);

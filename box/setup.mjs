@@ -3,8 +3,8 @@
 // shows. `apply()` is a press of "Apply": it writes `BOX_UIS` into `box.env`
 // and the device lines into `dccex.env` and `occupancy.env`, keeping every
 // line it does not write, and starts `rails49-update` at the current release.
-// `offerPrereleases()` is a press of the pre-releases toggle beside "Check
-// now": it writes `BOX_PRERELEASES` into `box.env` (#105). `offerDownload()`
+// `offerPrereleases()` is a press of the pre-releases toggle under "Check
+// for update": it writes `BOX_PRERELEASES` into `box.env` (#105). `offerDownload()`
 // is a press of the toggle beside it: it writes `BOX_DOWNLOAD` (#141).
 //
 // The box's files, its `/dev`, the docker CLI and starting the update are

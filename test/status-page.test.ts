@@ -229,11 +229,13 @@ describe("the release group", () => {
       ["This box runs release 2026.11.0.", []],
       ["New release 2026.11.1 is available.", ["Update to 2026.11.1"]],
       ["", ["Revert to 2026.10.2"]],
-      ["Checked at 2026-11-12 08:00 UTC.", ["Check for update", "Pre-releases: off", "Download automatically: on"]],
+      ["Checked at 2026-11-12 08:00 UTC.", ["Check for update"]],
+      ["", ["Pre-releases: off", "Download automatically: on"]],
     ]);
     expect(release(plain)).toEqual([
       ["This box runs no release yet.", []],
-      ["Not checked yet.", ["Check for update", "Pre-releases: off", "Download automatically: on"]],
+      ["Not checked yet.", ["Check for update"]],
+      ["", ["Pre-releases: off", "Download automatically: on"]],
     ]);
   });
 
@@ -259,15 +261,15 @@ describe("the release group", () => {
 
   it("says it could not check, as the failure says", () => {
     const offline = render({ ...STATUS, update: { ...STATUS.update, checked: "2026-11-12T09:00:00.000Z", could_not_check: true } });
-    expect(release(offline).at(-1)).toEqual([
+    expect(release(offline).at(-2)).toEqual([
       "Could not check. The last check that succeeded was at 2026-11-12 08:00 UTC.",
-      ["Check for update", "Pre-releases: off", "Download automatically: on"],
+      ["Check for update"],
     ]);
   });
 
-  it("checks now by a POST to /box/check, and switches pre-releases by a POST to /box/prereleases (#142)", () => {
+  it("checks now by a POST to /box/check, and switches pre-releases on the row under it by a POST to /box/prereleases (#142)", () => {
     expect(page).toContain(
-      '<form method="post" action="/box/check"><button>Check for update</button></form><form method="post" action="/box/prereleases"><input type="hidden" name="prereleases" value="yes"><sl-switch>Pre-releases</sl-switch>',
+      '<form method="post" action="/box/check"><button>Check for update</button></form></div>\n<div class="row"><form method="post" action="/box/prereleases"><input type="hidden" name="prereleases" value="yes"><sl-switch>Pre-releases</sl-switch>',
     );
     const on = render({ ...STATUS, update: { ...STATUS.update, prereleases: true } });
     expect(on).toContain(

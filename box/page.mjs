@@ -5,7 +5,7 @@
 // own stylesheet and the script that ticks control from under `/box`, and
 // while a run or a download goes the script that follows it in place (#117,
 // #121). A
-// switch beside "Check for update" has the check take pre-releases (#105),
+// switch under "Check for update" has the check take pre-releases (#105),
 // and another has the box download a newer release after every check, or
 // only after a press of "Check for update" (#141). `switch.js`, also from
 // under `/box`, posts a switch's form when it changes (#142).
@@ -155,7 +155,8 @@ ${stacks}
 /**
  * The release group while nothing runs: the release the box runs, what the
  * last check found with the update to it once it is downloaded, going back,
- * the railroad, and the check. Each button sits on its sentence's row.
+ * the railroad, and the check. Each button sits on its sentence's row, and the
+ * check's switches on the row under it.
  *
  * @param {Status} status
  * @param {boolean} railroad whether a declared stack runs
@@ -187,8 +188,8 @@ function release({ release, update, back, download }, railroad) {
     ...(latest ? [row(latest, [...offer, ...bar(update, download)])] : []),
     ...(back ? [row("", [`<form method="post" action="/box/back"><button>Revert to ${escape(back)}</button></form>`])] : []),
     ...(railroad && (offer.length || back) ? [RESTARTS] : []),
-    row(check, [
-      '<form method="post" action="/box/check"><button>Check for update</button></form>',
+    row(check, ['<form method="post" action="/box/check"><button>Check for update</button></form>']),
+    row("", [
       toggle("prereleases", "Pre-releases", update.prereleases),
       toggle("download", "Download automatically", update.download),
     ]),
@@ -353,7 +354,7 @@ ${selects.join("\n")}
 </form>`;
 }
 
-/** A switch beside "Check for update", checked when it is on, in a form
+/** A switch under "Check for update", checked when it is on, in a form
  *  that posts `/box/<name>` with `<name>=yes` or `no`, whichever a change
  *  turns it to. For a browser that runs no script, a button in its place that
  *  posts the same and says which it is (#142).
