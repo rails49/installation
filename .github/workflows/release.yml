@@ -343,8 +343,7 @@ jobs:
             jq -n --arg runner "${file#docker/docker-}" --arg version "$(cat "$file")" '{($runner): $version}'
           done | jq -s add > docker.json
           jq --slurpfile docker docker.json '.docker = $docker[0]' release/manifest.json > manifest.json
-          notes=$(jq -r '"Pre-release. Not offered to boxes until it is marked as a full release.\n",
-            (.stacks | to_entries[] | "- \(.key) \(.value.commit)")' manifest.json)
+          notes=$(jq -r '.stacks | to_entries[] | "- \(.key) \(.value.commit)"' manifest.json)
           gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --target "$COMMIT" \
             --prerelease --title "$RELEASE" --notes "$notes" \
             manifest.json release/box-files.tar.gz release/install.sh
