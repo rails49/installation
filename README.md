@@ -845,10 +845,13 @@ and applied, and pass `scripts/probe.sh`
 
 **3. Mark it as a full release.** Edit the release on GitHub and clear "Set as
 a pre-release". A box with pre-releases off is never offered a pre-release,
-so this step is what offers it to every other box. In the same edit, replace
-the first line of the notes, "Pre-release. Not offered to boxes until it is
-marked as a full release.", with what the hand check covered. A pre-release
-that fails the hand check is never marked.
+so this step is what offers it to every other box. In the same edit, put a
+summary in plain words above the stack commits in the notes: what changed
+since the previous full release, each change linked to its pull request. A box
+goes from one full release to the next, so that is the change it sees.
+`scripts/changes.sh <previous full release> <number>` lists the pull requests
+of every stack that moved. A pre-release that fails the hand check is never
+marked.
 
 ## Working on this
 
