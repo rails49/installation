@@ -209,18 +209,18 @@ and "Status", with the stacks, the box and Docker. It shows:
   it found is kept in `/var/lib/rails49/check.json`. A newer release it found is downloaded in
   the background, and the page says how far that has got (see
   [Downloading a release](#downloading-a-release)).
-- Beside "Check for update", whether pre-releases are offered: "Pre-releases: on" or
-  "off" ([#105](https://github.com/rails49/installation/issues/105)). A press
-  writes `BOX_PRERELEASES=yes` or `no` into `box.env`, keeping every other
+- Beside "Check for update", whether pre-releases are offered: the switch
+  "Pre-releases" ([#105](https://github.com/rails49/installation/issues/105)).
+  A change writes `BOX_PRERELEASES=yes` or `no` into `box.env`, keeping every other
   line, and checks at once. With it on, the check takes the newest release by
   number among all of GitHub's releases, pre-releases included and drafts not,
   and the page names a pre-release that is out, and the update to it, as a
   pre-release. A missing line is off, and the install script writes none.
   Turning it off leaves a box on the pre-release it runs, and the page then
   says the box runs a release newer than the latest.
-- Beside it, whether the box downloads a newer release by itself: "Download
-  automatically: on" or "off"
-  ([#141](https://github.com/rails49/installation/issues/141)). A press
+- Beside it, whether the box downloads a newer release by itself: the switch
+  "Download automatically"
+  ([#141](https://github.com/rails49/installation/issues/141)). A change
   writes `BOX_DOWNLOAD=yes` or `no` into `box.env`, keeping every other line.
   Turning it on starts downloading the release the last check found, and
   checks nothing; turning it off lets a download that runs finish. A missing
@@ -228,6 +228,9 @@ and "Status", with the stacks, the box and Docker. It shows:
   for update" downloads, and the page says of a newer release it has not
   downloaded "New release <release> is available. Check for update downloads
   it."
+  In a browser that runs no script, each of the two switches is a button that
+  says "on" or "off", and a press does what a change does
+  ([#142](https://github.com/rails49/installation/issues/142)).
 - Disk free, on the file system Docker keeps its images on.
 - Memory, the box's used of its total, from `MemTotal` and `MemAvailable` in
   `/proc/meminfo`. Low memory is no failure.
@@ -242,7 +245,7 @@ and "Status", with the stacks, the box and Docker. It shows:
   resolves to this box's address.
 
 `GET /box/status` answers the same as JSON. `POST /box/check` checks now.
-`POST /box/prereleases` with `prereleases=yes` or `no` sets the toggle and
+`POST /box/prereleases` with `prereleases=yes` or `no` sets the switch and
 checks. `POST /box/download` with `download=yes` or `no` sets whether the box
 downloads by itself.
 `GET /box/bundle` downloads the log bundle, one `.tar.gz` of the records, the

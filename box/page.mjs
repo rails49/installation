@@ -5,9 +5,10 @@
 // own stylesheet and the script that ticks control from under `/box`, and
 // while a run or a download goes the script that follows it in place (#117,
 // #121). A
-// toggle beside "Check for update" has the check take pre-releases (#105),
+// switch beside "Check for update" has the check take pre-releases (#105),
 // and another has the box download a newer release after every check, or
-// only after a press of "Check for update" (#141).
+// only after a press of "Check for update" (#141). `switch.js`, also from
+// under `/box`, posts a switch's form when it changes (#142).
 //
 // The failures come first. Then two parts of bordered groups: the release
 // and the setup, and the status (#111).
@@ -102,6 +103,7 @@ export function render(status, now = new Date()) {
 <link rel="stylesheet" href="/box/look/look.css">
 <script type="module" src="/box/look/look.bundle.js"></script>
 <script type="module" src="/box/tick.js"></script>
+<script type="module" src="/box/switch.js"></script>
 <link rel="stylesheet" href="/box/page.css">
 </head>
 <body>
@@ -187,8 +189,8 @@ function release({ release, update, back, download }, railroad) {
     ...(railroad && (offer.length || back) ? [RESTARTS] : []),
     row(check, [
       '<form method="post" action="/box/check"><button>Check for update</button></form>',
-      prereleases(update.prereleases),
-      downloads(update.download),
+      toggle("prereleases", "Pre-releases", update.prereleases),
+      toggle("download", "Download automatically", update.download),
     ]),
   ].join("\n");
 }
@@ -351,17 +353,13 @@ ${selects.join("\n")}
 </form>`;
 }
 
-/** The toggle that has the check take pre-releases or not, showing which.
- *  @param {boolean} on */
-function prereleases(on) {
-  return `<form method="post" action="/box/prereleases"><button name="prereleases" value="${on ? "no" : "yes"}" aria-pressed="${on}">Pre-releases: ${on ? "on" : "off"}</button></form>`;
-}
-
-/** The toggle that has the box download a newer release after every check,
- *  or only after a press of "Check for update", showing which.
- *  @param {boolean} on */
-function downloads(on) {
-  return `<form method="post" action="/box/download"><button name="download" value="${on ? "no" : "yes"}" aria-pressed="${on}">Download automatically: ${on ? "on" : "off"}</button></form>`;
+/** A switch beside "Check for update", checked when it is on, in a form
+ *  that posts `/box/<name>` with `<name>=yes` or `no`, whichever a change
+ *  turns it to. For a browser that runs no script, a button in its place that
+ *  posts the same and says which it is (#142).
+ *  @param {string} name @param {string} label @param {boolean} on */
+function toggle(name, label, on) {
+  return `<form method="post" action="/box/${name}"><input type="hidden" name="${name}" value="${on ? "no" : "yes"}"><sl-switch${on ? " checked" : ""}>${label}</sl-switch><noscript><button aria-pressed="${on}">${label}: ${on ? "on" : "off"}</button></noscript></form>`;
 }
 
 /** Bytes as the page says them while an image is pulled: in gigabytes from
