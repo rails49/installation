@@ -510,7 +510,11 @@ order, the script:
    there.
 4. Writes `/etc/docker/daemon.json` as `{"log-driver": "local"}` and restarts
    Docker. A `daemon.json` that is there already is left as it is, and the
-   status page says which log driver Docker uses.
+   status page says which log driver Docker uses. Where the kernel has no
+   memory cgroup, which Raspberry Pi OS's firmware turns off, and
+   `/boot/firmware/cmdline.txt` exists, it adds `cgroup_enable=memory` to the
+   end of that file's one line. Docker reports each stack's memory from it
+   after the next reboot.
 5. Makes the system user and group `rails49`.
 6. Downloads the release's `manifest.json` and `box-files.tar.gz` from GitHub
    into `/var/lib/rails49/releases/<release>/`, unless they are there.
@@ -528,7 +532,8 @@ order, the script:
    takes a few minutes. When that fails, the script says why, removes
    `box.env`, and can be run again.
 9. Prints the status page's addresses, `http://<hostname>.local/box/` and
-   `http://<address>/box/`.
+   `http://<address>/box/`. After step 4 added `cgroup_enable=memory`, it says
+   that memory figures appear on the status page after the next reboot.
 
 It leaves the hostname as the OS installer set it.
 

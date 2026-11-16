@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,14 +72,23 @@ type Options = {
   /** Docker Engine is installed. */
   docker?: boolean;
   user?: string;
+  /** The box's `/sys/fs/cgroup/cgroup.controllers`. */
+  controllers?: string;
   update?: { step: string; passed: boolean; failure: string | null };
 };
 
 /** Runs `install.sh` on a fresh box shaped by `before`. Returns its exit
  *  status and output, the stubs' calls, and every path it left under
  *  `/etc/rails49`, `/etc/docker` and `/var/lib/rails49` as
- *  `{ owner: "user:group mode", text }`. */
-function installed({ args = [], before = "", docker = true, user, update = PASSED }: Options = {}) {
+ *  `{ owner: "user:group mode", text }`, and `/boot/firmware/cmdline.txt`. */
+function installed({
+  args = [],
+  before = "",
+  docker = true,
+  user,
+  controllers = "cpuset cpu io memory pids\n",
+  update = PASSED,
+}: Options = {}) {
   const scratch = mkdtempSync(join(tmpdir(), "install-"));
   const stubs = join(scratch, "stubs");
   const fixtures = join(scratch, "fixtures");
@@ -91,6 +100,7 @@ function installed({ args = [], before = "", docker = true, user, update = PASSE
 
   for (const [name, text] of Object.entries(STUBS)) writeFileSync(join(stubs, "bin", name), text, { mode: 0o755 });
   writeFileSync(join(stubs, "docker"), DOCKER, { mode: 0o755 });
+  writeFileSync(join(scratch, "controllers"), controllers);
 
   writeFileSync(join(fixtures, "manifest.json"), `${JSON.stringify({ release: "2026.11.3" }, null, 2)}\n`);
   writeFileSync(
@@ -114,6 +124,7 @@ function installed({ args = [], before = "", docker = true, user, update = PASSE
   const run = [
     `${user ? `su -s /bin/sh ${user} -c 'sh /install.sh "$@"' -- install.sh` : "sh /install.sh"} "$@" >/out/stdout 2>/out/stderr`,
     "echo $? > /out/status",
+    "cp /boot/firmware/cmdline.txt /out/ 2>/dev/null || true",
     `find /etc/rails49 /etc/docker /var/lib/rails49 2>/dev/null | sort | while read -r path; do
        printf '== %s %s\\n' "$path" "$(stat -c '%U:%G %a' "$path")"
        [ -d "$path" ] || cat "$path"
@@ -136,6 +147,8 @@ function installed({ args = [], before = "", docker = true, user, update = PASSE
         `${fixtures}:/fixtures:ro`,
         "-v",
         `${out}:/out`,
+        "-v",
+        `${join(scratch, "controllers")}:/sys/fs/cgroup/cgroup.controllers:ro`,
         image,
         "sh",
         "-c",
@@ -159,6 +172,7 @@ function installed({ args = [], before = "", docker = true, user, update = PASSE
       stderr: read("stderr"),
       calls: read("calls").trimEnd().split("\n").filter(Boolean),
       files,
+      cmdline: existsSync(join(out, "cmdline.txt")) ? read("cmdline.txt") : undefined,
     };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -325,5 +339,40 @@ describe("installing", () => {
     const docker = run.calls.filter((call) => call.startsWith("docker "));
     expect(docker[0]).toBe("docker rm -f rails49-update");
     expect(docker[1]).toMatch(/^docker run -d --name rails49-update /);
+  });
+});
+
+describe("installing on Raspberry Pi OS", () => {
+  const CMDLINE = "console=serial0,115200 console=tty1 root=PARTUUID=0123abcd-02 rootfstype=ext4 fsck.repair=yes rootwait";
+  const PI_OS = `mkdir -p /boot/firmware && printf '${CMDLINE}' > /boot/firmware/cmdline.txt`;
+  const NO_MEMORY = "cpuset cpu io pids\n";
+  const REBOOT = "Memory figures appear on the status page after the next reboot.";
+
+  it("turns on the memory cgroup at the next boot where the firmware turned it off, and says so", () => {
+    const run = installed({ before: PI_OS, controllers: NO_MEMORY });
+    expect(run.status).toBe(0);
+    expect(run.cmdline).toBe(`${CMDLINE} cgroup_enable=memory`);
+    expect(run.stdout).toContain(REBOOT);
+  });
+
+  it("leaves cmdline.txt as it is where the memory cgroup is on", () => {
+    const run = installed({ before: PI_OS });
+    expect(run.status).toBe(0);
+    expect(run.cmdline).toBe(CMDLINE);
+    expect(run.stdout).not.toContain(REBOOT);
+  });
+
+  it("changes nothing where the memory cgroup is off and there is no cmdline.txt", () => {
+    const run = installed({ controllers: NO_MEMORY });
+    expect(run.status).toBe(0);
+    expect(run.cmdline).toBeUndefined();
+    expect(run.stdout).not.toContain(REBOOT);
+  });
+
+  it("adds the flag once when run again before the reboot", () => {
+    const run = installed({ before: `${PI_OS} && printf ' cgroup_enable=memory' >> /boot/firmware/cmdline.txt`, controllers: NO_MEMORY });
+    expect(run.status).toBe(0);
+    expect(run.cmdline).toBe(`${CMDLINE} cgroup_enable=memory`);
+    expect(run.stdout).toContain(REBOOT);
   });
 });
