@@ -85,17 +85,6 @@ its UI port, at `http://<hostname>.local:<port>` and at
 record, and nothing outside the house. The browser gives such a page no secure
 context, which costs `control` its screen wake lock and one copy button.
 
-At `<hostname>.local`, Chrome and other Chromium browsers can show such a page
-without its styles or scripts, and a reload mends it only sometimes. This
-happens on a network that hands out public IPv6 addresses: `<hostname>.local`
-then names the box's public IPv6 address beside its private ones. When the
-page arrives over the public address, Chrome treats it as a page on the
-internet and refuses each of its requests that goes to a private address. A
-page over plain HTTP cannot be granted the permission that would allow them.
-Open the box at its address instead, `http://<address>/box/` or
-`http://<address>:<port>`, or give it a [box name](#a-box-name). #150 tracks a
-fix on the box.
-
 Every box serves the UI ports, so a box with a box name stays reachable when DNS
 or the certificate fails, at its address or `<hostname>.local`.
 
@@ -507,7 +496,11 @@ order, the script:
 2. Installs Docker Engine from Docker's apt repository, unless `docker` is
    there.
 3. Installs `avahi-daemon`, which answers `<hostname>.local`, unless it is
-   there.
+   there. Sets `use-ipv6=no` and `publish-aaaa-on-ipv4=no` in
+   `/etc/avahi/avahi-daemon.conf` and restarts it, so `<hostname>.local`
+   names only the box's IPv4 address. On a network that hands out public IPv6
+   addresses, Chrome otherwise drops the page's styles and scripts at times:
+   a page that came over the public address may not reach the private ones.
 4. Writes `/etc/docker/daemon.json` as `{"log-driver": "local"}` and restarts
    Docker. A `daemon.json` that is there already is left as it is, and the
    status page says which log driver Docker uses. Where the kernel has no

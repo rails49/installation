@@ -80,12 +80,16 @@ if ! command -v docker >/dev/null; then
   apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
-# 3. The mDNS responder that answers `<hostname>.local`.
+# 3. The mDNS responder that answers `<hostname>.local`, with the box's IPv4
+# address only (#150).
 if ! dpkg-query -W -f '${Status}' avahi-daemon 2>/dev/null | grep -q 'ok installed'; then
   echo "Installing avahi-daemon, which answers $host.local."
   apt-get update -q
   apt-get install -y -q avahi-daemon
 fi
+sed -i -e 's/^#*use-ipv6=.*/use-ipv6=no/' -e 's/^#*publish-aaaa-on-ipv4=.*/publish-aaaa-on-ipv4=no/' \
+  /etc/avahi/avahi-daemon.conf
+systemctl restart avahi-daemon
 
 # 4. Docker's log driver.
 if [ -e /etc/docker/daemon.json ]; then
