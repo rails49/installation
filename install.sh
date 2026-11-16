@@ -96,6 +96,15 @@ else
   systemctl restart docker
 fi
 
+# The memory cgroup, which Raspberry Pi OS's firmware turns off. The flag
+# takes effect at the next boot.
+memory_after_reboot=
+if ! grep -qsw memory /sys/fs/cgroup/cgroup.controllers && [ -e /boot/firmware/cmdline.txt ]; then
+  grep -qw cgroup_enable=memory /boot/firmware/cmdline.txt ||
+    sed -i '1s/$/ cgroup_enable=memory/' /boot/firmware/cmdline.txt
+  memory_after_reboot=1
+fi
+
 # 5. The user the stacks' files belong to.
 getent passwd rails49 >/dev/null || useradd --system --user-group --shell /usr/sbin/nologin rails49
 
@@ -184,4 +193,7 @@ echo "The box is installed. Open its status page from a phone or computer on the
 addresses
 if [ -n "$address" ]; then
   echo "Reserve $address for this box in your router, so the address does not change."
+fi
+if [ -n "$memory_after_reboot" ]; then
+  echo "Memory figures appear on the status page after the next reboot."
 fi
