@@ -99,8 +99,8 @@ describe("the stacks", () => {
   it("are the installation and one per declared label, each with its state and commit", async () => {
     const { stacks } = await status(NAMED, io({ files: { "/var/lib/rails49/deploys/installation": "" } }));
     expect(stacks).toEqual([
-      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: 0, disk: 0 },
-      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: 0, disk: 0 },
+      { stack: "installation", state: "running", commit: COMMIT, local_build: true, memory: null, disk: 0 },
+      { stack: "control", state: "running", commit: COMMIT, local_build: true, memory: null, disk: 0 },
     ]);
   });
 });
@@ -145,6 +145,12 @@ describe("memory", () => {
       id === "tc49-store-1-id" ? { memory_stats: { usage: 300e6, stats: { total_inactive_file: 100e6 } } } : null;
     const { stacks } = await status(NAMED, io({ stats: v1 }));
     expect(stacks[1]!.memory).toBe(200e6);
+  });
+
+  it("is none for a stack whose containers report no usage, as where the kernel's memory controller is off", async () => {
+    const off: Io["stats"] = async () => ({ memory_stats: { stats: { inactive_file: 0 } } });
+    const { stacks } = await status(NAMED, io({ stats: off }));
+    expect(stacks.map((s) => s.memory)).toEqual([null, null]);
   });
 
   it("is asked of running containers only, and is none for a stack with none running", async () => {
@@ -293,7 +299,7 @@ describe("a stack on a local build", () => {
   it("is never JMRI, which is built on the box and in no release", async () => {
     const containers = [...CONTAINERS, container("jmri-jmri-1", "jmri", "running", "")];
     const { stacks, notes } = await status({ ...NAMED, BOX_UIS: "control jmri" }, io({ containers }));
-    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: 0, disk: 0 });
+    expect(stacks.at(-1)).toEqual({ stack: "jmri", state: "running", commit: null, local_build: false, memory: null, disk: 0 });
     expect(notes).toHaveLength(1);
   });
 });
