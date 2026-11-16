@@ -429,3 +429,56 @@ describe("the release workflow", () => {
     expect(existsSync(new URL(download.with.path, root))).toBe(false);
   });
 });
+
+/**
+ * `scripts/changes.sh <from> <to>` with a `gh` on the PATH that answers
+ * `release download <tag>` from `releases`, and `api <path> --jq <filter>`
+ * by running the filter over `api[path]`.
+ */
+function changes(from: string, to: string, releases: Record<string, object>, api: Record<string, object>) {
+  const scratch = mkdtempSync(join(tmpdir(), "changes-"));
+  try {
+    const name = (path: string) => path.replace(/[/.]/g, "_");
+    mkdirSync(join(scratch, "bin"));
+    writeFileSync(
+      join(scratch, "bin", "gh"),
+      `#!/usr/bin/env bash\nif [ "$1" = release ]; then cat "${scratch}/release-$3.json"; exit; fi\nf="${scratch}/api-$(printf %s "$2" | tr '/.' '__').json"\n[ -f "$f" ] || { echo "no such path: $2" >&2; exit 1; }\njq -r "$4" "$f"\n`,
+      { mode: 0o755 },
+    );
+    for (const [tag, json] of Object.entries(releases)) writeFileSync(join(scratch, `release-${tag}.json`), JSON.stringify(json));
+    for (const [path, json] of Object.entries(api)) writeFileSync(join(scratch, `api-${name(path)}.json`), JSON.stringify(json));
+    const run = spawnSync("bash", [script("changes.sh"), from, to], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${join(scratch, "bin")}:${process.env.PATH}` },
+    });
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    return run.stdout.split("\n").filter(Boolean);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+describe("the changes between two releases", () => {
+  it("are the pull requests of each stack whose commit moved, each once", () => {
+    const stacks = (control: string, dccex: string) => ({
+      stacks: { control: { commit: control }, dccex: { commit: dccex } },
+    });
+    const lines = changes(
+      "2026.11.1",
+      "2026.11.2",
+      { "2026.11.1": stacks("c1", "d1"), "2026.11.2": stacks("c4", "d1") },
+      {
+        "repos/rails49/control/compare/c1...c4": { commits: [{ sha: "c2" }, { sha: "c3" }, { sha: "c4" }] },
+        "repos/rails49/control/commits/c2/pulls": [{ number: 7, title: "backup: a switch" }],
+        "repos/rails49/control/commits/c3/pulls": [{ number: 7, title: "backup: a switch" }],
+        "repos/rails49/control/commits/c4/pulls": [{ number: 9, title: "trains: length from cars" }],
+      },
+    );
+    expect(lines).toEqual([
+      "== control",
+      "rails49/control#7 backup: a switch",
+      "rails49/control#9 trains: length from cars",
+    ]);
+  });
+});
