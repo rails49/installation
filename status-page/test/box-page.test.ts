@@ -1,5 +1,5 @@
 // The page's shell: look's band, a title carrying the box's name from
-// `GET /box/status`, and the groups it draws from that status.
+// `GET /box/status`, and the groups in the page's order.
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,7 @@ import { BoxPage } from "../src/box-page.js";
 import type { BoxProgress } from "../src/box-progress.js";
 import type { Run } from "../src/status.js";
 import { box, STATUS } from "./box.js";
-import { mounted, part } from "./mounted.js";
+import { all, mounted, part } from "./mounted.js";
 
 /** An update to 2026.11.1 that runs. */
 const UPDATING: Run = {
@@ -51,16 +51,43 @@ describe("box-page", () => {
     expect(sent).toEqual([{ method: "GET", url: "/box/status", body: "" }]);
   });
 
-  it("shows the run in place of the release group while one runs", async () => {
+  it("shows the run in place of the release group, after its heading, while one runs", async () => {
     box(() => ({ ...STATUS, updating: UPDATING }));
     const shown = await page();
-    const progress = part(shown, "main box-progress") as BoxProgress;
+    const progress = part(shown, "main > box-progress") as BoxProgress;
     expect(progress.status?.updating).toEqual(UPDATING);
+    expect(progress.previousElementSibling?.textContent).toBe("Release and setup");
   });
 
   it("shows no run once it has ended", async () => {
     box(() => ({ ...STATUS, updating: { ...UPDATING, running: false } }));
     const shown = await page();
     expect(shown.renderRoot.querySelector("box-progress")).toBeNull();
+  });
+
+  it("shows the errors and notes, then the release and the setup, then the status, then the log bundle", async () => {
+    box(() => STATUS);
+    const shown = await page();
+    const main = shown.renderRoot.querySelector("main")!;
+    expect([...main.children].map((child) => child.localName)).toEqual([
+      "box-messages",
+      "h2",
+      "h2",
+      "box-stacks",
+      "box-facts",
+      "p",
+    ]);
+    expect(all(shown, "main > h2")).toEqual(["Release and setup", "Status"]);
+    for (const group of ["box-messages", "box-stacks", "box-facts"] as const) {
+      expect(main.querySelector(group)?.status).toBe(shown.status);
+    }
+  });
+
+  it("downloads the log bundle from GET /box/bundle", async () => {
+    box(() => STATUS);
+    const link = part(await page(), "main > p a");
+    expect(link.textContent).toBe("Download the log bundle");
+    expect(link.getAttribute("href")).toBe("/box/bundle");
+    expect(link.hasAttribute("download")).toBe(true);
   });
 });

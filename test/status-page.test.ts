@@ -170,13 +170,6 @@ function rows(html: string) {
   ]);
 }
 
-/** The items of a group, as `[term, what it says]` with the markup taken out. */
-function items(html: string) {
-  return Object.fromEntries(
-    [...html.matchAll(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g)].map(([, term, value]) => [term, text(value!)]),
-  );
-}
-
 describe("the status page", () => {
   it("carries look's band with the box's name, loaded from under /box", () => {
     expect(page).toContain('<script type="module" src="/box/look/look.bundle.js"></script>');
@@ -216,26 +209,6 @@ describe("the status page", () => {
     expect(page.indexOf('<a href="/box/bundle" download>Download the log bundle</a>')).toBeGreaterThan(
       page.indexOf("<legend>Docker</legend>"),
     );
-  });
-
-  it("states each error in a sentence in a red group, and each local build in a group after it", () => {
-    const errors = group(page, "Errors");
-    expect(errors).toMatch(/^<fieldset class="group failures">/);
-    expect(errors).toContain("<li>control is restarting.</li>");
-    expect(group(page, "Notes")).toContain(
-      "<li>control runs a local build of <code>1c3f69b</code>, not release 2026.11.0.</li>",
-    );
-    expect(outline(plain)).not.toContain("Notes");
-  });
-
-  it("escapes what it is handed", () => {
-    expect(page).toContain("<li>A &#60;script&#62; &#38; more.</li>");
-  });
-
-  it("says when there are no errors, beside a green dot, first on the page", () => {
-    expect(outline(plain)[0]).toBe("Release and setup");
-    expect(plain).toContain('<p><span class="dot ok"></span>No errors.</p>');
-    expect(plain.indexOf("No errors.")).toBeLessThan(plain.indexOf("<h2>"));
   });
 });
 
@@ -473,71 +446,6 @@ describe("downloading a release", () => {
       download: DOWNLOADING,
     }));
     expect(release(html)[1]![0]).toBe("New pre-release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.");
-  });
-});
-
-describe("the status groups", () => {
-  /** The table's rows, as `[dot, stack, state, memory, disk, commit]`. */
-  const table = (html: string) =>
-    [...group(html, "Stacks").matchAll(/<tr><td><span class="dot (\w+)"><\/span>([^<]*)<\/td>(.*?)<\/tr>/g)].map(
-      ([, dot, stack, cells]) => [dot, stack, ...[...cells!.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(([, cell]) => cell)],
-    );
-
-  it("list each stack by its name, in the page's order, with a dot, its state, memory, disk and commit", () => {
-    const all = render({
-      ...STATUS,
-      stacks: [
-        ...STATUS.stacks,
-        { stack: "dccex", state: "stopped", commit: null, local_build: false, memory: null, disk: null },
-        { stack: "occupancy-service", state: "running", commit: null, local_build: false, memory: 2500 * 2 ** 20, disk: 30e6 },
-      ],
-    });
-    expect(group(all, "Stacks")).toContain('<th>Stack</th><th>State</th><th class="number">Memory</th><th class="number">Disk</th><th>Commit</th>');
-    expect(group(all, "Stacks")).toContain('<td class="number">60 MB</td><td class="number">348 MB</td>');
-    expect(table(all)).toEqual([
-      ["ok", "Installation", "running", "60 MB", "348 MB", "8f7e6d5"],
-      ["bad", "Control", "restarting", "1,200 MB", "1,144 MB", "1c3f69b"],
-      ["ok", "Occupancy", "running", "2,500 MB", "29 MB", "n/a"],
-      ["ok", "JMRI", "running", "480 MB", "620 MB", "n/a"],
-      ["off", "DCC-EX translator", "stopped", "", "", "n/a"],
-    ]);
-  });
-
-  it("show the disk, the memory and the address in the box group", () => {
-    expect(items(group(page, "Box"))).toMatchObject({
-      "Disk free": "20.0 GB of 64.0 GB",
-      Memory: "2,560 MB used of 7,892 MB",
-      "IP address": "192.168.1.20. Reserve this address for the box in your router.",
-    });
-    expect(items(render({ ...STATUS, address: null }))["IP address"]).toBe("none");
-    expect(items(render({ ...STATUS, memory: null }))).not.toHaveProperty("Memory");
-  });
-
-  it("show Docker in the Docker group", () => {
-    expect(items(group(page, "Docker"))).toEqual({
-      "Docker Engine": "29.1.3, release tested on 29.1.3 and 29.0.4",
-      "Log driver": "local",
-    });
-    expect(items(plain)["Docker Engine"]).toBe("29.1.3");
-  });
-
-  it("show the certificate and the box name on a box with a box name, and not otherwise", () => {
-    expect(items(group(page, "Box"))).toMatchObject({
-      Certificate: "expires 2027-01-30",
-      "Box name": "example.org resolves to this box",
-    });
-    expect(items(plain)).not.toHaveProperty("Certificate");
-    expect(items(plain)).not.toHaveProperty("Box name");
-    const wrong = render({
-      ...STATUS,
-      certificate: { expires: "2027-01-30T00:00:00.000Z", valid: false },
-      resolves: { addresses: ["10.0.0.5"], to_this_box: false },
-    });
-    expect(items(wrong)).toMatchObject({
-      Certificate: "not valid, expires 2027-01-30",
-      "Box name": "example.org resolves to 10.0.0.5",
-    });
-    expect(items(render({ ...STATUS, certificate: null }))).toMatchObject({ Certificate: "could not be read" });
   });
 });
 
