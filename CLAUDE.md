@@ -11,22 +11,20 @@ A test or check that needs hardware, a local service or a secret must skip
 itself when the `CI` environment variable is set. That is the whole contract
 between the gate run on a box and the gate run on a PR.
 
-`main` only moves by pull request with the `ci` check green:
+`main` only moves by pull request with the `ci` check green. Work on a branch
+in a worktree, then:
 
-    git push -u origin <branch> && gh pr create --fill && gh pr merge --auto --rebase
+    git push origin <branch> && gh pr create --fill --head <branch> && gh pr merge <branch> --auto --rebase
 
-What each kind of doc holds, this file included, follows [rails49/.github ADR-0021](https://github.com/rails49/.github/blob/main/docs/adr/0021-each-fact-has-one-owner-and-the-glossary-is-glossary-md.md).
+What each kind of doc holds, this file included, follows [rails49/.github ADR-0025](https://github.com/rails49/.github/blob/main/docs/adr/0025-each-fact-has-one-owner-and-an-adr-is-written-after-its-decision-has-run.md).
 
 ## Agent skills
 
-### Issue tracker
+The rules every rails49 repository shares are the organisation's
+[`docs/agents/`](https://github.com/rails49/.github/tree/main/docs/agents):
+`issue-tracker.md`, `triage-labels.md` and `domain.md`.
 
-GitHub Issues on rails49/installation, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five default labels, unchanged: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+- Issue tracker: GitHub Issues on rails49/installation, via the `gh` CLI.
+- Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`,
+  `ready-for-human`, `wontfix`.
+- Domain docs: `GLOSSARY.md` and `docs/adr/` at the repo root.
