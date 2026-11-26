@@ -76,13 +76,14 @@ describe("box-page", () => {
       "box-messages",
       "h2",
       "box-release",
+      "box-setup",
       "h2",
       "box-stacks",
       "box-facts",
       "p",
     ]);
     expect(all(shown, "main > h2")).toEqual(["Release and setup", "Status"]);
-    for (const group of ["box-messages", "box-release", "box-stacks", "box-facts"] as const) {
+    for (const group of ["box-messages", "box-release", "box-setup", "box-stacks", "box-facts"] as const) {
       expect(main.querySelector(group)?.status).toBe(shown.status);
     }
   });

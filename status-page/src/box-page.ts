@@ -1,7 +1,8 @@
 // The page: look's shell and band, and the status `GET /box/status` answered.
 // It holds the status and whether `box` answers, and passes both down to the
 // groups it draws as `.status` and `.answering`. The release group is
-// `box-release`, and `box-progress` while a run goes.
+// `box-release`, and `box-progress` while a run goes. The setup form is
+// hidden while a run goes.
 //
 // It fetches the status every 2 seconds while a run or a download goes or
 // while `box` does not answer, and every 30 seconds otherwise. While `box`
@@ -20,6 +21,7 @@ import "./box-facts.js";
 import "./box-messages.js";
 import "./box-progress.js";
 import "./box-release.js";
+import "./box-setup.js";
 import "./box-stacks.js";
 import { COMMIT } from "./commit.js";
 import type { Press } from "./press.js";
@@ -167,6 +169,9 @@ export class BoxPage extends LitElement {
           ${this.status?.updating?.running
             ? html`<box-progress .status=${this.status}></box-progress>`
             : html`<box-release .status=${this.status} .answering=${this.answering}></box-release>`}
+          ${this.status && !this.status.updating?.running
+            ? html`<box-setup .status=${this.status} .answering=${this.answering}></box-setup>`
+            : nothing}
           <h2>Status</h2>
           <box-stacks .status=${this.status}></box-stacks>
           <box-facts .status=${this.status}></box-facts>

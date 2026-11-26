@@ -171,7 +171,7 @@ export async function handle(request, box) {
   if (route === "POST /box/setup") {
     const refusal = await box.apply(request.body ?? "");
     if (refusal !== null) return text(409, refusal);
-    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+    return text(204, "");
   }
   if (route === "GET /box/bundle") {
     const { name, body } = await box.bundle();

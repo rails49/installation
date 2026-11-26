@@ -664,10 +664,11 @@ describe("POST /box/update and POST /box/back", () => {
 describe("POST /box/setup", () => {
   const FORM = "ui=dccex&station=%2Fdev%2Fserial%2Fby-id%2Fnone&camera=%2Fdev%2Fv4l%2Fby-id%2Fnone";
 
-  it("applies the form it was sent and sends the browser back to the page", async () => {
+  it("applies the form it was sent and answers 204", async () => {
     const on = box("systemd");
     const answer = await ask(on, "POST", "/box/setup", { host: HOST, origin: `http://${HOST}` }, FORM);
-    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(answer).toMatchObject({ status: 204, body: "" });
+    expect(answer.headers?.location).toBeUndefined();
     expect(on.applied).toEqual([FORM]);
   });
 
