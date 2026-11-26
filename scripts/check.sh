@@ -121,7 +121,7 @@ if [ -f page/render.sh ]; then
 
   # Fails when the page or the status page styles look's band. At the tag of
   # the committed `look/look.bundle.js`, which a release of look moves with it.
-  run look-check pnpm --package=github:rails49/look#v0.14.1 dlx look-check \
+  run look-check pnpm --package=github:rails49/look#v0.15.0 dlx look-check \
     page status-page/src status-page/index.html
 fi
 

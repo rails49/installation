@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@rails49/look':
-        specifier: github:rails49/look#v0.14.1
-        version: https://codeload.github.com/rails49/look/tar.gz/df15a7d29f08366b6dd7192d08fc96db2f308c9f(@shoelace-style/shoelace@2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1))(lit@3.3.3)
+        specifier: github:rails49/look#v0.15.0
+        version: https://codeload.github.com/rails49/look/tar.gz/ae76ba288cbfbe06a6b0f0318148942c37046a2d(@shoelace-style/shoelace@2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1))(lit@3.3.3)
       '@shoelace-style/shoelace':
         specifier: ^2.20.1
         version: 2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1)
@@ -229,9 +229,9 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@rails49/look@https://codeload.github.com/rails49/look/tar.gz/df15a7d29f08366b6dd7192d08fc96db2f308c9f':
-    resolution: {tarball: https://codeload.github.com/rails49/look/tar.gz/df15a7d29f08366b6dd7192d08fc96db2f308c9f}
-    version: 0.14.1
+  '@rails49/look@https://codeload.github.com/rails49/look/tar.gz/ae76ba288cbfbe06a6b0f0318148942c37046a2d':
+    resolution: {tarball: https://codeload.github.com/rails49/look/tar.gz/ae76ba288cbfbe06a6b0f0318148942c37046a2d}
+    version: 0.15.0
     hasBin: true
     peerDependencies:
       '@shoelace-style/shoelace': ^2.20.1
@@ -832,7 +832,7 @@ snapshots:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
 
-  '@rails49/look@https://codeload.github.com/rails49/look/tar.gz/df15a7d29f08366b6dd7192d08fc96db2f308c9f(@shoelace-style/shoelace@2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1))(lit@3.3.3)':
+  '@rails49/look@https://codeload.github.com/rails49/look/tar.gz/ae76ba288cbfbe06a6b0f0318148942c37046a2d(@shoelace-style/shoelace@2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1))(lit@3.3.3)':
     dependencies:
       '@shoelace-style/shoelace': 2.20.1(@floating-ui/utils@0.2.12)(@types/react@19.3.1)
       lit: 3.3.3
