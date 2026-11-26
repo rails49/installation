@@ -6,8 +6,10 @@ import { registerIconLibrary } from "@shoelace-style/shoelace/dist/utilities/ico
 import type { LitElement } from "lit";
 import { afterEach, vi } from "vitest";
 
-// The tests draw no glyphs, so Shoelace fetches nothing.
+// The tests draw no glyphs, so Shoelace fetches nothing, not even the
+// checkbox's tick or the select's chevron.
 registerIconLibrary("default", { resolver: () => "" });
+registerIconLibrary("system", { resolver: () => "" });
 
 /** `element`, in the document and drawn once. */
 export async function mounted<T extends LitElement>(element: T): Promise<T> {

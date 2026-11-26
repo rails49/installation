@@ -85,22 +85,6 @@ const derived = (status: Status): Status => ({
   update: { ...status.update, downloaded: isDownloaded(status.update.latest, status.download) },
 });
 
-/** STATUS while an update to 2026.11.1 runs. */
-const UPDATING = {
-  ...STATUS,
-  updating: {
-    action: "update" as const,
-    from: "2026.11.0",
-    to: "2026.11.1",
-    started: "2026-11-12T09:58:00.000Z",
-    step: "Starting control.",
-    finished: null,
-    passed: null,
-    failure: null,
-    running: true,
-  },
-};
-
 const PLAIN = {
   ...STATUS,
   name: "box",
@@ -198,71 +182,6 @@ describe("the release group", () => {
 
 });
 
-describe("the setup on the status page", () => {
-  /** The form, from its tag to its end. */
-  const setup = (html: string) => html.match(/<form method="post" action="\/box\/setup"[\s\S]*?<\/form>/)?.[0] ?? "";
-
-  it("offers Control, Occupancy, JMRI and the DCC-EX translator in that order, the declared ones ticked", () => {
-    const boxes = [...group(page, "Stacks to run").matchAll(/<input type="checkbox" name="ui" value="(\w+)"( checked)?> ([^<]+)<\/label>/g)].map(
-      ([, value, checked, name]) => `${value} ${name}${checked ? " ticked" : ""}`,
-    );
-    expect(boxes).toEqual(["control Control ticked", "occupancy Occupancy", "jmri JMRI ticked", "dccex DCC-EX translator"]);
-    expect(setup(plain)).not.toContain("checked");
-  });
-
-  it("says Occupancy and the DCC-EX translator use Control's broker, and loads the script that ticks it", () => {
-    expect(group(page, "Stacks to run")).toContain(
-      "<p>Occupancy and DCC-EX translator use the broker installed with Control.</p>",
-    );
-    expect(page).toContain('<script type="module" src="/box/tick.js"></script>');
-  });
-
-  it("offers each station plugged in, or none, with the one dccex.env names chosen", () => {
-    expect(group(page, "Devices")).toContain(
-      [
-        '<select name="station">',
-        '<option value="/dev/serial/by-id/none">none</option>',
-        '<option value="/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0" selected>usb-1a86_USB_Serial-if00-port0</option>',
-        '<option value="/dev/serial/by-id/usb-2341_Mega-if00">usb-2341_Mega-if00</option>',
-        "</select>",
-      ].join("\n"),
-    );
-  });
-
-  it("keeps a device named by hand that is not plugged in, and says when none is", () => {
-    expect(group(page, "Devices")).toContain(
-      [
-        '<select name="camera">',
-        '<option value="/dev/v4l/by-id/none">none</option>',
-        '<option value="/dev/v4l/by-id/usb-away-video-index0" selected>usb-away-video-index0, not plugged in</option>',
-        "</select>",
-      ].join("\n"),
-    );
-    expect(setup(page)).toContain("<p>No camera is plugged in.</p>");
-    expect(setup(page)).not.toContain("No command station is plugged in.");
-    expect(setup(plain)).toContain('<option value="/dev/serial/by-id/none" selected>none</option>');
-    expect(setup(plain)).toContain("<p>No command station is plugged in.</p>");
-  });
-
-  it("puts each device's choice on its row, at the right", () => {
-    expect(group(page, "Devices")).toContain('<label class="row">Command station <select name="station">');
-    expect(group(page, "Devices")).toContain('<label class="row">Camera <select name="camera">');
-  });
-
-  it("says nothing of the railroad, which the release group says", () => {
-    expect(setup(page)).toContain("<button>Apply</button>");
-    expect(setup(page)).not.toContain("railroad");
-  });
-});
-
-describe("while an update, going back or applying runs", () => {
-  // What the run says is in status-page/test/box-progress.test.ts.
-
-  it("hides the setup", () => {
-    expect(render(UPDATING)).not.toContain('action="/box/setup"');
-  });
-
-});
 
 describe("the update the page offers (#126)", () => {
   const RECORD = "/var/lib/rails49/deploys/installation";
