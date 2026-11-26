@@ -160,8 +160,10 @@ machine, not the Mac. Coming back takes a person at the box.
 
 `box` serves the status page at `/box/`, on every name and every UI port the
 door serves
-([#65](https://github.com/rails49/installation/issues/65)). It uses look's
-band, from the same copy as the page. At the top it says each failure in a
+([#65](https://github.com/rails49/installation/issues/65)). It is a Lit
+application on look and Shoelace, in `status-page/`, built in the box image
+and reading `GET /box/status`
+([#161](https://github.com/rails49/installation/issues/161)). At the top it says each failure in a
 sentence, in a group titled "Errors", or "No errors.", and then each note,
 such as a stack on a local build, in a group titled "Notes". Below them are
 two parts of bordered groups
@@ -675,6 +677,21 @@ last build. That is
 what makes the machine useful for changing the door at all, and it is worth
 knowing before you wonder why 443 is behaving strangely.
 
+### The status page
+
+The status page is in `status-page/`, with its own `package.json`. To work on
+it against a box, run the Vite dev server with the box's address:
+
+```bash
+cd status-page
+pnpm install
+BOX=http://box.local pnpm dev
+```
+
+The page is at `http://localhost:5173/box/`. Vite sends `/box/status`, the
+presses and `/box/bundle` to the box with the dev server's Host, so the
+box's same-origin rule lets them through, and a press acts on that box.
+
 ### Deploying
 
 `./deploy.sh` is a maintainer's convenience for pushing this checkout to a box
@@ -867,7 +884,9 @@ status page `box` renders, one over the compose files as data and the door's
 script, one over what a deploy builds and refuses, one over what the install
 script does to a box, in the stock image `box` is built on, one over the images
 workflow as data, and one over the release's number, its pinned box
-files and the releases it deletes. Nothing in it needs a box or a secret, and it builds no image.
+files and the releases it deletes. It installs the status page from its
+lockfile, type-checks it, runs its tests and builds it. Nothing in it needs a
+box or a secret, and it builds no image.
 
 `.github/workflows/images.yml` builds `installation-page` and
 `installation-box` at one commit, for amd64 and arm64, and pushes them to

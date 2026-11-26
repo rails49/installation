@@ -4,5 +4,8 @@
 !page
 !look
 !box
+!status-page
+status-page/node_modules
+status-page/dist
 !scripts/probe.sh
 **/Dockerfile

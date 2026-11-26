@@ -1,5 +1,6 @@
 .DS_Store
 node_modules/
+status-page/dist/
 .pnpm-store/
 
 # Neither of these lives in a clone: they are the box's, at /etc/rails49/. The

@@ -1,0 +1,10 @@
+/* The ground the page is laid on, with Shoelace's theme tokens from
+   `look.css`. */
+
+body {
+  margin: 0;
+  background: var(--sl-color-neutral-0);
+  color: var(--sl-color-neutral-900);
+  font-family: var(--sl-font-sans);
+  line-height: 1.6;
+}

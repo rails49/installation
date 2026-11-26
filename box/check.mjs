@@ -42,7 +42,12 @@ export async function check(io) {
     // 404 is a repository with no full release yet.
     if (answer.status !== 404 && !answer.ok) throw new Error(`GitHub answered ${answer.status}`);
     /** @type {Release | undefined} */
-    const found = answer.status === 404 ? undefined : prereleases ? newest(await answer.json()) : await answer.json();
+    const found =
+      answer.status === 404
+        ? undefined
+        : prereleases
+          ? newest(/** @type {Release[]} */ (await answer.json()))
+          : /** @type {Release} */ (await answer.json());
     after = { checked: now, succeeded: now, latest: found?.tag_name ?? null, prerelease: found?.prerelease ?? false };
   } catch (error) {
     console.error(`checking for a new release: ${message(error)}`);
