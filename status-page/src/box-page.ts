@@ -1,6 +1,7 @@
 // The page: look's shell and band, and the status `GET /box/status` answered.
 // It holds the status and whether `box` answers, and passes both down to the
-// groups it draws as `.status` and `.answering`.
+// groups it draws as `.status` and `.answering`. While a run goes, the
+// release group is `box-progress`.
 //
 // It fetches the status every 2 seconds while a run or a download goes or
 // while `box` does not answer, and every 30 seconds otherwise. While `box`
@@ -11,6 +12,7 @@
 import "@rails49/look";
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 
+import "./box-progress.js";
 import { COMMIT } from "./commit.js";
 import type { Status } from "./status.js";
 
@@ -117,6 +119,7 @@ export class BoxPage extends LitElement {
         </look-band>
         <main>
           ${this.#restarting()}
+          ${this.status?.updating?.running ? html`<box-progress .status=${this.status}></box-progress>` : nothing}
         </main>
       </look-shell>
     `;
