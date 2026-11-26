@@ -189,8 +189,8 @@ async function drop(keep, io) {
 
 /**
  * Whether the check's latest release is downloaded: `download`, what
- * `DOWNLOADING` holds, names it and has downloaded it. The page's "Update to"
- * offer, `start("update")` and `wanted()` each ask this (#126).
+ * `DOWNLOADING` holds, names it and has downloaded it. The status's
+ * `update.downloaded`, `start("update")` and `wanted()` each ask this (#126).
  *
  * @param {string | null | undefined} latest
  * @param {{ release?: string, downloaded?: boolean } | null | undefined} download
