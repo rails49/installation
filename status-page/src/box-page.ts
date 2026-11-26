@@ -1,13 +1,17 @@
 // The page: look's shell and band, and the status `GET /box/status` answered.
 // It holds the status and whether `box` answers, and passes both down to the
-// groups it draws as `.status` and `.answering`. While a run goes, the
-// release group is `box-progress`.
+// groups it draws as `.status` and `.answering`. The release group is
+// `box-release`, and `box-progress` while a run goes.
 //
 // It fetches the status every 2 seconds while a run or a download goes or
 // while `box` does not answer, and every 30 seconds otherwise. While `box`
 // does not answer it keeps the status it last showed and says so above it.
 // It reloads once when the box runs an installation commit other than the
 // one the page was built from; an empty commit on either side never reloads.
+//
+// A group asks for a press with a `box-press` event (`press.ts`). The page
+// posts it, form-encoded, and fetches the status at once after. A refusal's
+// sentence is shown among the errors until a press succeeds.
 
 import "@rails49/look";
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
@@ -15,8 +19,10 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import "./box-facts.js";
 import "./box-messages.js";
 import "./box-progress.js";
+import "./box-release.js";
 import "./box-stacks.js";
 import { COMMIT } from "./commit.js";
+import type { Press } from "./press.js";
 import type { Status } from "./status.js";
 
 const TITLE = "Server (box) status & updates";
@@ -53,6 +59,7 @@ export class BoxPage extends LitElement {
   static override readonly properties = {
     status: { state: true },
     answering: { state: true },
+    refusal: { state: true },
   };
 
   /** What `box` last answered, or null before it has. */
@@ -60,6 +67,9 @@ export class BoxPage extends LitElement {
 
   /** Whether `box` answered the last fetch. False until it has. */
   answering = false;
+
+  /** Why `box` refused the last press, in its sentence, or null. */
+  refusal: string | null = null;
 
   /** The installation commit the page was built from, empty where the build
    *  named none. */
@@ -75,6 +85,27 @@ export class BoxPage extends LitElement {
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   #reloaded = false;
+
+  constructor() {
+    super();
+    this.addEventListener("box-press", (event) => void this.#press((event as CustomEvent<Press>).detail));
+  }
+
+  /** Posts a press, keeps a refusal's sentence, and fetches the status. */
+  async #press({ route, body }: Press): Promise<void> {
+    try {
+      const answer = await fetch(route, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (answer.status === 409) this.refusal = await answer.text();
+      else if (answer.ok) this.refusal = null;
+    } catch {
+      // The fetch after it says whether the box answers.
+    }
+    await this.refresh();
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -131,9 +162,11 @@ export class BoxPage extends LitElement {
         </look-band>
         <main>
           ${this.#restarting()}
-          <box-messages .status=${this.status}></box-messages>
+          <box-messages .status=${this.status} .refusal=${this.refusal}></box-messages>
           <h2>Release and setup</h2>
-          ${this.status?.updating?.running ? html`<box-progress .status=${this.status}></box-progress>` : nothing}
+          ${this.status?.updating?.running
+            ? html`<box-progress .status=${this.status}></box-progress>`
+            : html`<box-release .status=${this.status} .answering=${this.answering}></box-release>`}
           <h2>Status</h2>
           <box-stacks .status=${this.status}></box-stacks>
           <box-facts .status=${this.status}></box-facts>

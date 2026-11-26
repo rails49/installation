@@ -96,9 +96,13 @@ export async function built(dir) {
  * newer than the one the box runs and not the one it has downloaded (#121,
  * #126).
  * It answers once `download.json` names the release, not once the release's
- * box image has pulled, so a press is answered at once and the page it loads
- * follows the download (#125). It does not reject: a failure goes to the log
- * and to `download.json` (#124).
+ * box image has pulled, so a press is answered at once and the status the
+ * page fetches after it shows the download (#125). It does not reject: a
+ * failure goes to the log and to `download.json` (#124).
+ *
+ * The page's presses (`POST /box/check`, `/box/prereleases`,
+ * `/box/download`, `/box/update` and `/box/back`) answer 204, or 409 with
+ * the sentence that says why the box refused.
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
  * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("../status-page/src/status.ts").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void>, page: Map<string, string> }} box
@@ -145,24 +149,24 @@ export async function handle(request, box) {
   if (route === "POST /box/check") {
     await box.check();
     await box.download();
-    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+    return text(204, "");
   }
   if (route === "POST /box/prereleases") {
     await box.prereleases(new URLSearchParams(request.body ?? "").get("prereleases") === "yes");
     await box.check();
     if (await box.automatic()) await box.download();
-    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+    return text(204, "");
   }
   if (route === "POST /box/download") {
     const on = new URLSearchParams(request.body ?? "").get("download") === "yes";
     await box.setAutomatic(on);
     if (on) await box.download();
-    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+    return text(204, "");
   }
   if (route === "POST /box/update" || route === "POST /box/back") {
     const refusal = await box.start(route === "POST /box/update" ? "update" : "back");
     if (refusal !== null) return text(409, refusal);
-    return { status: 303, type: "text/plain; charset=utf-8", body: "", headers: { location: "/box/" } };
+    return text(204, "");
   }
   if (route === "POST /box/setup") {
     const refusal = await box.apply(request.body ?? "");
