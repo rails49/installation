@@ -16,7 +16,7 @@ import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
 
 import { NAMES, ORDER } from "./format.js";
-import { GROUP } from "./group.js";
+import { GROUP, ROW } from "./group.js";
 import { press } from "./press.js";
 import type { Device, Status } from "./status.js";
 
@@ -29,6 +29,7 @@ const named = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 export class BoxSetup extends LitElement {
   static override readonly styles = [
     GROUP,
+    ROW,
     css`
       :host {
         display: grid;
@@ -50,9 +51,6 @@ export class BoxSetup extends LitElement {
 
       /* A device's name on the left and its choice at the right edge. */
       .row {
-        align-items: baseline;
-        display: flex;
-        gap: 0.5rem;
         justify-content: space-between;
       }
 

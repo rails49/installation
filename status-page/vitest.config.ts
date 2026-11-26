@@ -1,8 +1,7 @@
 import { defineConfig } from "vitest/config";
 
-// The components, mounted in happy-dom, apart from `vite.config.ts` so that
-// what the image builds is not changed by what the tests need. happy-dom does
-// no layout: no test asserts a width, a wrap or a height.
+// The components, mounted in happy-dom. happy-dom does no layout: no test
+// asserts a width, a wrap or a height.
 export default defineConfig({
   define: {
     __INSTALLATION_COMMIT__: JSON.stringify(""),
@@ -11,9 +10,10 @@ export default defineConfig({
     environment: "happy-dom",
     include: ["test/**/*.test.ts"],
     setupFiles: ["test/mounted.ts"],
-    // A Shoelace dialog shut while it opens cancels its animation, and
-    // happy-dom rejects the cancelled animation's promise where a browser
-    // marks it handled. That rejection, and no other, is not a failure.
+    // A device's `sl-select` in box-setup cancels the animation of its list
+    // where it is shut or removed while the list opens, and happy-dom
+    // rejects the cancelled animation's promise where a browser marks it
+    // handled. That rejection, and no other, is not a failure.
     onUnhandledError: (error) =>
       error.name === "AbortError" && error.message === "The animation was canceled." ? false : undefined,
   },

@@ -18,9 +18,11 @@ export type Answer = Status | Response | Error;
 
 /**
  * Puts a fake box behind `fetch`. `answer` is asked for each request and may
- * change between them. Returns the requests, in the order they were sent.
+ * change between them. It may return a promise, to answer later or never; the
+ * request's signal aborts it as it aborts a real fetch. Returns the requests,
+ * in the order they were sent.
  */
-export function box(answer: (sent: Sent) => Answer): Sent[] {
+export function box(answer: (sent: Sent) => Answer | Promise<Answer>): Sent[] {
   const sent: Sent[] = [];
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const request: Sent = {
@@ -29,7 +31,11 @@ export function box(answer: (sent: Sent) => Answer): Sent[] {
       body: init.body === undefined || init.body === null ? "" : String(init.body),
     };
     sent.push(request);
-    const answered = answer(request);
+    const signal = init.signal;
+    const aborted = new Promise<never>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason as Error));
+    });
+    const answered = await Promise.race([answer(request), aborted]);
     if (answered instanceof Error) throw answered;
     if (answered instanceof Response) return answered;
     return new Response(JSON.stringify(answered), {
