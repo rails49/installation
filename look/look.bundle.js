@@ -5216,6 +5216,7 @@ const Ui = k`
   }
 
   sl-dialog::part(panel) {
+    color: var(--sl-color-neutral-900);
     border-radius: 6px;
     overflow: hidden;
   }
