@@ -1,7 +1,8 @@
 # The box's own requests and its status page: stock node, whose util-linux
-# carries `nsenter`, with the Docker CLI, compose and buildx added, the
-# script, and the status page built in a stage of its own. compose.yaml says
-# what it runs. The same image is `rails49-update`, which updates the box and
+# carries `nsenter`, with the Docker CLI, compose and buildx added, `box/`,
+# and the status page, the Lit application in `status-page/`, built in a
+# stage of its own. `box` serves its built files under `/box/`. compose.yaml
+# says what it runs. The same image is `rails49-update`, which updates the box and
 # goes back (`box/update.mjs`): buildx builds JMRI, and curl and the probe
 # check the box after it.
 #

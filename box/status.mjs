@@ -443,8 +443,8 @@ export function message(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A time as the page says it. @param {string} iso */
-export function when(iso) {
+/** A time as a sentence says it. @param {string} iso */
+function when(iso) {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
 

@@ -132,6 +132,19 @@ describe("box-release", () => {
     expect(rows(pre)[1]).toEqual(["New pre-release 2026.11.2 is available.", ["Update to pre-release 2026.11.2"]]);
   });
 
+  // `box` sets both where `start("update")` accepts (#126,
+  // test/status.test.ts).
+  it("offers the update where update says the release is available and downloaded, whatever the download says", async () => {
+    const offered = async (available: boolean, downloaded: boolean) =>
+      rows(await release(with_({ available, downloaded })))
+        .flatMap(([, controls]) => controls)
+        .filter((control) => control.startsWith("Update to"));
+    expect(await offered(true, true)).toEqual(["Update to 2026.11.1"]);
+    expect(await offered(true, false)).toEqual([]);
+    expect(await offered(false, true)).toEqual([]);
+    expect(await offered(false, false)).toEqual([]);
+  });
+
   it("says the railroad stops after Update to and Revert to, before the last check", async () => {
     const shown = await release(STATUS);
     expect(said(shown)).toEqual([RESTARTS]);

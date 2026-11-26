@@ -146,6 +146,13 @@ describe("box-setup", () => {
     expect(all(await setup(WITH_DEVICES), ".devices > .row > span")).toEqual(["Command station", "Camera"]);
   });
 
+  it("is the Stacks to run group, then the Devices group, which ends in Apply", async () => {
+    const shown = await setup(WITH_DEVICES);
+    expect(all(shown, "fieldset.group > legend")).toEqual(["Stacks to run", "Devices"]);
+    const devices = shown.renderRoot.querySelectorAll("fieldset.group")[1]!;
+    expect(devices.lastElementChild?.querySelector("sl-button")?.textContent).toBe("Apply");
+  });
+
   it("ends in Apply, and says nothing of the railroad, which the release group says", async () => {
     const shown = await setup(WITH_DEVICES);
     expect(all(shown, "sl-button")).toEqual(["Apply"]);

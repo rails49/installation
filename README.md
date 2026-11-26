@@ -230,9 +230,6 @@ and "Status", with the stacks, the box and Docker. It shows:
   for update" downloads, and the page says of a newer release it has not
   downloaded "New release <release> is available. Check for update downloads
   it."
-  In a browser that runs no script, each of the two switches is a button that
-  says "on" or "off", and a press does what a change does
-  ([#142](https://github.com/rails49/installation/issues/142)).
 - Disk free, on the file system Docker keeps its images on.
 - Memory, the box's used of its total, from `MemTotal` and `MemAvailable` in
   `/proc/meminfo`. Low memory is no failure.
@@ -268,10 +265,10 @@ The status page also chooses the stacks the box runs and their devices
   (`control`, `occupancy`, `jmri` and `dccex`), ticked as
   `BOX_UIS` in `box.env` declares them. The page says that Occupancy and the
   DCC-EX translator use the broker installed with Control. Ticking dccex or
-  occupancy ticks `control`, whose broker each dials; `box` ticks it again when the form is
-  applied, for a browser that runs no script. Ticking jmri does not: it reads
-  `TC49_STORE` from `control.env`, which the install script writes whether or
-  not `control` runs.
+  occupancy ticks `control`, whose broker each dials; `box` ticks it again
+  when the form is applied. Ticking jmri does not: it reads `TC49_STORE` from
+  `control.env`, which the install script writes whether or not `control`
+  runs.
 - The command station, from `/dev/serial/by-id/`, and the camera, from the
   names in `/dev/v4l/by-id/` that end in `-video-index0`, or none. A UVC
   camera's `-video-index1` is its metadata device, which gives no picture
@@ -346,18 +343,17 @@ starts the container `rails49-update` from the target release's
    releases' files are kept under `/var/lib/rails49/releases`.
 
 What it is doing is in `/var/lib/rails49/update.json`, which the status page
-shows while it runs. The page swaps in what changed every 2 seconds, says so
-while `box` is restarting, and reloads once when the run ends; without script
-it reloads every 5 seconds
-([#117](https://github.com/rails49/installation/issues/117)). It never
-replaces a form the fetched page also has, so what someone has typed into the
-setup during a download stays, and the end of a download swaps in the page
-instead of reloading it
-([#130](https://github.com/rails49/installation/issues/130)). It holds the
-step in a sentence, `step`, and while an image is pulled `pull`: the image, its place
-among every image the run pulls, and the bytes downloaded of its total; and
-`pull.run`, the run's bytes downloaded and its total. Before the first pull,
-that total is the distinct layers of every image the run pulls, for the box's
+shows while it runs. The page fetches `GET /box/status` every 2 seconds while
+a run or a download goes, and every 30 seconds otherwise, and changes only
+what changed, so what someone has typed into the setup stays. While `box`
+does not answer, the page keeps what it showed and says "The box is
+restarting.", and after 3 minutes "The box has not answered for 3 minutes."
+It reloads once when the box runs another installation commit than the page
+was built from ([#161](https://github.com/rails49/installation/issues/161)).
+`update.json` holds the step in a sentence, `step`, and while an image is
+pulled `pull`: the image, its place among every image the run pulls, and
+the bytes downloaded of its total; and `pull.run`, the run's bytes
+downloaded and its total. Before the first pull, that total is the distinct layers of every image the run pulls, for the box's
 platform, from the manifest's `layers`, less those of the images already on
 the box; a layer Docker's stream says already exists, of which the run
 downloaded nothing, comes off it. `pull.run` is null for a release whose
@@ -428,8 +424,8 @@ pulling the `installation-box` image or creating the container failing, is
 the download's `failure` there, as one inside the container is
 ([#124](https://github.com/rails49/installation/issues/124)). `POST /box/check`,
 `POST /box/prereleases` and `POST /box/download` answer once `box` has written
-it, not once the `installation-box` image has pulled, so the page they send the browser back
-to already shows the download
+it, not once the `installation-box` image has pulled, so the status the page
+fetches after the press already shows the download
 ([#125](https://github.com/rails49/installation/issues/125)). The download
 runs from the moment `box` starts it, through the pull of its
 `installation-box` image
@@ -879,11 +875,10 @@ actionlint over every workflow, `docker compose config` over every compose file
 with `BOX_DOMAIN` set, empty and unset, the page's render in the stock image the
 page is built on for both kinds of box, and the tests: one over the page the
 render script produces, one over the box's requests and the origin check, one
-each over the status, the check for a new release, the log bundle and the
-status page `box` renders, one over the compose files as data and the door's
-script, one over what a deploy builds and refuses, one over what the install
-script does to a box, in the stock image `box` is built on, one over the images
-workflow as data, and one over the release's number, its pinned box
+each over the status, the check for a new release and the log bundle, one
+over the compose files as data and the door's script, one over what a deploy
+builds and refuses, one over what the install script does to a box, in the
+stock image `box` is built on, one over the images workflow as data, and one over the release's number, its pinned box
 files and the releases it deletes. It installs the status page from its
 lockfile, type-checks it, runs its tests and builds it. Nothing in it needs a
 box or a secret, and it builds no image.

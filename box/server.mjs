@@ -1,12 +1,16 @@
 // The box's own requests, served on every name the door serves: whether this
 // box can be turned off from here, with the update the status page offers
 // (#147), and turning it off (ADR-0005); the status page at `/box/`, the
-// files `status-page/` built, read from `../status-page/dist/` (#161), the
-// status it shows at `/box/status`, a check for a new release, the log bundle (#65 decisions 5 to 7), starting an update or
-// going back (decisions 8 to 10, `update.mjs`), applying the setup of
-// stacks and devices (#69 decisions 10 to 15, `setup.mjs`), offering
-// pre-releases (#105), and downloading a newer release in the background
-// (#121, `download.mjs`).
+// status it shows at `/box/status`, a check for a new release, the log
+// bundle (#65 decisions 5 to 7), starting an update or going back
+// (decisions 8 to 10, `update.mjs`), applying the setup of stacks and
+// devices (#69 decisions 10 to 15, `setup.mjs`), offering pre-releases
+// (#105), and downloading a newer release in the background (#121,
+// `download.mjs`).
+//
+// The status page is the Lit application in `status-page/`, served as
+// built from `../status-page/dist/` (#161). It reads `/box/status` and
+// presses the POST routes with `fetch`. `box` renders no HTML.
 //
 // Node's standard library and nothing else, run by `node:22-slim` with the
 // Docker CLI added. The container shares the box's PID namespace and is
@@ -101,8 +105,8 @@ export async function built(dir) {
  * failure goes to the log and to `download.json` (#124).
  *
  * The page's presses (`POST /box/check`, `/box/prereleases`,
- * `/box/download`, `/box/update` and `/box/back`) answer 204, or 409 with
- * the sentence that says why the box refused.
+ * `/box/download`, `/box/update`, `/box/back` and `/box/setup`) answer 204,
+ * or 409 with the sentence that says why the box refused.
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
  * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("../status-page/src/status.ts").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void>, page: Map<string, string> }} box
