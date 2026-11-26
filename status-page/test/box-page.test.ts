@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { BoxPage } from "../src/box-page.js";
 import type { BoxProgress } from "../src/box-progress.js";
+import type { BoxRelease } from "../src/box-release.js";
 import type { Run } from "../src/status.js";
 import { box, STATUS } from "./box.js";
 import { all, mounted, part } from "./mounted.js";
@@ -57,12 +58,14 @@ describe("box-page", () => {
     const progress = part(shown, "main > box-progress") as BoxProgress;
     expect(progress.status?.updating).toEqual(UPDATING);
     expect(progress.previousElementSibling?.textContent).toBe("Release and setup");
+    expect(shown.renderRoot.querySelector("box-release")).toBeNull();
   });
 
-  it("shows no run once it has ended", async () => {
+  it("goes back to the release group's own rows once the run has ended", async () => {
     box(() => ({ ...STATUS, updating: { ...UPDATING, running: false } }));
     const shown = await page();
     expect(shown.renderRoot.querySelector("box-progress")).toBeNull();
+    expect((part(shown, "main > box-release") as BoxRelease).status).toBe(shown.status);
   });
 
   it("shows the errors and notes, then the release and the setup, then the status, then the log bundle", async () => {
@@ -72,13 +75,14 @@ describe("box-page", () => {
     expect([...main.children].map((child) => child.localName)).toEqual([
       "box-messages",
       "h2",
+      "box-release",
       "h2",
       "box-stacks",
       "box-facts",
       "p",
     ]);
     expect(all(shown, "main > h2")).toEqual(["Release and setup", "Status"]);
-    for (const group of ["box-messages", "box-stacks", "box-facts"] as const) {
+    for (const group of ["box-messages", "box-release", "box-stacks", "box-facts"] as const) {
       expect(main.querySelector(group)?.status).toBe(shown.status);
     }
   });

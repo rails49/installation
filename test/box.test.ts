@@ -440,10 +440,10 @@ describe("GET /box/bundle", () => {
 });
 
 describe("POST /box/check", () => {
-  it("checks for a release once and sends the browser back to the page", async () => {
+  it("checks for a release once and answers 204", async () => {
     const on = box("systemd");
     const answer = await ask(on, "POST", "/box/check");
-    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(answer).toMatchObject({ status: 204, body: "" });
     expect(on.checked).toBe(1);
   });
 
@@ -454,8 +454,8 @@ describe("POST /box/check", () => {
   });
 
   // #125: the press is answered while the new release's box image still pulls.
-  // #132: and the page it loads follows the download through that pull.
-  it("answers at once, while the download it started still pulls, and the page it loads follows the download", async () => {
+  // #132: and the status the page fetches after it says the download runs.
+  it("answers at once, while the download it started still pulls, and the status says the download runs", async () => {
     const files: Record<string, string> = {
       "/var/lib/rails49/deploys/installation": "2026-11-10T09:00:00Z  -  ->  2026.11.0  passed\n",
     };
@@ -495,15 +495,17 @@ describe("POST /box/check", () => {
       }),
     };
     const answer = await handle({ method: "POST", url: "/box/check", headers: { host: HOST }, body: "" }, on);
-    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(answer).toMatchObject({ status: 204 });
     expect(JSON.parse(files["/var/lib/rails49/download.json"]!)).toMatchObject({
       release: "2026.11.2",
       finished: null,
       failure: null,
     });
-    const page = render(JSON.parse(String((await handle({ method: "GET", url: "/box/status", headers: { host: HOST }, body: "" }, on)).body)));
-    expect(page).toContain("New release 2026.11.2 is available. Downloading it.");
-    expect(page).toContain('<script type="module" src="/box/follow.js" data-follows="download"></script>');
+    const shown = JSON.parse(String((await handle({ method: "GET", url: "/box/status", headers: { host: HOST }, body: "" }, on)).body));
+    expect(shown).toMatchObject({
+      update: { latest: "2026.11.2", available: true, downloaded: false },
+      download: { release: "2026.11.2", running: true },
+    });
   });
 
   it("is refused from a page on another origin, and checks nothing", async () => {
@@ -516,10 +518,10 @@ describe("POST /box/check", () => {
 
 describe("POST /box/prereleases", () => {
 
-  it("writes BOX_PRERELEASES into box.env, keeping every other line, checks, and sends the browser back", async () => {
+  it("writes BOX_PRERELEASES into box.env, keeping every other line, checks, and answers 204", async () => {
     const on = box("systemd");
     const answer = await ask(on, "POST", "/box/prereleases", form, "prereleases=yes");
-    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(answer).toMatchObject({ status: 204, body: "" });
     const yes = '# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_PRERELEASES=yes\n';
     expect(on.checkedWith).toEqual([yes]);
 
@@ -554,7 +556,7 @@ describe("on a box that downloads only on a press (#141)", () => {
 
   it("POST /box/prereleases checks and downloads nothing", async () => {
     const on = off();
-    expect(await ask(on, "POST", "/box/prereleases", form, "prereleases=yes")).toMatchObject({ status: 303 });
+    expect(await ask(on, "POST", "/box/prereleases", form, "prereleases=yes")).toMatchObject({ status: 204 });
     expect([on.checked, on.downloads]).toEqual([1, 0]);
   });
 });
@@ -610,7 +612,7 @@ describe("POST /box/download", () => {
   it("writes BOX_DOWNLOAD=no into box.env, keeping every other line, and checks and downloads nothing", async () => {
     const on = counting();
     const answer = await ask(on, "POST", "/box/download", form, "download=no");
-    expect(answer).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(answer).toMatchObject({ status: 204, body: "" });
     expect(on.env).toBe('# the box\nBOX_DOMAIN=example.org\nBOX_UIS="control"\nBOX_DOWNLOAD=no\n');
     expect([on.checked, on.downloads]).toEqual([0, 0]);
   });
@@ -633,19 +635,21 @@ describe("POST /box/download", () => {
 });
 
 describe("POST /box/update and POST /box/back", () => {
-  it("start one and send the browser back to the page", async () => {
+  it("start one and answer 204", async () => {
     const on = box("systemd");
-    expect(await ask(on, "POST", "/box/update")).toMatchObject({ status: 303, headers: { location: "/box/" } });
-    expect(await ask(on, "POST", "/box/back")).toMatchObject({ status: 303, headers: { location: "/box/" } });
+    expect(await ask(on, "POST", "/box/update")).toMatchObject({ status: 204, body: "" });
+    expect(await ask(on, "POST", "/box/back")).toMatchObject({ status: 204, body: "" });
     expect(on.started).toEqual(["update", "back"]);
   });
 
   it("answer 409 with the sentence that says why the box refused", async () => {
     const on = box("systemd", "The box is already updating, going back or applying the setup.");
-    expect(await ask(on, "POST", "/box/update")).toMatchObject({
-      status: 409,
-      body: "The box is already updating, going back or applying the setup.",
-    });
+    for (const url of ["/box/update", "/box/back"]) {
+      expect(await ask(on, "POST", url)).toMatchObject({
+        status: 409,
+        body: "The box is already updating, going back or applying the setup.",
+      });
+    }
   });
 
   it("are refused from a page on another origin, and start nothing", async () => {
