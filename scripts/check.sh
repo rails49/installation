@@ -8,6 +8,7 @@
 #   workflows      checked with actionlint
 #   the box        its script asked once in the stock image it is built on
 #   the pages      look-check over the page and the status page
+#   status-page/   installed from its lockfile, tsc, vitest and vite build
 #   the tests      tsc over them, then vitest
 #
 # The gate is green when it finds nothing to check. Each check grows a section
@@ -120,7 +121,8 @@ if [ -f page/render.sh ]; then
 
   # Fails when the page or the status page styles look's band. At the tag of
   # the committed `look/look.bundle.js`, which a release of look moves with it.
-  run look-check pnpm --package=github:rails49/look#v0.14.0 dlx look-check page box
+  run look-check pnpm --package=github:rails49/look#v0.14.0 dlx look-check \
+    page status-page/src status-page/index.html
 fi
 
 # The box's script in the stock image it is built on, whose node is older than a
@@ -128,7 +130,8 @@ fi
 # cover what it answers; this asks it one question under that node, with an
 # `Origin`, which is the path through the newest API it uses.
 if [ -f box/server.mjs ]; then
-  box_base=$(sed -n "s/^FROM //p" box/Dockerfile)
+  # The stage the box runs, the one not named.
+  box_base=$(sed -n "s/^FROM \([^ ]*\)$/\1/p" box/Dockerfile)
   run "box answers in node:22-slim" \
     docker run --rm -v "$ROOT/box:/box:ro" "$box_base" sh -c \
       'command -v nsenter >/dev/null && node --input-type=module -e "
@@ -137,6 +140,15 @@ if [ -f box/server.mjs ]; then
         const box = { pid1: \"\", turnOff() {} };
         if ((await handle(request, box)).status !== 403) process.exit(1);
       "'
+fi
+
+# The status page, as the box image's node stage builds it: from its lockfile,
+# type-checked, tested and built.
+if [ -f status-page/package.json ]; then
+  run "status-page install" pnpm --dir status-page install --frozen-lockfile
+  run "status-page tsc" status-page/node_modules/.bin/tsc -p status-page/tsconfig.json --noEmit
+  run "status-page vitest" status-page/node_modules/.bin/vitest run --root status-page
+  run "status-page build" status-page/node_modules/.bin/vite build status-page
 fi
 
 if [ -f package.json ]; then

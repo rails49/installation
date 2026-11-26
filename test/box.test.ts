@@ -5,10 +5,15 @@
  * and can count how many times it was asked to.
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterAll, describe, expect, it } from "vitest";
 
 import { beginDownload, offered, starting } from "../box/download.mjs";
-import { handle, tick, zone } from "../box/server.mjs";
+import { render } from "../box/page.mjs";
+import { built, handle, tick, zone } from "../box/server.mjs";
 import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
 import type { Status } from "../status-page/src/status.ts";
@@ -93,6 +98,7 @@ function box(pid1: string, refusal: string | null = null) {
       return refusal;
     },
     bundle: async () => ({ name: "example.org-20261112T1000.tar.gz", body: Buffer.from("tar") }),
+    page: new Map<string, string>(),
   };
   return counted;
 }
@@ -211,7 +217,7 @@ describe("GET /box, the update it answers (#147)", () => {
     const on = boxWith(files, stopped);
     const get = async (url: string) => String((await handle({ method: "GET", url, headers: { host: HOST } }, on)).body);
     const json = JSON.parse(await get("/box"));
-    const page = await get("/box/");
+    const page = render(JSON.parse(await get("/box/status")));
     return { update: json.update, offers: page.match(/<button>Update to (?:pre-release )?(\S+)<\/button>/)?.[1] ?? null };
   }
 
@@ -375,22 +381,49 @@ describe("GET /box/status", () => {
   });
 });
 
-describe("GET /box/", () => {
-  it("answers the status page as HTML", async () => {
-    const answer = await ask(box("systemd"), "GET", "/box/");
-    expect(answer).toMatchObject({ status: 200, type: "text/html; charset=utf-8" });
-    expect(String(answer.body)).toContain("example.org");
+describe("GET /box/ and the built page", () => {
+  /** A built page, as `vite build` writes it. */
+  const dir = mkdtempSync(join(tmpdir(), "status-page-"));
+  mkdirSync(join(dir, "assets"));
+  mkdirSync(join(dir, "shoelace/assets/icons"), { recursive: true });
+  writeFileSync(join(dir, "index.html"), "<!doctype html><box-page></box-page>");
+  writeFileSync(join(dir, "assets/index-C1DEAMa3.js"), "export {};");
+  writeFileSync(join(dir, "assets/index-C1DEAMa3.css"), "body {}");
+  writeFileSync(join(dir, "shoelace/assets/icons/x-lg.svg"), "<svg></svg>");
+  afterAll(() => rmSync(dir, { recursive: true }));
+  const IMMUTABLE = { "cache-control": "public, max-age=31536000, immutable" };
+
+  it("answers index.html, checked again on every load", async () => {
+    const answer = await ask({ ...box("systemd"), page: await built(dir) }, "GET", "/box/");
+    expect(answer).toMatchObject({ status: 200, type: "text/html; charset=utf-8", headers: { "cache-control": "no-cache" } });
+    expect(String(answer.body)).toBe("<!doctype html><box-page></box-page>");
   });
 
-  it("serves the page's stylesheet and look's stylesheet and bundle under /box", async () => {
-    const css = await ask(box("systemd"), "GET", "/box/page.css");
-    expect(css).toMatchObject({ status: 200, type: "text/css; charset=utf-8" });
-    const look = await ask(box("systemd"), "GET", "/box/look/look.bundle.js");
-    expect(look).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
-    expect(String(look.body)).toContain("LookBand");
-    const lookCss = await ask(box("systemd"), "GET", "/box/look/look.css");
-    expect(lookCss).toMatchObject({ status: 200, type: "text/css; charset=utf-8" });
-    expect(String(lookCss.body)).toContain("look-band:not(:defined)");
+  it("serves every other built file by its path, with its type, cached for good", async () => {
+    const on = { ...box("systemd"), page: await built(dir) };
+    const types = {
+      "/box/assets/index-C1DEAMa3.js": ["text/javascript; charset=utf-8", "export {};"],
+      "/box/assets/index-C1DEAMa3.css": ["text/css; charset=utf-8", "body {}"],
+      "/box/shoelace/assets/icons/x-lg.svg": ["image/svg+xml", "<svg></svg>"],
+    };
+    for (const [url, [type, body]] of Object.entries(types)) {
+      const answer = await ask(on, "GET", url);
+      expect(answer, url).toMatchObject({ status: 200, type, headers: IMMUTABLE });
+      expect(String(answer.body), url).toBe(body);
+    }
+  });
+
+  it("answers 404 for a path outside the built files", async () => {
+    const on = { ...box("systemd"), page: await built(dir) };
+    for (const url of ["/box/index.html", "/box/assets/missing.js", "/box/assets/", "/box/../box/server.mjs", "/box/page.css", "/box/look/look.css", "/box/follow.js", "/box/tick.js", "/box/switch.js"]) {
+      expect((await ask(on, "GET", url)).status, url).toBe(404);
+    }
+  });
+
+  it("reads the list of built files once, so a file written after it is not served", async () => {
+    const on = { ...box("systemd"), page: await built(dir) };
+    writeFileSync(join(dir, "assets/later.js"), "export {};");
+    expect((await ask(on, "GET", "/box/assets/later.js")).status).toBe(404);
   });
 });
 
@@ -468,7 +501,7 @@ describe("POST /box/check", () => {
       finished: null,
       failure: null,
     });
-    const page = (await handle({ method: "GET", url: "/box/", headers: { host: HOST }, body: "" }, on)).body;
+    const page = render(JSON.parse(String((await handle({ method: "GET", url: "/box/status", headers: { host: HOST }, body: "" }, on)).body)));
     expect(page).toContain("New release 2026.11.2 is available. Downloading it.");
     expect(page).toContain('<script type="module" src="/box/follow.js" data-follows="download"></script>');
   });
@@ -647,27 +680,6 @@ describe("POST /box/setup", () => {
     const headers = { host: HOST, origin: "https://evil.example" };
     expect((await ask(on, "POST", "/box/setup", headers, FORM)).status).toBe(403);
     expect(on.applied).toEqual([]);
-  });
-});
-
-describe("GET /box/tick.js", () => {
-  it("serves the script that ticks control", async () => {
-    const answer = await ask(box("systemd"), "GET", "/box/tick.js");
-    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
-  });
-});
-
-describe("GET /box/switch.js", () => {
-  it("serves the script that posts a switch's form", async () => {
-    const answer = await ask(box("systemd"), "GET", "/box/switch.js");
-    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
-  });
-});
-
-describe("GET /box/follow.js", () => {
-  it("serves the script that follows a run", async () => {
-    const answer = await ask(box("systemd"), "GET", "/box/follow.js");
-    expect(answer).toMatchObject({ status: 200, type: "text/javascript; charset=utf-8" });
   });
 });
 

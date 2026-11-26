@@ -381,10 +381,11 @@ async function fetchedBoxImage(release, fetch) {
     },
   );
   if (!answer.ok) throw new Failure(`GitHub answered ${answer.status} for release ${release}'s manifest.`);
-  /** @type {{ stacks: { installation: { commit: string, images: Record<string, string> } } }} */
-  const manifest = await answer.json().catch((error) => {
-    throw new Failure(`Could not read release ${release}'s manifest from GitHub: ${sentence(error)}`);
-  });
+  const manifest = /** @type {{ stacks: { installation: { commit: string, images: Record<string, string> } } }} */ (
+    await answer.json().catch((error) => {
+      throw new Failure(`Could not read release ${release}'s manifest from GitHub: ${sentence(error)}`);
+    })
+  );
   const { commit, images } = manifest.stacks.installation;
   return `ghcr.io/rails49/installation-box:${commit}@${images["installation-box"]}`;
 }

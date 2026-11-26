@@ -446,13 +446,23 @@ describe("the box", () => {
     expect(box.restart).toBe("unless-stopped");
   });
 
-  it("carries the script and look's bundle in its image", () => {
-    // The status page loads look's bundle from under /box, since on a UI port
-    // every other path is that UI's.
+  it("carries the script and the status page built from the image's commit", () => {
+    // `box/server.mjs` serves `../status-page/dist/`.
     const dockerfile = readFileSync(new URL("box/Dockerfile", root), "utf8");
     expect(dockerfile).toMatch(/^COPY box\/ \/box\/$/m);
-    expect(dockerfile).toMatch(/^COPY look\/ \/look\/$/m);
+    expect(dockerfile).toMatch(/^FROM node:22-slim@sha256:[0-9a-f]{64} AS status-page$/m);
+    expect(dockerfile).toMatch(/^ARG INSTALLATION_COMMIT=\nRUN pnpm run build$/m);
+    expect(dockerfile).toMatch(/^COPY --from=status-page \/status-page\/dist\/ \/status-page\/dist\/$/m);
+    expect(dockerfile).not.toMatch(/^COPY look\//m);
     expect(box.command).toEqual(["node", "/box/server.mjs"]);
+  });
+
+  it("builds the status page from status-page/ and nothing a host built", () => {
+    const ignored = readFileSync(new URL(".dockerignore", root), "utf8").split("\n");
+    const allowed = ignored.indexOf("!status-page");
+    expect(allowed).toBeGreaterThan(-1);
+    expect(ignored.indexOf("status-page/node_modules")).toBeGreaterThan(allowed);
+    expect(ignored.indexOf("status-page/dist")).toBeGreaterThan(allowed);
   });
 
   it("carries the Docker CLI and compose, from Docker's own repository", () => {

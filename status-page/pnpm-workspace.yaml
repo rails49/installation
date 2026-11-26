@@ -1,0 +1,10 @@
+# Which dependency may run its install scripts. pnpm 11 refuses to run them
+# unless they are named here, and exits non-zero rather than skipping one
+# silently — so this file is what stands between the image and a build with no
+# bundler in it (#58).
+#
+# `esbuild` is `vite`'s, and its postinstall is what puts the platform binary
+# in place. It is named here and not under `pnpm` in `package.json`, which
+# pnpm 10 and later do not read this from.
+allowBuilds:
+  esbuild: true

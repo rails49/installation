@@ -1,6 +1,7 @@
 // The box's own requests, served on every name the door serves: whether this
 // box can be turned off from here, with the update the status page offers
 // (#147), and turning it off (ADR-0005); the status page at `/box/`, the
+// files `status-page/` built, read from `../status-page/dist/` (#161), the
 // status it shows at `/box/status`, a check for a new release, the log bundle (#65 decisions 5 to 7), starting an update or
 // going back (decisions 8 to 10, `update.mjs`), applying the setup of
 // stacks and devices (#69 decisions 10 to 15, `setup.mjs`), offering
@@ -24,13 +25,14 @@ import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, statfs, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
+import { extname, join, relative } from "node:path";
 import { connect } from "node:tls";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { bundle, pack } from "./bundle.mjs";
 import { check, due } from "./check.mjs";
 import { beginDownload, offered, starting } from "./download.mjs";
-import { render } from "./page.mjs";
 import { apply, form, offerDownload, offerPrereleases } from "./setup.mjs";
 import { CHECK, downloads, message, prereleases, status } from "./status.mjs";
 import { docker, read, start } from "./update.mjs";
@@ -39,20 +41,39 @@ const PORT = 8080;
 
 const POWEROFF = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "systemctl", "poweroff"];
 
-/** The files the page loads, by path: where each is, beside this script or
- *  in the image, and its type. Nothing else is read from disk. */
-/** @type {Record<string, [URL, string]>} */
-const ASSETS = {
-  "GET /box/page.css": [new URL("page.css", import.meta.url), "text/css; charset=utf-8"],
-  "GET /box/tick.js": [new URL("tick.js", import.meta.url), "text/javascript; charset=utf-8"],
-  "GET /box/switch.js": [new URL("switch.js", import.meta.url), "text/javascript; charset=utf-8"],
-  "GET /box/follow.js": [new URL("follow.js", import.meta.url), "text/javascript; charset=utf-8"],
-  "GET /box/look/look.css": [new URL("../look/look.css", import.meta.url), "text/css; charset=utf-8"],
-  "GET /box/look/look.bundle.js": [
-    new URL("../look/look.bundle.js", import.meta.url),
-    "text/javascript; charset=utf-8",
-  ],
+/** The type each kind of built file is served with. */
+/** @type {Record<string, string>} */
+const TYPES = {
+  html: "text/html; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  svg: "image/svg+xml",
+  json: "application/json",
 };
+
+/** Built files other than `index.html` are named by their hash, or are
+ *  Shoelace's assets of the version the page was built with. */
+const IMMUTABLE = "public, max-age=31536000, immutable";
+
+/**
+ * The status page's built files under `dir`, by the path each is served at:
+ * `index.html` at `/box/`, every other file at `/box/` and its path. Nothing
+ * outside this list is read from disk.
+ *
+ * @param {string} dir
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function built(dir) {
+  const files = await readdir(dir, { recursive: true, withFileTypes: true });
+  return new Map(
+    files
+      .filter((file) => file.isFile())
+      .map((file) => {
+        const path = relative(dir, join(file.parentPath, file.name));
+        return [path === "index.html" ? "/box/" : `/box/${path}`, join(dir, path)];
+      }),
+  );
+}
 
 /**
  * @typedef {{ status: number, type: string, body: string | Buffer, headers?: Record<string, string> }} Answer
@@ -69,7 +90,8 @@ const ASSETS = {
  * `box.prereleases` writes whether the check takes pre-releases.
  * `box.automatic` reads whether the box downloads after every check, and
  * `box.setAutomatic` writes it; with it off, only `POST /box/check`
- * downloads (#141).
+ * downloads (#141). `box.page` is the status page's built files, from
+ * `built()`.
  * `box.download` starts downloading the release a check found, where it is
  * newer than the one the box runs and not the one it has downloaded (#121,
  * #126).
@@ -79,7 +101,7 @@ const ASSETS = {
  * and to `download.json` (#124).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("../status-page/src/status.ts").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("../status-page/src/status.ts").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void>, page: Map<string, string> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {
@@ -120,9 +142,6 @@ export async function handle(request, box) {
   if (route === "GET /box/status") {
     return { status: 200, type: "application/json", body: JSON.stringify(await box.status()) };
   }
-  if (route === "GET /box/") {
-    return { status: 200, type: "text/html; charset=utf-8", body: render(await box.status()) };
-  }
   if (route === "POST /box/check") {
     await box.check();
     await box.download();
@@ -159,8 +178,15 @@ export async function handle(request, box) {
       headers: { "content-disposition": `attachment; filename="${name}"` },
     };
   }
-  const asset = ASSETS[route];
-  if (asset) return { status: 200, type: asset[1], body: await readFile(asset[0]) };
+  const file = request.method === "GET" ? box.page.get(route.slice("GET ".length)) : undefined;
+  if (file) {
+    return {
+      status: 200,
+      type: TYPES[extname(file).slice(1)] ?? "application/octet-stream",
+      body: await readFile(file),
+      headers: { "cache-control": route === "GET /box/" ? "no-cache" : IMMUTABLE },
+    };
+  }
   return text(404, "");
 }
 
@@ -311,6 +337,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   } catch (error) {
     console.error(`reading the host's time zone: ${message(error)}`);
   }
+  // The status page, built beside this script in the image (`box/Dockerfile`).
+  const page = await built(fileURLToPath(new URL("../status-page/dist/", import.meta.url)));
   const env = {
     BOX_DOMAIN: process.env.BOX_DOMAIN ?? "",
     BOX_UIS: process.env.BOX_UIS ?? "",
@@ -399,6 +427,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       prereleases: (on) => offerPrereleases(on, setupIo),
       automatic,
       setAutomatic: (on) => offerDownload(on, setupIo),
+      page,
     }).catch((error) => {
       console.error(`${req.method} ${req.url}: ${error.stack}`);
       return text(500, `${error.message}`);

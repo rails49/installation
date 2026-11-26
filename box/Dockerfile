@@ -1,12 +1,27 @@
 # The box's own requests and its status page: stock node, whose util-linux
 # carries `nsenter`, with the Docker CLI, compose and buildx added, the
-# script, and look's bundle for the page. compose.yaml says what it runs.
-# The same image is `rails49-update`, which updates the box and goes back
-# (`box/update.mjs`): buildx builds JMRI, and curl and the probe check the
-# box after it.
+# script, and the status page built in a stage of its own. compose.yaml says
+# what it runs. The same image is `rails49-update`, which updates the box and
+# goes back (`box/update.mjs`): buildx builds JMRI, and curl and the probe
+# check the box after it.
 #
 # The stock image is pinned by digest, which a release's manifest records. A
-# newer one is a change to this line.
+# newer one is a change to both FROM lines.
+
+# The status page (`status-page/`), built with the commit baked in. Only
+# `dist/` leaves this stage.
+FROM node:22-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS status-page
+WORKDIR /status-page
+# pnpm at the version `package.json` names.
+RUN corepack enable
+# The dependencies in a layer of their own, ahead of the sources.
+COPY status-page/package.json status-page/pnpm-lock.yaml status-page/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY status-page/ ./
+# `tsc --noEmit && vite build`, which bakes the commit into the page.
+ARG INSTALLATION_COMMIT=
+RUN pnpm run build
+
 FROM node:22-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c
 
 # The CLI, compose and buildx from Docker's own apt repository, for the Debian
@@ -21,7 +36,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY box/ /box/
-COPY look/ /look/
+COPY --from=status-page /status-page/dist/ /status-page/dist/
 COPY scripts/probe.sh /scripts/probe.sh
 
 # The commit this was built from, which compose also names the image by.

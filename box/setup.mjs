@@ -32,8 +32,7 @@ import { BUSY, NO_RELEASE, updater } from "./update.mjs";
 /** The labels a box can declare, in the order `BOX_UIS` lists them. */
 export const LABELS = STACKS.flatMap(({ label }) => (label ? [label] : []));
 
-/** The labels that dial control's broker, so that ticking one ticks control.
- *  `tick.js` holds the same list for the page. */
+/** The labels that dial control's broker, so that ticking one ticks control. */
 const NEEDS_CONTROL = ["dccex", "occupancy"];
 
 /** The devices the page offers: the form's field, the directory of the box's
