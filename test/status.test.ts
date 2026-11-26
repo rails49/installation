@@ -349,6 +349,7 @@ describe("the check for a new release", () => {
       checked: "2026-11-12T08:00:00Z",
       succeeded: "2026-11-12T08:00:00Z",
       could_not_check: false,
+      downloaded: false,
     });
     expect(failures).toEqual([]);
   });
@@ -472,6 +473,7 @@ describe("the check for a new release", () => {
       checked: null,
       succeeded: null,
       could_not_check: false,
+      downloaded: false,
     });
     expect(failures).toEqual([]);
   });
@@ -728,6 +730,16 @@ describe("downloading a release", () => {
   it("does not run where box is not starting it and its container does not run, though it has not finished", async () => {
     const files = { [DOWNLOADING]: JSON.stringify(download) };
     expect((await status(NAMED, io({ files, starting: () => false }))).download).toMatchObject({ running: false });
+  });
+
+  it("says the release the check named is downloaded only once download.json names it and has downloaded it", async () => {
+    const latest = { "/var/lib/rails49/check.json": JSON.stringify({ checked: "2026-11-12T08:00:00Z", succeeded: "2026-11-12T08:00:00Z", latest: "2026.11.1" }) };
+    const downloaded = async (state: object | null) =>
+      (await status(NAMED, io({ files: { ...latest, ...(state && { [DOWNLOADING]: JSON.stringify(state) }) } }))).update.downloaded;
+    expect(await downloaded({ ...download, finished: "2026-11-12T09:59:00.000Z", downloaded: true })).toBe(true);
+    expect(await downloaded(download)).toBe(false);
+    expect(await downloaded({ ...download, release: "2026.11.0", finished: "2026-11-12T09:59:00.000Z", downloaded: true })).toBe(false);
+    expect(await downloaded(null)).toBe(false);
   });
 
   it("is no failure of the box's, nor is a download that failed", async () => {

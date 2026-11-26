@@ -5,6 +5,8 @@
 // A failure is said in a sentence in `failures`, and a stack on a local build
 // in `notes` (decision 13).
 
+import { isDownloaded } from "./download.mjs";
+
 /**
  * @typedef {{
  *   docker: (args: string[]) => Promise<string>,
@@ -224,8 +226,11 @@ export async function inspected(docker) {
 }
 
 /**
+ * What `GET /box/status` answers, but for the setup form.
+ *
  * @param {Env} env
  * @param {Io} io
+ * @returns {Promise<Omit<import("../status-page/src/status.ts").Status, "setup">>}
  */
 export async function status(env, io) {
   /** @type {string[]} */
@@ -254,6 +259,7 @@ export async function status(env, io) {
   const stacks = await Promise.all(declared(env.BOX_UIS).map(async ({ stack, project }) => {
     const own = containers.filter((c) => c.Config.Labels?.["com.docker.compose.project"] === project);
     const states = own.map((c) => c.State.Status);
+    /** @type {import("../status-page/src/status.ts").Stack["state"]} */
     const state = states.includes("restarting")
       ? "restarting"
       : states.length && states.every((s) => s === "running")
@@ -290,6 +296,8 @@ export async function status(env, io) {
   const succeeded = check.succeeded ?? null;
   const could_not_check = Boolean(check.checked) && check.checked !== succeeded;
   const latest = check.latest ?? null;
+  /** @type {import("./download.mjs").Download | null} */
+  const downloaded = parse(await io.read(DOWNLOADING));
   // A box on no release yet is offered the latest; a box on a pre-release
   // newer than the latest full release is offered nothing (#88).
   const update = {
@@ -302,6 +310,7 @@ export async function status(env, io) {
     checked: check.checked ?? null,
     succeeded,
     could_not_check,
+    downloaded: isDownloaded(latest, downloaded),
   };
   if (could_not_check) {
     failures.push(
@@ -334,8 +343,6 @@ export async function status(env, io) {
   // `box` starts its container or the container runs (#121, #132). What it
   // did is said on the page beside the release, and is no failure of the
   // box's.
-  /** @type {import("./download.mjs").Download | null} */
-  const downloaded = parse(await io.read(DOWNLOADING));
   const downloader = containers.find((c) => c.Name === "/rails49-download");
   const download = downloaded && { ...downloaded, running: starting || downloader?.State.Status === "running" };
 

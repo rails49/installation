@@ -79,7 +79,7 @@ const ASSETS = {
  * and to `download.json` (#124).
  *
  * @param {{ method?: string, url?: string, headers: { origin?: string, host?: string, accept?: string, "x-forwarded-host"?: string }, body?: string }} request
- * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("./page.mjs").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
+ * @param {{ pid1: string, turnOff: () => void, status: () => Promise<import("../status-page/src/status.ts").Status>, update: () => Promise<string | null>, check: () => Promise<void>, download: () => Promise<void>, bundle: () => Promise<{ name: string, body: Buffer }>, start: (action: "update" | "back") => Promise<string | null>, apply: (body: string) => Promise<string | null>, prereleases: (on: boolean) => Promise<void>, automatic: () => Promise<boolean>, setAutomatic: (on: boolean) => Promise<void> }} box
  * @returns {Promise<Answer>}
  */
 export async function handle(request, box) {

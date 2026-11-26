@@ -202,6 +202,15 @@ describe("what the page offers", () => {
     expect((await form(io)).devices[0]!.found).toEqual(["/dev/serial/by-id/usb-ok_1:2"]);
   });
 
+  it("is each stack a box can run beside the label its checkbox posts", async () => {
+    expect((await form(box().io)).stacks).toEqual([
+      { stack: "control", label: "control" },
+      { stack: "dccex", label: "dccex" },
+      { stack: "jmri", label: "jmri" },
+      { stack: "occupancy-service", label: "occupancy" },
+    ]);
+  });
+
   it("is nothing ticked on a box that serves nothing yet", async () => {
     expect((await form(box().io)).uis).toEqual([]);
   });

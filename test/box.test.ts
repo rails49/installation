@@ -11,12 +11,13 @@ import { beginDownload, offered, starting } from "../box/download.mjs";
 import { handle, tick, zone } from "../box/server.mjs";
 import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
+import type { Status } from "../status-page/src/status.ts";
 
 const HOST = "control.example.org";
 const form = { host: HOST, "content-type": "application/x-www-form-urlencoded" };
 
 /** The status a box answers with, as `status()` would gather it. */
-const STATUS = {
+const STATUS: Status = {
   name: "example.org",
   address: "192.168.1.20",
   release: null,
@@ -31,6 +32,7 @@ const STATUS = {
     checked: null,
     succeeded: null,
     could_not_check: false,
+    downloaded: false,
   },
   disk: { free: 20e9, total: 64e9 },
   memory: { used: 2.1e9, total: 8e9 },
@@ -42,7 +44,7 @@ const STATUS = {
   back: null,
   failures: [],
   notes: [],
-  setup: { uis: [], devices: [] },
+  setup: { uis: [], stacks: [], devices: [] },
 };
 
 /** A box whose PID 1 has this name, counting the times it is turned off and
@@ -198,7 +200,7 @@ describe("GET /box, the update it answers (#147)", () => {
           starting: () => false,
           now: () => new Date("2026-11-15T10:00:00Z"),
         })),
-        setup: { uis: [], devices: [] },
+        setup: { uis: [], stacks: [], devices: [] },
       }),
     };
   }
@@ -456,7 +458,7 @@ describe("POST /box/check", () => {
           size: async () => null,
           starting,
         })),
-        setup: { uis: [], devices: [] },
+        setup: { uis: [], stacks: [], devices: [] },
       }),
     };
     const answer = await handle({ method: "POST", url: "/box/check", headers: { host: HOST }, body: "" }, on);

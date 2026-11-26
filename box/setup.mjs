@@ -69,17 +69,20 @@ const DEVICES = [
 const NAME = /^[\w.:+@-]+$/;
 
 /**
- * What the page offers: the stacks `box.env` declares, and for each device
- * the one its stack's file names, or null, and the ones plugged in.
+ * What the page offers: the stacks `box.env` declares, each stack a box can
+ * run beside the label its checkbox posts, and for each device the one its
+ * stack's file names, or null, and the ones plugged in.
  *
  * @param {Io} io
+ * @returns {Promise<import("../status-page/src/status.ts").Setup>}
  */
 export async function form(io) {
   const uis = (setting((await io.read(BOX)) ?? "", "BOX_UIS") ?? "").split(/\s+/).filter(Boolean);
   const devices = await Promise.all(
     DEVICES.map(async (device) => ({ field: device.field, what: device.what, none: device.none, ...(await offered(device, io)) })),
   );
-  return { uis, devices };
+  const stacks = STACKS.flatMap(({ stack, label }) => (label ? [{ stack, label }] : []));
+  return { uis, stacks, devices };
 }
 
 /**

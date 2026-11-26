@@ -6,8 +6,10 @@
 import { describe, expect, it } from "vitest";
 
 import { render } from "../box/page.mjs";
+import { isDownloaded } from "../box/download.mjs";
 import { older } from "../box/status.mjs";
 import { start, type Pull } from "../box/update.mjs";
+import type { Download, Status } from "../status-page/src/status.ts";
 
 const STATUS = {
   name: "example.org",
@@ -28,6 +30,7 @@ const STATUS = {
     checked: "2026-11-12T08:00:00.000Z",
     succeeded: "2026-11-12T08:00:00.000Z",
     could_not_check: false,
+    downloaded: true,
   },
   disk: { free: 20e9, total: 64e9 },
   memory: { used: 2.5 * 2 ** 30, total: 8 * 2 ** 30 - 300 * 2 ** 20 },
@@ -50,6 +53,12 @@ const STATUS = {
   notes: ["control runs a local build of `1c3f69b`, not release 2026.11.0."],
   setup: {
     uis: ["control", "jmri"],
+    stacks: [
+      { stack: "control", label: "control" },
+      { stack: "dccex", label: "dccex" },
+      { stack: "jmri", label: "jmri" },
+      { stack: "occupancy-service", label: "occupancy" },
+    ],
     devices: [
       {
         field: "station",
@@ -67,7 +76,14 @@ const STATUS = {
       },
     ],
   },
-};
+} satisfies Status;
+
+/** `status` with `update.downloaded` as `status()` derives it from the
+ *  download. */
+const derived = (status: Status): Status => ({
+  ...status,
+  update: { ...status.update, downloaded: isDownloaded(status.update.latest, status.download) },
+});
 
 /** STATUS while an update to 2026.11.1 runs. */
 const UPDATING = {
@@ -92,7 +108,7 @@ const RESTARTS = "<p>The railroad stops while its stacks restart.</p>";
  *  installation's, which serves the page. */
 const IDLE = {
   ...STATUS,
-  stacks: [STATUS.stacks[0]!, ...STATUS.stacks.slice(1).map((stack) => ({ ...stack, state: "stopped" }))],
+  stacks: [STATUS.stacks[0]!, ...STATUS.stacks.slice(1).map((stack) => ({ ...stack, state: "stopped" as const }))],
 };
 
 const PLAIN = {
@@ -109,6 +125,7 @@ const PLAIN = {
     checked: null,
     succeeded: null,
     could_not_check: false,
+    downloaded: false,
   },
   docker: { ...STATUS.docker, tested: [] },
   certificate: null,
@@ -118,6 +135,7 @@ const PLAIN = {
   notes: [],
   setup: {
     uis: [],
+    stacks: STATUS.setup.stacks,
     devices: STATUS.setup.devices.map((device) => ({ ...device, current: null, found: [] })),
   },
 };
@@ -298,11 +316,11 @@ describe("the release group", () => {
   });
 
   it("names a pre-release that is out, and the update to it, as a pre-release", () => {
-    const pre = render({
+    const pre = render(derived({
       ...STATUS,
       update: { ...STATUS.update, latest: "2026.11.2", prerelease: true, prereleases: true },
       download: { ...STATUS.download, release: "2026.11.2" },
-    });
+    }));
     expect(release(pre)[1]).toEqual(["New pre-release 2026.11.2 is available.", ["Update to pre-release 2026.11.2"]]);
     expect(pre).toContain('<form method="post" action="/box/update"><button>Update to pre-release 2026.11.2</button></form>');
   });
@@ -342,8 +360,8 @@ describe("the release group", () => {
 describe("downloading a release", () => {
   const release = (html: string) => rows(group(html, "Release"));
   const DOWNLOADING = { ...STATUS.download, finished: null, downloaded: false, bytes: { current: 300e6, total: 1.6e9 }, running: true };
-  const with_ = (download: Partial<typeof STATUS.download> | null) =>
-    render({ ...STATUS, download: download && { ...STATUS.download, ...download } });
+  const with_ = (download: Partial<Download> | null) =>
+    render(derived({ ...STATUS, download: download && { ...STATUS.download, ...download } }));
 
   it("while it runs, says how far it has got, offers no update, and follows it in place", () => {
     const html = with_(DOWNLOADING);
@@ -428,8 +446,8 @@ describe("downloading a release", () => {
   });
 
   it("on a box that downloads only on a press, says Check for update downloads it, and tries again (#141)", () => {
-    const off = (download: Partial<typeof STATUS.download> | null) =>
-      release(render({ ...STATUS, update: { ...STATUS.update, download: false }, download: download && { ...STATUS.download, ...download } }))[1];
+    const off = (download: Partial<Download> | null) =>
+      release(render(derived({ ...STATUS, update: { ...STATUS.update, download: false }, download: download && { ...STATUS.download, ...download } })))[1];
     expect(off(null)).toEqual(["New release 2026.11.1 is available. Check for update downloads it.", []]);
     expect(off({ release: "2026.11.0" })![0]).toBe("New release 2026.11.1 is available. Check for update downloads it.");
     expect(off(DOWNLOADING)![0]).toBe("New release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.");
@@ -449,11 +467,11 @@ describe("downloading a release", () => {
   });
 
   it("names a pre-release as a pre-release", () => {
-    const html = render({
+    const html = render(derived({
       ...STATUS,
       update: { ...STATUS.update, prerelease: true, prereleases: true },
       download: DOWNLOADING,
-    });
+    }));
     expect(release(html)[1]![0]).toBe("New pre-release 2026.11.1 is available. Downloaded 300 MB of 1.6 GB.");
   });
 });
@@ -736,7 +754,7 @@ describe("the update the page offers (#126)", () => {
   /** Whether the page offers "Update to" for the same box, as `status()`
    *  says of it. */
   function offers(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
-    const html = render({
+    const html = render(derived({
       ...STATUS,
       release: runs,
       update: {
@@ -746,7 +764,7 @@ describe("the update the page offers (#126)", () => {
         newer: latest !== null && runs !== null && older(latest, runs),
       },
       download: download && { ...STATUS.download, ...download },
-    });
+    }));
     return html.includes('action="/box/update"');
   }
 
