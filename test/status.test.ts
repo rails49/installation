@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { status, type Io } from "../box/status.mjs";
+import { start } from "../box/update.mjs";
 
 const COMMIT = "1c3f69b0e5a3d2c1b4a5968778695a4b3c2d1e0f";
 const RELEASED = "8f7e6d5c4b3a29180716253443526170819a0b1c";
@@ -747,5 +748,66 @@ describe("downloading a release", () => {
     const box = await status(NAMED, io({ files: { [DOWNLOADING]: JSON.stringify(failed) } }));
     expect(box.failures).toEqual([]);
     expect(box.updating).toBeNull();
+  });
+});
+
+// The page offers "Update to" where `update.available` and `update.downloaded`
+// are both set (`status-page/test/box-release.test.ts`).
+describe("the update the status offers (#126)", () => {
+  const DEPLOYED = "/var/lib/rails49/deploys/installation";
+  const manifest = JSON.stringify({ ...MANIFEST, stacks: { ...MANIFEST.stacks, installation: { commit: COMMIT, images: { "installation-box": `sha256:${"4".repeat(64)}` } } } });
+  const ENV = { BOX_DOMAIN: "example.org", BOX_UIS: "control", hostname: "box", address: "192.168.1.20" };
+
+  /** The files of a box that runs `runs`, whose last check found `latest`,
+   *  and whose `download.json` holds `download`: its files are on the box
+   *  where it is downloaded. */
+  function files(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
+    return {
+      [DEPLOYED]: runs ? `2026-11-10T09:00:00Z  -  ->  ${runs}  passed\n` : "",
+      ...(runs ? { [`/var/lib/rails49/releases/${runs}/manifest.json`]: manifest } : {}),
+      "/var/lib/rails49/check.json": JSON.stringify({ checked: "2026-11-12T08:00:00Z", succeeded: "2026-11-12T08:00:00Z", latest }),
+      ...(download ? { "/var/lib/rails49/download.json": JSON.stringify(download) } : {}),
+      ...(download?.downloaded ? { [`/var/lib/rails49/releases/${download.release}/manifest.json`]: manifest } : {}),
+    };
+  }
+
+  /** Whether the status of that box offers the update. */
+  async function offers(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
+    const { update } = await status(NAMED, io({ files: files(runs, latest, download) }));
+    return update.available && update.downloaded;
+  }
+
+  /** Whether `start("update")` accepts on that box. */
+  async function accepts(runs: string | null, latest: string | null, download: { release: string; downloaded: boolean } | null) {
+    const on: Record<string, string> = files(runs, latest, download);
+    const started = await start("update", ENV, {
+      docker: async () => "",
+      read: async (path: string) => on[path] ?? null,
+      write: async (path: string, text: string) => void (on[path] = text),
+      now: () => new Date("2026-11-16T10:00:00Z"),
+    });
+    return started === null;
+  }
+
+  it("exactly where start(\"update\") accepts, also with a newer pre-release downloaded than the check names", async () => {
+    const out = ["2026.11.1", "2026.11.2", "2026.11.3"];
+    const releases = [null, ...out];
+    const downloads = [null, ...out.flatMap((release) => [{ release, downloaded: true }, { release, downloaded: false }])];
+    let offered = 0;
+    for (const runs of releases) {
+      for (const latest of releases) {
+        for (const download of downloads) {
+          const said = `runs ${runs}, latest ${latest}, downloaded ${JSON.stringify(download)}`;
+          const offer = await offers(runs, latest, download);
+          expect(offer, said).toBe(await accepts(runs, latest, download));
+          if (offer) offered += 1;
+        }
+      }
+    }
+    expect(offered).toBeGreaterThan(0);
+    // The issue's box: on 2026.11.1, with pre-release 2026.11.3 downloaded,
+    // offered nothing until 2026.11.2 is downloaded.
+    expect(await offers("2026.11.1", "2026.11.2", { release: "2026.11.3", downloaded: true })).toBe(false);
+    expect(await offers("2026.11.1", "2026.11.2", { release: "2026.11.2", downloaded: true })).toBe(true);
   });
 });

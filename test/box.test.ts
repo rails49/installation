@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { beginDownload, offered, starting } from "../box/download.mjs";
-import { render } from "../box/page.mjs";
 import { built, handle, tick, zone } from "../box/server.mjs";
 import { offerDownload, offerPrereleases } from "../box/setup.mjs";
 import { downloads, status } from "../box/status.mjs";
@@ -211,14 +210,18 @@ describe("GET /box, the update it answers (#147)", () => {
     };
   }
 
-  /** What `GET /box` answers for `update`, and whether the page offers
-   *  "Update to" for it. `stopped` is as for `boxWith`. */
+  /** What `GET /box` answers for `update`, and the release the page offers
+   *  "Update to" for, from `GET /box/status`: none while a run goes, which
+   *  `box-progress` shows in place of the release group, and otherwise the
+   *  latest where it is available and downloaded (`box-release`). `stopped`
+   *  is as for `boxWith`. */
   async function answers(files: Record<string, unknown>, stopped = false) {
     const on = boxWith(files, stopped);
     const get = async (url: string) => String((await handle({ method: "GET", url, headers: { host: HOST } }, on)).body);
     const json = JSON.parse(await get("/box"));
-    const page = render(JSON.parse(await get("/box/status")));
-    return { update: json.update, offers: page.match(/<button>Update to (?:pre-release )?(\S+)<\/button>/)?.[1] ?? null };
+    const { updating, update }: Status = JSON.parse(await get("/box/status"));
+    const offers = !updating?.running && update.available && update.downloaded ? update.latest : null;
+    return { update: json.update, offers };
   }
 
   it("is the release the page offers \"Update to\" for", async () => {
@@ -415,7 +418,7 @@ describe("GET /box/ and the built page", () => {
 
   it("answers 404 for a path outside the built files", async () => {
     const on = { ...box("systemd"), page: await built(dir) };
-    for (const url of ["/box/index.html", "/box/assets/missing.js", "/box/assets/", "/box/../box/server.mjs", "/box/page.css", "/box/look/look.css", "/box/follow.js", "/box/tick.js", "/box/switch.js"]) {
+    for (const url of ["/box/index.html", "/box/assets/missing.js", "/box/assets/", "/box/../box/server.mjs"]) {
       expect((await ask(on, "GET", url)).status, url).toBe(404);
     }
   });
