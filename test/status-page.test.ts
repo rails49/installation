@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { render } from "../box/page.mjs";
 import { isDownloaded } from "../box/download.mjs";
 import { older } from "../box/status.mjs";
-import { start, type Pull } from "../box/update.mjs";
+import { start } from "../box/update.mjs";
 import type { Download, Status } from "../status-page/src/status.ts";
 
 const STATUS = {
@@ -599,92 +599,10 @@ describe("the setup on the status page", () => {
 });
 
 describe("while an update, going back or applying runs", () => {
-  /** UPDATING at step `at` of an update that downloads, with `fields`
-   *  changed, rendered 25 seconds after the step began. */
-  const at = (step: string, fields: object = {}) =>
-    render(
-      {
-        ...UPDATING,
-        updating: {
-          ...UPDATING.updating,
-          steps: ["download", "pull", "start", "watch", "probe", "prune"] as const,
-          at: step as "pull",
-          since: "2026-11-12T10:00:00.000Z",
-          pull: null,
-          building: false,
-          ...fields,
-        },
-      },
-      new Date("2026-11-12T10:00:25.400Z"),
-    );
-  /** The step list, as `[state, what the step says]`. */
-  const steps = (html: string) =>
-    [...group(html, "Release").matchAll(/<li(?: class="(\w+)")?>([\s\S]*?)<\/li>/g)].map(([, state, said]) => [
-      state ?? "",
-      text(said!),
-    ]);
+  // What the run says is in status-page/test/box-progress.test.ts.
 
-  it("lists the run's steps in the release group, ticking those done and spinning at the current one", () => {
-    const html = at("start");
-    expect(group(html, "Release")).toContain("<p>Updating to 2026.11.1</p>");
-    expect(steps(html)).toEqual([
-      ["done", "Download release"],
-      ["done", "Pull images"],
-      ["current", "Start stacks"],
-      ["", "Watch for 60 seconds"],
-      ["", "Probe"],
-      ["", "Remove unused images"],
-    ]);
-  });
-
-  it("offers neither updating nor going back, hides the setup, and follows the run, or reloads without script", () => {
-    const html = at("start");
-    expect(html).not.toMatch(/action="\/box\/(update|back|check|prereleases|setup)"/);
-    expect(outline(html)).toEqual(["Errors", "Notes", "Release and setup", "Release", "Status", "Stacks", "Box", "Docker"]);
-    expect(html).toContain('<noscript><meta http-equiv="refresh" content="5"></noscript>');
-    expect(html).toContain('<script type="module" src="/box/follow.js" data-follows="run"></script>');
-    expect(page).not.toContain('http-equiv="refresh"');
-    expect(page).not.toContain("/box/follow.js");
-  });
-
-  it("lists the steps applying takes", () => {
-    const html = at("stop", { action: "apply", to: "2026.11.0", steps: ["pull", "stop", "start", "watch", "probe"] });
-    expect(group(html, "Release")).toContain("<p>Applying the setup</p>");
-    expect(steps(html).map(([state, said]) => `${state} ${said}`)).toEqual([
-      "done Pull images",
-      "current Stop stacks no longer chosen",
-      " Start stacks",
-      " Watch for 60 seconds",
-      " Probe",
-    ]);
-  });
-
-  it("while it pulls, shows the run's bytes downloaded of its total, in the bar and beside the image", () => {
-    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
-    const html = at("pull", { pull: { image, index: 6, count: 7, current: 300e6, total: 1.2e9, run: { current: 1.1e9, total: 1.6e9 } } });
-    expect(group(html, "Release")).toContain(
-      '<li class="current">Pull images <progress value="1100000000" max="1600000000">1.1 GB of 1.6 GB</progress> occupancy-service; 1.1 GB of 1.6 GB</li>',
-    );
-  });
-
-  it("from a run whose manifest lists no layers, shows the images done of all of them, and the image by its last name with its bytes", () => {
-    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
-    const html = at("pull", { pull: { image, index: 6, count: 7, current: 300e6, total: 1.2e9 } });
-    expect(group(html, "Release")).toContain(
-      '<li class="current">Pull images <progress value="5" max="7">5 of 7</progress> occupancy-service, 300 MB of 1.2 GB</li>',
-    );
-    // No bytes before the stream says any.
-    const traefik = at("pull", { pull: { image: "traefik:v3.7", index: 1, count: 7, current: 0, total: 0 } });
-    expect(group(traefik, "Release")).toContain('<progress value="0" max="7">0 of 7</progress> traefik</li>');
-  });
-
-  it("while JMRI is built, says so with no bar", () => {
-    expect(steps(at("pull", { building: true }))[1]).toEqual(["current", "Building JMRI"]);
-    expect(at("pull", { building: true })).not.toContain("<progress");
-  });
-
-  it("counts down the 60 seconds from when they began", () => {
-    expect(steps(at("watch"))[3]).toEqual(["current", "Watching for 60 seconds: 35 left"]);
+  it("hides the setup", () => {
+    expect(render(UPDATING)).not.toContain('action="/box/setup"');
   });
 
   it("goes back to the release group's own rows once it has ended", () => {
@@ -693,36 +611,6 @@ describe("while an update, going back or applying runs", () => {
     expect(ended).toContain('action="/box/update"');
     expect(ended).not.toContain('http-equiv="refresh"');
     expect(ended).not.toContain("/box/follow.js");
-  });
-
-  it("from a file an older release wrote, which lists no steps, says what it is doing in a sentence", () => {
-    const html = render(UPDATING);
-    expect(group(html, "Release")).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
-    const back = render({ ...UPDATING, updating: { ...UPDATING.updating, action: "back" as const, to: "2026.10.2" } });
-    expect(back).toContain('<p class="updating">Going back to 2026.10.2: Starting control.</p>');
-    const applying = render({
-      ...UPDATING,
-      updating: { ...UPDATING.updating, action: "apply" as const, to: "2026.11.0", step: "Stopping dccex." },
-    });
-    expect(applying).toContain('<p class="updating">Applying the setup: Stopping dccex.</p>');
-  });
-
-  it("says what it is doing in a sentence before it has listed its steps", () => {
-    const html = render({ ...UPDATING, updating: { ...UPDATING.updating, steps: [], at: null } });
-    expect(group(html, "Release")).toContain('<p class="updating">Updating to 2026.11.1: Starting control.</p>');
-  });
-
-  it("from such a file, says which image it pulls, of how many, and its bytes", () => {
-    const pulling = (pull: Pull | null, step = "Pulling occupancy-service's images.") =>
-      render({ ...UPDATING, updating: { ...UPDATING.updating, to: "2026.11.5", step, pull } });
-    const image = `ghcr.io/rails49/occupancy-service:5e6f7a8@sha256:${"1".repeat(64)}`;
-    expect(pulling({ image, index: 4, count: 10, current: 1.23e9, total: 2.34e9 })).toContain(
-      '<p class="updating">Updating to 2026.11.5: Pulling occupancy-service\'s images: ghcr.io/rails49/occupancy-service, image 4 of 10, 1.2 GB of 2.3 GB.</p>',
-    );
-    expect(pulling({ image: "traefik:v3.7", index: 1, count: 10, current: 12.4e6, total: 48e6 })).toContain(
-      ": traefik, image 1 of 10, 12 MB of 48 MB.</p>",
-    );
-    expect(pulling(null, "Pulling jmri's images.")).toContain('<p class="updating">Updating to 2026.11.5: Pulling jmri\'s images.</p>');
   });
 });
 
