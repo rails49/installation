@@ -12,7 +12,10 @@
 import "@rails49/look";
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 
+import "./box-facts.js";
+import "./box-messages.js";
 import "./box-progress.js";
+import "./box-stacks.js";
 import { COMMIT } from "./commit.js";
 import type { Status } from "./status.js";
 
@@ -35,6 +38,15 @@ export class BoxPage extends LitElement {
 
     .restarting {
       font-weight: var(--sl-font-weight-semibold);
+    }
+
+    h2 {
+      font-size: var(--sl-font-size-large);
+      margin: 2rem 0 1rem;
+    }
+
+    a {
+      color: inherit;
     }
   `;
 
@@ -119,7 +131,13 @@ export class BoxPage extends LitElement {
         </look-band>
         <main>
           ${this.#restarting()}
+          <box-messages .status=${this.status}></box-messages>
+          <h2>Release and setup</h2>
           ${this.status?.updating?.running ? html`<box-progress .status=${this.status}></box-progress>` : nothing}
+          <h2>Status</h2>
+          <box-stacks .status=${this.status}></box-stacks>
+          <box-facts .status=${this.status}></box-facts>
+          <p><a href="/box/bundle" download>Download the log bundle</a></p>
         </main>
       </look-shell>
     `;

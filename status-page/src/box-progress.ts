@@ -10,6 +10,8 @@ import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import { css, html, LitElement, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 
+import { size } from "./format.js";
+import { GROUP } from "./group.js";
 import type { Pull, Run, Status, Step } from "./status.js";
 
 /** What the step list calls each step of a run. */
@@ -24,67 +26,47 @@ const STEPS: Record<Step, string> = {
 };
 
 export class BoxProgress extends LitElement {
-  static override readonly styles = css`
-    :host {
-      display: block;
-    }
+  static override readonly styles = [
+    GROUP,
+    css`
+      :host {
+        display: block;
+      }
 
-    .group {
-      background: var(--sl-color-neutral-50);
-      border: 1px solid var(--sl-color-neutral-200);
-      border-radius: var(--sl-border-radius-medium);
-      display: grid;
-      gap: 0.5rem;
-      margin: 0 0 1rem;
-      min-width: 0;
-      padding: 0.5rem 1rem 0.75rem;
-    }
+      .steps {
+        list-style: none;
+        padding: 0;
+      }
 
-    legend {
-      background: var(--sl-color-neutral-0);
-      border-radius: var(--sl-border-radius-medium);
-      font-weight: var(--sl-font-weight-bold);
-      padding: 0 0.375rem;
-    }
+      .steps li {
+        color: var(--sl-color-neutral-500);
+        padding-left: 1.5rem;
+        text-indent: -1.5rem;
+      }
 
-    p,
-    ol {
-      margin: 0;
-    }
+      .steps .done,
+      .steps .current {
+        color: inherit;
+      }
 
-    .steps {
-      list-style: none;
-      padding: 0;
-    }
+      .steps .done::before {
+        color: var(--sl-color-success-600);
+        content: "✓";
+        display: inline-block;
+        margin-right: 0.5rem;
+        text-align: center;
+        text-indent: 0;
+        width: 1rem;
+      }
 
-    .steps li {
-      color: var(--sl-color-neutral-500);
-      padding-left: 1.5rem;
-      text-indent: -1.5rem;
-    }
-
-    .steps .done,
-    .steps .current {
-      color: inherit;
-    }
-
-    .steps .done::before {
-      color: var(--sl-color-success-600);
-      content: "✓";
-      display: inline-block;
-      margin-right: 0.5rem;
-      text-align: center;
-      text-indent: 0;
-      width: 1rem;
-    }
-
-    sl-spinner {
-      font-size: 1rem;
-      margin-right: 0.5rem;
-      text-indent: 0;
-      vertical-align: -0.125rem;
-    }
-  `;
+      sl-spinner {
+        font-size: 1rem;
+        margin-right: 0.5rem;
+        text-indent: 0;
+        vertical-align: -0.125rem;
+      }
+    `,
+  ];
 
   static override readonly properties = {
     status: { attribute: false },
@@ -178,12 +160,6 @@ function repository(image: string): string {
 /** The bytes pulled of the image's total, once the stream has said any. */
 function bytes({ current, total }: Pull): string {
   return total ? `, ${size(current)} of ${size(total)}` : "";
-}
-
-/** Bytes as the page says them while an image is pulled: in gigabytes from
- *  one, and in megabytes under it. */
-function size(bytes: number): string {
-  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }
 
 /** What the run does. */
