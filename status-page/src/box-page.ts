@@ -5,8 +5,11 @@
 // hidden while a run goes.
 //
 // It fetches the status every 2 seconds while a run or a download goes or
-// while `box` does not answer, and every 30 seconds otherwise. While `box`
-// does not answer it keeps the status it last showed and says so above it.
+// while `box` does not answer, and every 30 seconds otherwise. A fetch `box`
+// does not answer in 5 seconds fails. Where fetches overlap, only the answer
+// of the one started last is kept. While `box` does not answer it keeps the
+// status it last showed and says so above it, and after 3 minutes from its
+// last answer says that too.
 // It reloads once when the box runs an installation commit other than the
 // one the page was built from; an empty commit on either side never reloads.
 //
@@ -31,6 +34,9 @@ const TITLE = "Server (box) status & updates";
 
 /** How long `box` may not answer before the page says so. */
 const QUIET = 3 * 60_000;
+
+/** How long a fetch of the status waits for `box`. */
+const PATIENCE = 5_000;
 
 export class BoxPage extends LitElement {
   static override readonly styles = css`
@@ -80,9 +86,14 @@ export class BoxPage extends LitElement {
   /** Loads the page again, from `box`. */
   reload: () => void = () => location.reload();
 
-  /** When the fetches that are failing began failing, or null while `box`
-   *  answers. */
-  #silent: number | null = null;
+  /** Whether the last fetch failed. */
+  #failing = false;
+
+  /** When `box` last answered, or when the page was made before it has. */
+  #answered = Date.now();
+
+  /** How many fetches of the status have started. */
+  #fetches = 0;
 
   #timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -122,20 +133,25 @@ export class BoxPage extends LitElement {
   /** Fetches the status now, as after a press, and the next one after the
    *  usual wait. */
   async refresh(): Promise<void> {
+    const started = ++this.#fetches;
     try {
-      const answer = await fetch("/box/status");
+      const answer = await fetch("/box/status", { signal: AbortSignal.timeout(PATIENCE) });
       if (!answer.ok) throw new Error(`GET /box/status answered ${answer.status}`);
-      this.status = (await answer.json()) as Status;
+      const status = (await answer.json()) as Status;
+      if (started !== this.#fetches) return;
+      this.status = status;
       const runs = this.status.stacks.find((stack) => stack.stack === "installation")?.commit;
       if (runs && this.commit && runs !== this.commit && !this.#reloaded) {
         this.#reloaded = true;
         this.reload();
       }
       this.answering = true;
-      this.#silent = null;
+      this.#failing = false;
+      this.#answered = Date.now();
     } catch {
+      if (started !== this.#fetches) return;
       this.answering = false;
-      this.#silent ??= Date.now();
+      this.#failing = true;
       // The sentence changes with the time alone.
       this.requestUpdate();
     }
@@ -150,9 +166,9 @@ export class BoxPage extends LitElement {
 
   /** What the page says while `box` does not answer. */
   #restarting(): TemplateResult | typeof nothing {
-    if (this.#silent === null) return nothing;
+    if (!this.#failing) return nothing;
     const said =
-      Date.now() - this.#silent >= QUIET ? "The box has not answered for 3 minutes." : "The box is restarting.";
+      Date.now() - this.#answered >= QUIET ? "The box has not answered for 3 minutes." : "The box is restarting.";
     return html`<p class="restarting">${said}</p>`;
   }
 

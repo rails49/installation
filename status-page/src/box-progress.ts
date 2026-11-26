@@ -10,7 +10,7 @@ import "@shoelace-style/shoelace/dist/components/spinner/spinner.js";
 import { css, html, LitElement, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 
-import { size } from "./format.js";
+import { bar, size } from "./format.js";
 import { GROUP } from "./group.js";
 import type { Pull, Run, Status, Step } from "./status.js";
 
@@ -138,11 +138,6 @@ export class BoxProgress extends LitElement {
     }
     return STEPS[step];
   }
-}
-
-/** A bar of `current` of `total`, labelled with what it says. */
-function bar(current: number, total: number, said: string): TemplateResult {
-  return html`<sl-progress-bar value=${(current / total) * 100} label=${said}></sl-progress-bar>`;
 }
 
 /** The step, and while an image is pulled, which, of how many, and its

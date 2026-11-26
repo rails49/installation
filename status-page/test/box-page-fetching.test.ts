@@ -10,9 +10,17 @@ import { mounted, reads } from "./mounted.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // happy-dom times `AbortSignal.timeout` on a clock the fake timers do not
+  // replace; this one times it on theirs.
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException("signal timed out", "TimeoutError")), ms);
+    return controller.signal;
+  });
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -61,7 +69,7 @@ async function page(commit = ""): Promise<{ shown: BoxPage; reloads: () => numbe
 
 /** A fake box answering `answer`. Returns the second, counted from now, at
  *  which each request was sent. */
-function clock(answer: (sent: Sent) => Answer): number[] {
+function clock(answer: (sent: Sent) => Answer | Promise<Answer>): number[] {
   const start = Date.now();
   const at: number[] = [];
   box((request) => {
@@ -105,9 +113,33 @@ describe("box-page fetching", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(reads(shown, ".restarting")).toBe("The box is restarting.");
     expect(shown.renderRoot.querySelector("look-about")?.getAttribute("name")).toBe("box.example.org");
-    await vi.advanceTimersByTimeAsync(178_000);
+    await vi.advanceTimersByTimeAsync(148_000);
     expect(reads(shown, ".restarting")).toBe("The box is restarting.");
     await vi.advanceTimersByTimeAsync(2_000);
+    expect(reads(shown, ".restarting")).toBe("The box has not answered for 3 minutes.");
+  });
+
+  it("gives up on a fetch the box does not answer in 5 seconds, and fetches again 2 seconds later", async () => {
+    let answer: Answer | Promise<Answer> = STATUS;
+    const at = clock(() => answer);
+    const { shown } = await page();
+    answer = new Promise(() => {});
+    await vi.advanceTimersByTimeAsync(34_000);
+    expect(reads(shown, ".restarting")).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(reads(shown, ".restarting")).toBe("The box is restarting.");
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(at).toEqual([0, 30, 37, 44]);
+  });
+
+  it("counts the 3 minutes from the box's last answer where its fetches hang", async () => {
+    let answer: Answer | Promise<Answer> = STATUS;
+    box(() => answer);
+    const { shown } = await page();
+    answer = new Promise(() => {});
+    await vi.advanceTimersByTimeAsync(170_000);
+    expect(reads(shown, ".restarting")).toBe("The box is restarting.");
+    await vi.advanceTimersByTimeAsync(20_000);
     expect(reads(shown, ".restarting")).toBe("The box has not answered for 3 minutes.");
   });
 
@@ -184,6 +216,20 @@ describe("box-page fetching", () => {
     const { reloads } = await page("");
     await vi.advanceTimersByTimeAsync(60_000);
     expect(reloads()).toBe(0);
+  });
+
+  it("keeps the answer of the latest fetch where an older one arrives after it", async () => {
+    let answer: Answer | Promise<Answer> = STATUS;
+    box(() => answer);
+    const { shown } = await page();
+    let late: (status: Status) => void = () => {};
+    answer = new Promise((resolve) => (late = resolve));
+    await vi.advanceTimersByTimeAsync(30_000);
+    answer = { ...STATUS, name: "new.example.org" };
+    await shown.refresh();
+    late({ ...STATUS, name: "old.example.org" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown.renderRoot.querySelector("look-about")?.getAttribute("name")).toBe("new.example.org");
   });
 
   it("fetches at once when asked, as after a press, and counts the 30 seconds from then", async () => {

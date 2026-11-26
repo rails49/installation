@@ -1,6 +1,7 @@
 // The look of a group on the page, which each component draws in its own
 // shadow root: a bordered box with a light tint and a bold title, and the dot
-// that says ok, bad or off.
+// that says ok, bad or off. `ROW` lays out a row of a sentence or name and
+// its controls; each component says where on the row the controls go.
 
 import { css } from "lit";
 
@@ -53,5 +54,13 @@ export const GROUP = css`
 
   .dot.off {
     background: var(--sl-color-neutral-400);
+  }
+`;
+
+export const ROW = css`
+  .row {
+    align-items: baseline;
+    display: flex;
+    gap: 0.5rem;
   }
 `;

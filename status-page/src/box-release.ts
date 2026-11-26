@@ -15,14 +15,15 @@ import type SlSwitch from "@shoelace-style/shoelace/dist/components/switch/switc
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
 
-import { gb, size, when } from "./format.js";
-import { GROUP } from "./group.js";
+import { bar, gb, size, when } from "./format.js";
+import { GROUP, ROW } from "./group.js";
 import { press } from "./press.js";
 import type { Download, Status, Update } from "./status.js";
 
 export class BoxRelease extends LitElement {
   static override readonly styles = [
     GROUP,
+    ROW,
     css`
       :host {
         display: block;
@@ -30,10 +31,7 @@ export class BoxRelease extends LitElement {
 
       /* A sentence on the left and its buttons at the right edge. */
       .row {
-        align-items: baseline;
-        display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
         justify-content: flex-end;
       }
 
@@ -74,7 +72,7 @@ export class BoxRelease extends LitElement {
               offer
                 ? this.#button("/box/update", `Update to ${update.prerelease ? "pre-release " : ""}${update.latest}`)
                 : nothing,
-              bar(update, download),
+              downloading(update, download),
             ])
           : nothing}
         ${back ? row("", [this.#button("/box/back", `Revert to ${back}`)]) : nothing}
@@ -139,7 +137,7 @@ function available(update: Update, download: Download | null): string {
   const latest = update.latest ?? "";
   const is = `New ${update.prerelease ? "pre-release" : "release"} ${latest} is available.`;
   const again = update.download ? "The box tries again at its next check." : "Check for update tries again.";
-  const ours = download?.release === update.latest ? download : null;
+  const ours = ofLatest(update, download);
   if (!ours) return update.download ? is : `${is} Check for update downloads it.`;
   if (ours.downloaded) return is;
   if (ours.running) {
@@ -160,18 +158,18 @@ function available(update: Update, download: Download | null): string {
   return `Could not download ${latest}: ${ours.failure ?? "it stopped."} ${again}`;
 }
 
+/** The download, where it is of the latest release, or null. */
+function ofLatest(update: Update, download: Download | null): Download | null {
+  return download?.release === update.latest ? download : null;
+}
+
 /** While a newer release downloads, a bar of its bytes downloaded of their
  *  total, under what the page says of it. */
-function bar(update: Update, download: Download | null): TemplateResult | typeof nothing {
-  if (!update.available || download?.release !== update.latest || download.downloaded || !download.running) {
-    return nothing;
-  }
-  if (!download.bytes?.total) return nothing;
-  const { current, total } = download.bytes;
-  return html`<sl-progress-bar
-    value=${(current / total) * 100}
-    label=${`${size(current)} of ${size(total)}`}
-  ></sl-progress-bar>`;
+function downloading(update: Update, download: Download | null): TemplateResult | typeof nothing {
+  const ours = ofLatest(update, download);
+  if (!update.available || !ours || ours.downloaded || !ours.running || !ours.bytes?.total) return nothing;
+  const { current, total } = ours.bytes;
+  return bar(current, total, `${size(current)} of ${size(total)}`);
 }
 
 customElements.define("box-release", BoxRelease);

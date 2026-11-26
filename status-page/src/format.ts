@@ -1,12 +1,18 @@
 // How the page says what `GET /box/status` holds: sizes, memory, times in
-// UTC, each stack by its name in the page's order, and a sentence with a
-// commit in backticks set as code.
+// UTC, each stack by its name in the page's order, a sentence with a commit
+// in backticks set as code, and a progress bar.
 
 import { html, type TemplateResult } from "lit";
 
 /** A sentence, with each part in backticks set as code. */
 export function sentence(text: string): (string | TemplateResult)[] {
   return text.split(/`([^`]+)`/).map((part, i) => (i % 2 ? html`<code>${part}</code>` : part));
+}
+
+/** A bar of `current` of `total`, labelled with what it says. The component
+ *  that draws it imports Shoelace's progress bar. */
+export function bar(current: number, total: number, said: string): TemplateResult {
+  return html`<sl-progress-bar value=${(current / total) * 100} label=${said}></sl-progress-bar>`;
 }
 
 /** Memory, and a stack's disk, in whole megabytes of 2^20 bytes. */
