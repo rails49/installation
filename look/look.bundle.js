@@ -6333,6 +6333,29 @@ Gr([
 Ve = Gr([
   O("look-gap")
 ], Ve);
+function pn(t, e, o, r) {
+  const [s, l] = {
+    left: [e.x - t.left, t.width],
+    right: [t.right - e.x, t.width],
+    top: [e.y - t.top, t.height],
+    bottom: [t.bottom - e.y, t.height]
+  }[o];
+  return Math.round(Math.max(r.least, Math.min(s, l - r.leaves)));
+}
+function fn(t) {
+  try {
+    const e = Number(localStorage.getItem(t) ?? NaN);
+    return Number.isFinite(e) ? e : null;
+  } catch {
+    return null;
+  }
+}
+function gn(t, e) {
+  try {
+    localStorage.setItem(t, String(e));
+  } catch {
+  }
+}
 const mr = {
   "chevron-down": Zs,
   gear: Ks,
@@ -6367,5 +6390,8 @@ export {
   Er as NARROW_WIDTH_PX,
   ol as TOKENS,
   sl as TURN_HEIGHT_PX,
+  pn as dividerSizeAt,
+  gn as keepDivider,
+  fn as keptDivider,
   Xr as lookTheme
 };
